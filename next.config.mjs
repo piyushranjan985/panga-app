@@ -1,7 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  output: 'standalone', // small, self-contained Docker images — see Dockerfile
+  // NOTE: `output: 'standalone'` is for self-hosting via the Dockerfile.
+  // Vercel does its own build packaging and the two conflict (it breaks
+  // Vercel's file-tracing step) — leave this off while deploying on Vercel.
+  // If you later self-host with Docker, add `output: 'standalone'` back.
   serverExternalPackages: ['@prisma/client', '@prisma/adapter-pg', 'pg'],
   experimental: {
     // Server actions are used for the onboarding + chat forms.
