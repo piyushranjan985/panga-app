@@ -1,0 +1,221 @@
+// Panga MVP data model.
+// Design notes (see /docs strategy doc for the full rationale):
+// - Postgres via Prisma so the schema is portable across Neon / Supabase / RDS / Cloud SQL.
+// - Every table that will get hot at scale (Swipe, Message) is written so it can be
+//   sharded by userId/matchId later without a redesign.
+// - IntentType is a first-class, queryable column (not a tag string) because discovery
+//   filtering on it is the core product mechanic.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum IntentType {
+  JUST_VIBING
+  SOMETHING_REAL
+  RISHTA_READY
+}
+
+enum Gender {
+  WOMAN
+  MAN
+  NON_BINARY
+  OTHER
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum SwipeAction {
+  PASS
+  PANGA // a "like" — named after the product's core verb
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+}
+
+model User {
+  id            String   @id @default(cuid())
+  phone         String   @unique
+  phoneVerified Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastActiveAt  DateTime @default(now())
+
+  profile Profile?
+
+  otpCodes         OtpCode[]
+  swipesSent       Swipe[]        @relation("SwipesBySender")
+  swipesReceived   Swipe[]        @relation("SwipesByTarget")
+  matchesAsUserA   Match[]        @relation("MatchUserA")
+  matchesAsUserB   Match[]        @relation("MatchUserB")
+  messagesSent     Message[]      @relation("MessagesBySender")
+  reportsFiled     Report[]       @relation("ReportsByReporter")
+  reportsReceived  Report[]       @relation("ReportsAboutUser")
+
+  @@index([lastActiveAt])
+}
+
+model Profile {
+  id       String @id @default(cuid())
+  userId   String @unique
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  displayName String
+  dateOfBirth DateTime
+  gender      Gender
+  lookingFor  Gender[]
+  city        String
+  bio         String   @default("")
+
+  intent           IntentType @default(SOMETHING_REAL)
+  quietMode        Boolean    @default(false) // paused from discovery, profile kept
+  verification     VerificationStatus @default(UNVERIFIED)
+  familyPreviewOn  Boolean    @default(false) // Rishta Ready: optional shareable preview
+
+  avatarSeed  String  @default("A") // MVP uses generated avatar glyphs, not uploaded photos
+  avatarHue   Int     @default(1)   // 1..6, picks a gradient from the design system
+
+  interests Interest[]      @relation("ProfileInterests")
+  circles   CircleMember[]
+  answers   PromptAnswer[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([city, intent, quietMode])
+}
+
+model Interest {
+  id       String    @id @default(cuid())
+  label    String    @unique
+  emoji    String    @default("")
+  profiles Profile[] @relation("ProfileInterests")
+}
+
+model Circle {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String   @default("")
+  city        String? // null = not city-bound (e.g. a national interest circle)
+  category    String   @default("interest") // "college" | "city" | "interest" | "festival"
+
+  members CircleMember[]
+
+  createdAt DateTime @default(now())
+}
+
+model CircleMember {
+  id        String   @id @default(cuid())
+  profileId String
+  circleId  String
+  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  circle    Circle   @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  joinedAt  DateTime @default(now())
+
+  @@unique([profileId, circleId])
+  @@index([circleId])
+}
+
+model Prompt {
+  id     String @id @default(cuid())
+  text   String @unique
+  emoji  String @default("")
+  active Boolean @default(true)
+
+  answers PromptAnswer[]
+}
+
+model PromptAnswer {
+  id        String   @id @default(cuid())
+  profileId String
+  promptId  String
+  answer    String
+  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  prompt    Prompt   @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([profileId, promptId])
+}
+
+model OtpCode {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+// Every swipe is recorded (not just mutual likes) so the discovery feed can
+// exclude already-seen profiles and so the matching algorithm can learn later.
+model Swipe {
+  id         String      @id @default(cuid())
+  fromUserId String
+  toUserId   String
+  action     SwipeAction
+  createdAt  DateTime    @default(now())
+
+  fromUser User @relation("SwipesBySender", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser   User @relation("SwipesByTarget", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@unique([fromUserId, toUserId])
+  @@index([toUserId, action])
+}
+
+model Match {
+  id        String   @id @default(cuid())
+  userAId   String
+  userBId   String
+  userA     User     @relation("MatchUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB     User     @relation("MatchUserB", fields: [userBId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  unmatchedAt DateTime?
+
+  messages Message[]
+
+  @@unique([userAId, userBId])
+  @@index([userBId])
+}
+
+model Message {
+  id        String        @id @default(cuid())
+  matchId   String
+  match     Match         @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  senderId  String
+  sender    User          @relation("MessagesBySender", fields: [senderId], references: [id], onDelete: Cascade)
+  body      String
+  status    MessageStatus @default(SENT)
+  createdAt DateTime      @default(now())
+
+  @@index([matchId, createdAt])
+}
+
+model Report {
+  id         String   @id @default(cuid())
+  reporterId String
+  aboutId    String
+  reporter   User     @relation("ReportsByReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  about      User     @relation("ReportsAboutUser", fields: [aboutId], references: [id], onDelete: Cascade)
+  reason     String
+  details    String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@index([aboutId])
+}
