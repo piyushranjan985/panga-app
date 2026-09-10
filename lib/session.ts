@@ -1,12 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 
-// MVP auth: a signed, httpOnly JWT cookie set after OTP verification.
-// This is intentionally minimal so it's easy to read end-to-end. Before a
-// real launch, swap in a managed auth provider (Clerk / Supabase Auth) or at
-// least add refresh-token rotation and device/session revocation — see the
-// "Trust & Safety" section of the strategy doc.
-
 const COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'panga_session';
 const SECRET = new TextEncoder().encode(
   process.env.SESSION_JWT_SECRET || 'dev-only-change-me-please-generate-a-real-secret',
@@ -25,7 +19,8 @@ export async function createSession(payload: SessionPayload) {
     .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
     .sign(SECRET);
 
-  cookies().set(COOKIE_NAME, token, {
+  const cookieStore = await cookies();
+  cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
@@ -35,7 +30,8 @@ export async function createSession(payload: SessionPayload) {
 }
 
 export async function getSession(): Promise<SessionPayload | null> {
-  const token = cookies().get(COOKIE_NAME)?.value;
+  const cookieStore = await cookies();
+  const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, SECRET);
@@ -56,8 +52,9 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
   }
 }
 
-export function destroySession() {
-  cookies().set(COOKIE_NAME, '', { path: '/', maxAge: 0 });
+export async function destroySession() {
+  const cookieStore = await cookies();
+  cookieStore.set(COOKIE_NAME, '', { path: '/', maxAge: 0 });
 }
 
 export { COOKIE_NAME };

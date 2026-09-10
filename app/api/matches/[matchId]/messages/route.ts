@@ -10,15 +10,16 @@ async function assertParticipant(matchId: string, userId: string) {
   return match;
 }
 
-export async function GET(_req: Request, { params }: { params: { matchId: string } }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ matchId: string }> }) {
+  const { matchId } = await params;
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
-  const match = await assertParticipant(params.matchId, session.userId);
+  const match = await assertParticipant(matchId, session.userId);
   if (!match) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
   const messages = await db.message.findMany({
-    where: { matchId: params.matchId },
+    where: { matchId },
     orderBy: { createdAt: 'asc' },
   });
 
@@ -33,11 +34,12 @@ const bodySchema = z.object({
   noGhostClose: z.boolean().optional(),
 });
 
-export async function POST(req: Request, { params }: { params: { matchId: string } }) {
+export async function POST(req: Request, { params }: { params: Promise<{ matchId: string }> }) {
+  const { matchId } = await params;
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
-  const match = await assertParticipant(params.matchId, session.userId);
+  const match = await assertParticipant(matchId, session.userId);
   if (!match) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
   const json = await req.json().catch(() => null);
@@ -48,11 +50,11 @@ export async function POST(req: Request, { params }: { params: { matchId: string
   if (!body) return NextResponse.json({ error: 'Message cannot be empty' }, { status: 400 });
 
   const message = await db.message.create({
-    data: { matchId: params.matchId, senderId: session.userId, body },
+    data: { matchId, senderId: session.userId, body },
   });
 
   if (parsed.data.noGhostClose) {
-    await db.match.update({ where: { id: params.matchId }, data: { unmatchedAt: new Date() } });
+    await db.match.update({ where: { id: matchId }, data: { unmatchedAt: new Date() } });
   }
 
   return NextResponse.json({ ok: true, message });

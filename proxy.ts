@@ -7,7 +7,7 @@ import { verifySessionToken, COOKIE_NAME } from '@/lib/session';
 const PUBLIC_PATHS = ['/', '/login', '/verify', '/manifest.webmanifest'];
 const PUBLIC_PREFIXES = ['/_next', '/icons', '/api/auth'];
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (PUBLIC_PATHS.includes(pathname) || PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) {
