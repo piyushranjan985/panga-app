@@ -4,6 +4,7 @@
   "private": true,
   "description": "Panga - vibe-first dating & matrimony-lite platform for Indian Gen Z (MVP starter)",
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -14,25 +15,28 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "verify:matching": "tsx scripts/verify-matching.ts",
-    "postinstall": "prisma generate"
+    "verify:matching": "tsx scripts/verify-matching.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "jose": "^5.9.6",
     "next": "^16.3.4",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "pg": "^8.13.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.16.10",
-    "@types/react": "^18.3.10",
-    "@types/react-dom": "^18.3.0",
+    "@types/pg": "^8.11.10",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "autoprefixer": "^10.4.20",
+    "dotenv": "^16.4.5",
     "postcss": "^8.4.47",
     "prisma": "^7.10.0",
     "tailwindcss": "^3.4.13",

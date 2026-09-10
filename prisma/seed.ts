@@ -3,11 +3,14 @@
  * users so `/discover` has something to show right after `docker compose up`.
  * Run with: npm run db:seed
  */
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import crypto from 'node:crypto';
 import { CIRCLES, INTERESTS, PROMPTS } from '../lib/constants';
 
-const db = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const db = new PrismaClient({ adapter });
 
 function hashOtp(code: string) {
   return crypto.createHash('sha256').update(code).digest('hex');
