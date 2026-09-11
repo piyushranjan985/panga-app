@@ -49,6 +49,17 @@ export default function OnboardingPage() {
     return [...list, value];
   }
 
+  // Circles fetched once cover every city and every category (college,
+  // city, interest, festival) — see lib/constants.ts. The picker only
+  // offers circles relevant to the city someone just chose: college/campus
+  // circles are left out entirely for now (too easy to end up in someone
+  // else's alma mater's circle), and city-bound circles from other cities
+  // are hidden. Circles with no city (festival/national ones like Diwali
+  // Foodies) stay visible everywhere.
+  const visibleCircles = circles.filter(
+    (c) => c.category !== 'college' && (c.city === null || c.city === form.city)
+  );
+
   // Intent goes first on purpose — it's the one question none of the big
   // dating or matrimony apps ask upfront (see the "Intent First" concept:
   // Tinder/Bumble never ask, Shaadi/Jeevansathi ask about identity instead).
@@ -204,9 +215,9 @@ export default function OnboardingPage() {
       {step === 3 && (
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">Join up to 6 circles</h1>
-          <p className="text-sm text-inkSoft">College, city, and interest communities — this is how discovery works.</p>
+          <p className="text-sm text-inkSoft">Local and interest communities in {form.city} — this is how discovery works.</p>
           <div className="flex flex-wrap gap-2">
-            {circles.map((c) => (
+            {visibleCircles.map((c) => (
               <button
                 key={c.id}
                 type="button"
