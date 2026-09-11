@@ -15,7 +15,7 @@ export default function DiscoverPage() {
       .then((d) => setFeed(d.feed ?? []));
   }, []);
 
-  async function swipe(action: 'PASS' | 'PANGA') {
+  async function swipe(action: 'PASS' | 'VYBE') {
     const current = feed?.[index];
     if (!current) return;
     setIndex((i) => i + 1);
@@ -27,7 +27,7 @@ export default function DiscoverPage() {
     });
     const data = await res.json();
     if (data.matched) {
-      setBanner(`It's a Panga! You and ${current.displayName} both said yes.`);
+      setBanner(`It's a match! You and ${current.displayName} both said yes.`);
       setTimeout(() => setBanner(null), 4000);
     }
   }

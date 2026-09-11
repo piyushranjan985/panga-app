@@ -11,7 +11,7 @@ const upsertSchema = z.object({
   dateOfBirth: z.string().refine((v) => {
     const age = (Date.now() - new Date(v).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
     return age >= 18 && age <= 100;
-  }, 'You must be 18 or older to use Panga'),
+  }, 'You must be 18 or older to use VybeMatch'),
   gender: genderEnum,
   lookingFor: z.array(genderEnum).min(1),
   city: z.string().trim().min(2),

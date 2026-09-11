@@ -6,7 +6,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 function VerifyForm() {
   const router = useRouter();
   const params = useSearchParams();
+  const method = params.get('method') === 'email' ? 'email' : 'phone';
   const phone = params.get('phone') ?? '';
+  const email = params.get('email') ?? '';
+  const destination = method === 'email' ? email : phone;
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,10 +19,12 @@ function VerifyForm() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/auth/verify-otp', {
+      const endpoint = method === 'email' ? '/api/auth/verify-email-otp' : '/api/auth/verify-otp';
+      const body = method === 'email' ? { email, code } : { phone, code };
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, code }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Invalid code');
@@ -36,8 +41,8 @@ function VerifyForm() {
       <div>
         <h1 className="font-display text-3xl font-extrabold">Enter the code</h1>
         <p className="mt-2 text-sm text-inkSoft">
-          Sent to {phone || 'your number'}. In dev mode, the code is always{' '}
-          <span className="mono font-semibold">123456</span>.
+          Sent to {destination || (method === 'email' ? 'your email' : 'your number')}. In dev mode, the code is
+          always <span className="mono font-semibold">123456</span>.
         </p>
       </div>
       <form onSubmit={submit} className="flex flex-col gap-3">

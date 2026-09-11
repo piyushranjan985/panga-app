@@ -1,8 +1,8 @@
 {
-  "name": "panga-app",
+  "name": "vybematch-app",
   "version": "0.1.0",
   "private": true,
-  "description": "Panga - vibe-first dating & matrimony-lite platform for Indian Gen Z (MVP starter)",
+  "description": "VybeMatch - vibe-first dating & matrimony-lite platform for Indian Gen Z (MVP starter)",
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "next dev",

@@ -26,7 +26,7 @@ export async function GET() {
       createdAt: m.createdAt,
       other: {
         userId: other.id,
-        displayName: other.profile?.displayName ?? 'Panga user',
+        displayName: other.profile?.displayName ?? 'VybeMatch user',
         avatarSeed: other.profile?.avatarSeed ?? 'P',
         avatarHue: other.profile?.avatarHue ?? 1,
         intent: other.profile?.intent ?? 'SOMETHING_REAL',

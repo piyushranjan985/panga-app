@@ -1,4 +1,4 @@
-// Panga MVP data model.
+// VybeMatch MVP data model.
 // Design notes (see /docs strategy doc for the full rationale):
 // - Postgres via Prisma so the schema is portable across Neon / Supabase / RDS / Cloud SQL.
 // - Every table that will get hot at scale (Swipe, Message) is written so it can be
@@ -36,7 +36,11 @@ enum VerificationStatus {
 
 enum SwipeAction {
   PASS
-  PANGA // a "like" — named after the product's core verb
+  VYBE // a "like" — renamed from PANGA to match the VybeMatch rebrand. Not
+       // shown anywhere in the UI (see app/discover/page.tsx for the copy).
+       // Postgres enum-value renames relabel existing rows in place (no
+       // backfill needed), but this still needs its own migration — see
+       // the apply instructions.
 }
 
 enum MessageStatus {
@@ -47,8 +51,19 @@ enum MessageStatus {
 
 model User {
   id            String   @id @default(cuid())
-  phone         String   @unique
+  // Every identity field below is optional and independently unique: a user
+  // signs up with exactly one of them (phone OTP, email OTP, Google,
+  // Facebook) but the schema doesn't force a "primary" method, so any of
+  // them can be null. At real scale this becomes a separate AuthIdentity
+  // join table (see the Swipe/Message models for the same "start simple,
+  // note the real-scale shape" pattern) so one person can link more than
+  // one method to the same account — not needed yet at MVP size.
+  phone         String?  @unique
   phoneVerified Boolean  @default(false)
+  email         String?  @unique
+  emailVerified Boolean  @default(false)
+  googleId      String?  @unique
+  facebookId    String?  @unique
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   lastActiveAt  DateTime @default(now())

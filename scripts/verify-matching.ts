@@ -1,6 +1,6 @@
 /**
  * Standalone correctness check for lib/matching.ts — no framework, no DB,
- * runnable with plain `tsx` or `ts-node`. This is the one piece of Panga's
+ * runnable with plain `tsx` or `ts-node`. This is the one piece of VybeMatch's
  * logic that's exercised automatically; wire it into CI (see README).
  */
 import assert from 'node:assert/strict';

@@ -1,19 +1,19 @@
-name: panga
+name: vybematch
 
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: panga
-      POSTGRES_PASSWORD: panga
-      POSTGRES_DB: panga
+      POSTGRES_USER: vybematch
+      POSTGRES_PASSWORD: vybematch
+      POSTGRES_DB: vybematch
     ports:
       - '5432:5432'
     volumes:
-      - panga_db_data:/var/lib/postgresql/data
+      - vybematch_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U panga']
+      test: ['CMD-SHELL', 'pg_isready -U vybematch']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -25,14 +25,14 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://panga:panga@db:5432/panga?schema=public
+      DATABASE_URL: postgresql://vybematch:vybematch@db:5432/vybematch?schema=public
       SESSION_JWT_SECRET: dev-only-change-me-please-generate-a-real-secret
       OTP_PROVIDER: mock
       VERIFICATION_PROVIDER: mock
-      NEXT_PUBLIC_APP_NAME: Panga
+      NEXT_PUBLIC_APP_NAME: VybeMatch
       NEXT_PUBLIC_APP_URL: http://localhost:3000
     ports:
       - '3000:3000'
 
 volumes:
-  panga_db_data:
+  vybematch_db_data:

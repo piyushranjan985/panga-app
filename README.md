@@ -1,7 +1,7 @@
-# Panga — MVP starter
+# VybeMatch — MVP starter
 
-A working starter codebase for **Panga**, a vibe-first dating & matrimony-lite
-platform for Indian Gen Z. This is the coded companion to the Panga strategy
+A working starter codebase for **VybeMatch**, a vibe-first dating & matrimony-lite
+platform for Indian Gen Z. This is the coded companion to the original strategy
 document and the [interactive product demo] — it implements the same core
 mechanics for real: transparent intent tags, circle-based discovery, the
 Vibe Reveal blur mechanic, a trust/verification layer, and No-Ghost closes.
@@ -112,4 +112,4 @@ See `.env.example`. At minimum you need `DATABASE_URL` and
 `SESSION_JWT_SECRET` (generate with `openssl rand -base64 32`) to run
 locally.
 
-[interactive product demo]: ../panga/demo.html
+[interactive product demo]: ../vybematch/demo.html

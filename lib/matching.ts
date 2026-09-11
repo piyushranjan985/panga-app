@@ -1,5 +1,5 @@
 /**
- * Core discovery/compatibility logic for Panga.
+ * Core discovery/compatibility logic for VybeMatch.
  *
  * Deliberately framework- and database-free: every type here is a plain
  * object, so this file has zero imports and can be unit-tested with nothing
@@ -25,7 +25,7 @@ export interface MatchableProfile {
 
 /**
  * Intent compatibility matrix. 1.0 = perfectly aligned, 0 = don't surface
- * at all. This is the single biggest lever Panga has over Tinder-style
+ * at all. This is the single biggest lever VybeMatch has over Tinder-style
  * apps (no intent signal at all) and matrimony sites (only one intent):
  * mismatched intent is filtered, not just down-ranked, once the gap is
  * this wide (Just Vibing vs Rishta Ready).

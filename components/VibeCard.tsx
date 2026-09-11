@@ -32,7 +32,7 @@ export default function VibeCard({
   onSwipe,
 }: {
   profile: FeedProfile;
-  onSwipe: (action: 'PASS' | 'PANGA') => void;
+  onSwipe: (action: 'PASS' | 'VYBE') => void;
 }) {
   const revealTargets = profile.prompts.length > 0 ? profile.prompts : profile.interests;
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
@@ -124,9 +124,9 @@ export default function VibeCard({
         </button>
         <button
           type="button"
-          onClick={() => onSwipe('PANGA')}
+          onClick={() => onSwipe('VYBE')}
           className="grid h-14 w-14 place-items-center rounded-full border border-mint bg-white text-xl text-mint shadow"
-          aria-label="Panga"
+          aria-label="Like"
         >
           ✓
         </button>

@@ -4,5 +4,5 @@ import { getSession } from '@/lib/session';
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
-  return NextResponse.json({ userId: session.userId, phone: session.phone });
+  return NextResponse.json({ userId: session.userId });
 }

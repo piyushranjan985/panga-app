@@ -27,7 +27,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ matchId
 }
 
 const NO_GHOST_CLOSE =
-  "Hey — I've enjoyed chatting, but I don't think we're the right match. Wishing you a good one. 💛 (sent via Panga's No-Ghost close)";
+  "Hey — I've enjoyed chatting, but I don't think we're the right match. Wishing you a good one. 💛 (sent via VybeMatch's No-Ghost close)";
 
 const bodySchema = z.object({
   body: z.string().trim().min(1).max(1000).optional(),

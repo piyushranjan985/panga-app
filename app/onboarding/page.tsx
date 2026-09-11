@@ -8,9 +8,9 @@ type Circle = { id: string; name: string; category: string; city: string | null 
 type Interest = { id: string; label: string; emoji: string };
 
 const INTENTS = [
-  { value: 'JUST_VIBING', label: 'Just Vibing', blurb: 'Open to meeting people, no pressure' },
-  { value: 'SOMETHING_REAL', label: 'Something Real', blurb: 'Looking for a relationship' },
-  { value: 'RISHTA_READY', label: 'Rishta Ready', blurb: 'Actively exploring marriage' },
+  { value: 'JUST_VIBING', label: 'Just Vibing', emoji: '🌀', blurb: 'No labels, no pressure, just good energy' },
+  { value: 'SOMETHING_REAL', label: 'Something Real', emoji: '💛', blurb: 'Dating, with an actual future in mind' },
+  { value: 'RISHTA_READY', label: 'Rishta Ready', emoji: '💍', blurb: "Serious, family-aware, ready when it's right" },
 ];
 
 export default function OnboardingPage() {
@@ -49,7 +49,10 @@ export default function OnboardingPage() {
     return [...list, value];
   }
 
-  const steps = ['Basics', 'Intent', 'Interests', 'Circles'];
+  // Intent goes first on purpose — it's the one question none of the big
+  // dating or matrimony apps ask upfront (see the "Intent First" concept:
+  // Tinder/Bumble never ask, Shaadi/Jeevansathi ask about identity instead).
+  const steps = ['Intent', 'Basics', 'Interests', 'Circles'];
 
   async function finish() {
     setSaving(true);
@@ -84,6 +87,37 @@ export default function OnboardingPage() {
       </div>
 
       {step === 0 && (
+        <div className="flex flex-col gap-3">
+          <h1 className="font-display text-2xl font-extrabold">What are you here for?</h1>
+          <p className="text-sm text-inkSoft">Pick your lane — we&apos;ll only show you people on the same page.</p>
+          {INTENTS.map((i) => (
+            <button
+              key={i.value}
+              type="button"
+              onClick={() => setForm({ ...form, intent: i.value })}
+              className={`flex items-start gap-3 rounded-2xl border px-4 py-3.5 text-left ${
+                form.intent === i.value ? 'border-magenta bg-magenta/5' : 'border-line'
+              }`}
+            >
+              <span className="text-xl leading-none" aria-hidden>
+                {i.emoji}
+              </span>
+              <span className="flex-1">
+                <span className="block font-bold">{i.label}</span>
+                <span className="block text-sm text-inkSoft">{i.blurb}</span>
+              </span>
+              {form.intent === i.value && (
+                <span className="grid h-5 w-5 flex-shrink-0 place-items-center rounded-full bg-magenta text-xs text-white">
+                  ✓
+                </span>
+              )}
+            </button>
+          ))}
+          <p className="text-xs text-inkSoft">You can change this anytime — vibes shift.</p>
+        </div>
+      )}
+
+      {step === 1 && (
         <div className="flex flex-col gap-4">
           <h1 className="font-display text-2xl font-extrabold">First, the basics</h1>
           <input
@@ -147,26 +181,6 @@ export default function OnboardingPage() {
         </div>
       )}
 
-      {step === 1 && (
-        <div className="flex flex-col gap-3">
-          <h1 className="font-display text-2xl font-extrabold">What are you here for?</h1>
-          <p className="text-sm text-inkSoft">You can change this anytime — we just ask everyone to be upfront.</p>
-          {INTENTS.map((i) => (
-            <button
-              key={i.value}
-              type="button"
-              onClick={() => setForm({ ...form, intent: i.value })}
-              className={`rounded-2xl border px-4 py-3 text-left ${
-                form.intent === i.value ? 'border-magenta bg-magenta/5' : 'border-line'
-              }`}
-            >
-              <p className="font-bold">{i.label}</p>
-              <p className="text-sm text-inkSoft">{i.blurb}</p>
-            </button>
-          ))}
-        </div>
-      )}
-
       {step === 2 && (
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">Pick up to 8 interests</h1>
@@ -223,7 +237,7 @@ export default function OnboardingPage() {
           <button
             type="button"
             onClick={() => setStep((s) => s + 1)}
-            disabled={step === 0 && !form.displayName}
+            disabled={step === 1 && !form.displayName}
             className="gradient-btn rounded-full px-6 py-2.5 text-sm font-bold text-white disabled:opacity-50"
           >
             Next

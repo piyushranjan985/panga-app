@@ -4,28 +4,26 @@ import { db } from '@/lib/db';
 import { issueOtp } from '@/lib/otp';
 
 const bodySchema = z.object({
-  phone: z
-    .string()
-    .trim()
-    .regex(/^\+91[6-9]\d{9}$/, 'Enter a valid Indian mobile number, e.g. +919876543210'),
+  email: z.string().trim().toLowerCase().email('Enter a valid email address'),
 });
 
 /**
- * Requests an OTP for a phone number. See lib/otp.ts for how the code
- * itself is generated/mocked.
+ * Email twin of /api/auth/request-otp — same OtpCode table, same mock
+ * behaviour (see lib/otp.ts), just keyed by email instead of phone so
+ * someone without an Indian mobile number can still sign in.
  */
 export async function POST(req: Request) {
   const json = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(json);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid phone number' }, { status: 400 });
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid email' }, { status: 400 });
   }
-  const { phone } = parsed.data;
+  const { email } = parsed.data;
 
   const user = await db.user.upsert({
-    where: { phone },
+    where: { email },
     update: {},
-    create: { phone },
+    create: { email },
   });
 
   const { devHint } = await issueOtp(user.id);

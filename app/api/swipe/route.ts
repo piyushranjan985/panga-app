@@ -5,7 +5,7 @@ import { getSession } from '@/lib/session';
 
 const bodySchema = z.object({
   toUserId: z.string(),
-  action: z.enum(['PASS', 'PANGA']),
+  action: z.enum(['PASS', 'VYBE']),
 });
 
 // Deterministic ordering for the Match row's unique [userAId, userBId] pair
@@ -36,12 +36,12 @@ export async function POST(req: Request) {
   let matched = false;
   let matchId: string | null = null;
 
-  if (action === 'PANGA') {
+  if (action === 'VYBE') {
     const reciprocal = await db.swipe.findUnique({
       where: { fromUserId_toUserId: { fromUserId: toUserId, toUserId: session.userId } },
     });
 
-    if (reciprocal?.action === 'PANGA') {
+    if (reciprocal?.action === 'VYBE') {
       const [userAId, userBId] = orderedPair(session.userId, toUserId);
       const match = await db.match.upsert({
         where: { userAId_userBId: { userAId, userBId } },

@@ -23,7 +23,7 @@ export default function Navbar() {
     <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-white/95 backdrop-blur sm:sticky sm:top-0 sm:border-b sm:border-t-0">
       <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-2 sm:py-3">
         <Link href="/discover" className="hidden font-display text-lg font-extrabold sm:block">
-          Panga<span className="text-magenta">.</span>
+          Vybe<span className="text-magenta">Match</span>
         </Link>
         <div className="flex w-full justify-around gap-1 sm:w-auto sm:gap-4">
           {TABS.map((tab) => {

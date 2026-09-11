@@ -2,11 +2,11 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Panga — vibe first, not swipe first',
+  title: 'VybeMatch — say the quiet part first',
   description:
-    'Panga is a vibe-based dating & matrimony-lite platform for Indian Gen Z: transparent intent, community circles, and a trust layer that respects your pace.',
+    'VybeMatch is a vibe-based dating & matrimony-lite platform for Indian Gen Z: transparent intent, community circles, and a trust layer that respects your pace.',
   manifest: '/manifest.webmanifest',
-  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Panga' },
+  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'VybeMatch' },
 };
 
 export const viewport: Viewport = {
