@@ -4,11 +4,68 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 type Method = 'phone' | 'email';
-type SocialProvider = 'google' | 'facebook' | null;
+type SocialProvider = 'google' | 'facebook' | 'instagram' | null;
 
-const SOCIAL_COPY: Record<'google' | 'facebook', { label: string; badge: string; badgeBg: string }> = {
-  google: { label: 'Google', badge: 'G', badgeBg: '#4285F4' },
-  facebook: { label: 'Facebook', badge: 'f', badgeBg: '#1877F2' },
+// Instagram has no standalone consumer OAuth (Meta folded it into Facebook
+// Login), so "Continue with Instagram" intentionally hits the same
+// /api/auth/mock-facebook endpoint as the Facebook button — same identity
+// column, same mock flow, just a different icon/label so people can pick
+// whichever account they think of first.
+const SOCIAL_ENDPOINT: Record<'google' | 'facebook' | 'instagram', string> = {
+  google: '/api/auth/mock-google',
+  facebook: '/api/auth/mock-facebook',
+  instagram: '/api/auth/mock-facebook',
+};
+
+const SOCIAL_LABEL: Record<'google' | 'facebook' | 'instagram', string> = {
+  google: 'Google',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+};
+
+function GoogleIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden>
+      <path fill="#4285F4" d="M19.6 10.23c0-.68-.06-1.36-.17-2H10v3.79h5.4a4.6 4.6 0 0 1-2 3.02v2.5h3.23c1.9-1.75 2.97-4.32 2.97-7.31Z" />
+      <path fill="#34A853" d="M10 20c2.7 0 4.96-.89 6.62-2.42l-3.23-2.5c-.9.6-2.05.96-3.39.96-2.6 0-4.8-1.76-5.59-4.12H1.06v2.59A10 10 0 0 0 10 20Z" />
+      <path fill="#FBBC05" d="M4.41 11.92a5.99 5.99 0 0 1 0-3.84V5.49H1.06a10 10 0 0 0 0 9.02l3.35-2.59Z" />
+      <path fill="#EA4335" d="M10 3.96c1.47 0 2.79.5 3.82 1.5l2.87-2.87A9.96 9.96 0 0 0 10 0 10 10 0 0 0 1.06 5.49l3.35 2.59C5.2 5.72 7.4 3.96 10 3.96Z" />
+    </svg>
+  );
+}
+
+function FacebookIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden>
+      <circle cx="10" cy="10" r="10" fill="#1877F2" />
+      <path fill="#fff" d="M13.3 10.5h-1.9V17H9V10.5H7.6V8.3H9V6.9c0-1.7.8-3.4 3.3-3.4h2v2.1h-1.4c-.4 0-.9.2-.9 1.1v1.6h2.4l-.3 2.2Z" />
+    </svg>
+  );
+}
+
+function InstagramIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden>
+      <defs>
+        <linearGradient id="igGrad" x1="0" y1="20" x2="20" y2="0">
+          <stop offset="0" stopColor="#FED576" />
+          <stop offset="0.26" stopColor="#F47133" />
+          <stop offset="0.61" stopColor="#BC3081" />
+          <stop offset="1" stopColor="#4C63D2" />
+        </linearGradient>
+      </defs>
+      <rect width="20" height="20" rx="5.5" fill="url(#igGrad)" />
+      <rect x="4.5" y="4.5" width="11" height="11" rx="3" stroke="#fff" strokeWidth="1.3" fill="none" />
+      <circle cx="10" cy="10" r="3" stroke="#fff" strokeWidth="1.3" fill="none" />
+      <circle cx="14" cy="6" r="0.8" fill="#fff" />
+    </svg>
+  );
+}
+
+const SOCIAL_ICON: Record<'google' | 'facebook' | 'instagram', () => React.ReactElement> = {
+  google: GoogleIcon,
+  facebook: FacebookIcon,
+  instagram: InstagramIcon,
 };
 
 export default function LoginPage() {
@@ -55,7 +112,7 @@ export default function LoginPage() {
     setSocialLoading(true);
     setSocialError(null);
     try {
-      const res = await fetch(`/api/auth/mock-${socialProvider}`, {
+      const res = await fetch(SOCIAL_ENDPOINT[socialProvider], {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: socialEmail }),
@@ -129,27 +186,30 @@ export default function LoginPage() {
         <span className="h-px flex-1 bg-line" />
       </div>
 
-      <div className="flex gap-3">
-        {(['google', 'facebook'] as const).map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => {
-              setSocialProvider(p);
-              setSocialError(null);
-            }}
-            className="flex flex-1 items-center justify-center gap-2 rounded-full border border-line bg-white px-4 py-3 text-sm font-semibold"
-          >
-            <span
-              className="grid h-5 w-5 place-items-center rounded-full text-xs font-bold text-white"
-              style={{ backgroundColor: SOCIAL_COPY[p].badgeBg }}
-              aria-hidden
+      {/* Every button here shares the same height, radius, font, and icon
+          slot size — only the icon and label change per provider — so the
+          row reads as one consistent set instead of three mismatched
+          widgets bolted together. */}
+      <div className="flex flex-col gap-2.5">
+        {(['google', 'facebook', 'instagram'] as const).map((p) => {
+          const Icon = SOCIAL_ICON[p];
+          return (
+            <button
+              key={p}
+              type="button"
+              onClick={() => {
+                setSocialProvider(p);
+                setSocialError(null);
+              }}
+              className="flex h-12 w-full items-center justify-center gap-3 rounded-full border border-line bg-white px-4 text-sm font-semibold text-ink transition hover:border-inkSoft/40"
             >
-              {SOCIAL_COPY[p].badge}
-            </span>
-            {SOCIAL_COPY[p].label}
-          </button>
-        ))}
+              <span className="grid h-5 w-5 flex-shrink-0 place-items-center overflow-hidden rounded-full">
+                <Icon />
+              </span>
+              Continue with {SOCIAL_LABEL[p]}
+            </button>
+          );
+        })}
       </div>
 
       {socialProvider && (
@@ -158,10 +218,10 @@ export default function LoginPage() {
           className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-4"
         >
           <p className="text-xs font-semibold uppercase tracking-wide text-inkSoft/70">
-            Mock {SOCIAL_COPY[socialProvider].label} sign-in
+            Mock {SOCIAL_LABEL[socialProvider]} sign-in
           </p>
           <p className="text-xs text-inkSoft">
-            No real {SOCIAL_COPY[socialProvider].label} account is contacted in this demo — enter an email to
+            No real {SOCIAL_LABEL[socialProvider]} account is contacted in this demo — enter an email to
             simulate the profile it would hand back.
           </p>
           <input
