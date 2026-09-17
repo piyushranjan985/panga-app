@@ -10,6 +10,7 @@ interface Preview {
   city: string;
   intent: string;
   verification: string;
+  photoUrl: string | null;
   circles: string[];
 }
 
@@ -60,6 +61,14 @@ export default function FamilyPreviewPage() {
       </div>
 
       <div className="rounded-card border border-line bg-white p-6 text-center shadow-lg">
+        {preview.photoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element -- external/Blob URLs
+          <img
+            src={preview.photoUrl}
+            alt=""
+            className="mx-auto mb-4 h-28 w-28 rounded-full border border-line object-cover"
+          />
+        )}
         <h1 className="font-display text-2xl font-extrabold">
           {preview.displayName}, {preview.age}
         </h1>

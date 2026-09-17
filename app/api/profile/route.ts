@@ -31,6 +31,12 @@ const upsertSchema = z.object({
   // onboarding (see the Family Preview step, Rishta Ready only) or later
   // from the profile screen's toggle (the PATCH handler below).
   familyPreviewOn: z.boolean().default(false),
+  // Photos: uploaded during onboarding via app/api/upload/route.ts (which
+  // just returns URLs — there's no Profile row yet to attach Photo rows
+  // to), collected in onboarding form state, and turned into real Photo
+  // rows here once the rest of the profile is saved. Adding/removing a
+  // photo after onboarding goes through app/api/profile/photos instead.
+  photoUrls: z.array(z.string().min(1)).min(1, 'Add at least 1 photo').max(5),
 });
 
 export async function GET() {
@@ -39,7 +45,12 @@ export async function GET() {
 
   const profile = await db.profile.findUnique({
     where: { userId: session.userId },
-    include: { interests: true, circles: { include: { circle: true } }, answers: { include: { prompt: true } } },
+    include: {
+      interests: true,
+      circles: { include: { circle: true } },
+      answers: { include: { prompt: true } },
+      photos: { orderBy: { position: 'asc' } },
+    },
   });
 
   return NextResponse.json({ profile });
@@ -74,6 +85,7 @@ export async function PUT(req: Request) {
       interests: { connect: data.interestIds.map((id) => ({ id })) },
       circles: { create: data.circleIds.map((circleId) => ({ circleId })) },
       answers: { create: data.promptAnswers.map((pa) => ({ promptId: pa.promptId, answer: pa.answer })) },
+      photos: { create: data.photoUrls.map((url, i) => ({ url, position: i })) },
     },
     update: {
       displayName: data.displayName,
@@ -95,6 +107,10 @@ export async function PUT(req: Request) {
         deleteMany: {},
         create: data.promptAnswers.map((pa) => ({ promptId: pa.promptId, answer: pa.answer })),
       },
+      // Deliberately not touched on update: re-submitting the rest of the
+      // onboarding form (e.g. editing bio from a future "edit profile"
+      // flow) shouldn't silently wipe photos added since via
+      // app/api/profile/photos. Photos only get set here on first create.
     },
   });
 

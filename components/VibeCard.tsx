@@ -11,6 +11,7 @@ export interface FeedProfile {
   bio: string;
   avatarSeed: string;
   avatarHue: number;
+  photoUrl: string | null; // primary photo; null only for a profile with none (shouldn't happen post-photo-feature, but every real one predates it)
   verification: string;
   interests: { id: string; label: string; emoji: string }[];
   prompts: { id: string; text: string; emoji: string; answer: string }[];
@@ -55,10 +56,17 @@ export default function VibeCard({
           <div className="h-full rounded-full bg-white transition-all" style={{ width: `${Math.max(pct, 6)}%` }} />
         </div>
         <div
-          className="absolute inset-0 flex items-center justify-center transition-[filter] duration-500"
+          className="absolute inset-0 transition-[filter] duration-500"
           style={{ filter: `blur(${blur}px) saturate(.9)` }}
         >
-          <span className="font-display text-8xl font-extrabold text-white/90">{profile.avatarSeed}</span>
+          {profile.photoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- external/Blob URLs, no next/image domain config needed
+            <img src={profile.photoUrl} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center">
+              <span className="font-display text-8xl font-extrabold text-white/90">{profile.avatarSeed}</span>
+            </div>
+          )}
         </div>
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4 text-white">
           <div className="flex items-center gap-2">

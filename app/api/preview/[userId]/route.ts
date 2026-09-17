@@ -17,7 +17,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ userId:
 
   const profile = await db.profile.findUnique({
     where: { userId },
-    include: { circles: { include: { circle: true } } },
+    include: { circles: { include: { circle: true } }, photos: { orderBy: { position: 'asc' }, take: 1 } },
   });
 
   if (!profile || !profile.familyPreviewOn) {
@@ -34,6 +34,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ userId:
       city: profile.city,
       intent: profile.intent,
       verification: profile.verification,
+      photoUrl: profile.photos[0]?.url ?? null,
       circles: profile.circles.map((c) => c.circle.name),
     },
   });

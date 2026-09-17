@@ -4,6 +4,12 @@ import { useEffect, useState } from 'react';
 import Navbar from '@/components/Navbar';
 import IntentBadge from '@/components/IntentBadge';
 
+interface Photo {
+  id: string;
+  url: string;
+  position: number;
+}
+
 interface ProfileData {
   userId: string;
   displayName: string;
@@ -14,15 +20,20 @@ interface ProfileData {
   familyPreviewOn: boolean;
   verification: string;
   avatarSeed: string;
+  photos: Photo[];
   interests: { id: string; label: string; emoji: string }[];
   circles: { circle: { id: string; name: string } }[];
 }
 
 const INTENTS = ['JUST_VIBING', 'SOMETHING_REAL', 'RISHTA_READY'];
+const MAX_PHOTOS = 5;
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [verifying, setVerifying] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   function load() {
     fetch('/api/profile')
@@ -51,6 +62,41 @@ export default function ProfilePage() {
     }, 4500);
   }
 
+  async function addPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // lets the same file be picked again later
+    if (!file) return;
+    setPhotoError(null);
+    setUploadingPhoto(true);
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      const res = await fetch('/api/profile/photos', { method: 'POST', body });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Upload failed');
+      setProfile((p) => (p ? { ...p, photos: [...p.photos, data.photo] } : p));
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
+  async function removePhoto(photoId: string) {
+    setPhotoError(null);
+    setDeletingPhotoId(photoId);
+    try {
+      const res = await fetch(`/api/profile/photos/${photoId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Could not remove photo');
+      setProfile((p) => (p ? { ...p, photos: p.photos.filter((ph) => ph.id !== photoId) } : p));
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : 'Could not remove photo');
+    } finally {
+      setDeletingPhotoId(null);
+    }
+  }
+
   if (!profile) {
     return (
       <div className="min-h-screen pb-24 sm:pb-10">
@@ -60,14 +106,21 @@ export default function ProfilePage() {
     );
   }
 
+  const primaryPhoto = profile.photos[0]?.url;
+
   return (
     <div className="min-h-screen pb-24 sm:pb-10">
       <Navbar />
       <main className="mx-auto max-w-2xl px-4 py-6">
         <div className="flex items-center gap-4">
-          <div className="grid h-16 w-16 place-items-center rounded-full bg-gradient-to-br from-marigold to-magenta font-display text-2xl font-bold text-white">
-            {profile.avatarSeed}
-          </div>
+          {primaryPhoto ? (
+            // eslint-disable-next-line @next/next/no-img-element -- external/Blob URLs
+            <img src={primaryPhoto} alt="" className="h-16 w-16 rounded-full border border-line object-cover" />
+          ) : (
+            <div className="grid h-16 w-16 place-items-center rounded-full bg-gradient-to-br from-marigold to-magenta font-display text-2xl font-bold text-white">
+              {profile.avatarSeed}
+            </div>
+          )}
           <div>
             <h1 className="font-display text-2xl font-extrabold">{profile.displayName}</h1>
             <p className="text-sm text-inkSoft">{profile.city}</p>
@@ -75,6 +128,42 @@ export default function ProfilePage() {
         </div>
 
         {profile.bio && <p className="mt-4 text-sm text-inkSoft">{profile.bio}</p>}
+
+        <section className="mt-8">
+          <h2 className="mb-2 font-display text-lg font-bold">Photos</h2>
+          <p className="mb-2 text-xs text-inkSoft">1 to {MAX_PHOTOS} — the first one is what people see first on the feed.</p>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+            {profile.photos.map((photo, i) => (
+              <div key={photo.id} className="relative aspect-square overflow-hidden rounded-2xl border border-line">
+                {/* eslint-disable-next-line @next/next/no-img-element -- external/Blob URLs */}
+                <img src={photo.url} alt="" className="h-full w-full object-cover" />
+                {i === 0 && (
+                  <span className="absolute left-1 top-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
+                    Primary
+                  </span>
+                )}
+                {profile.photos.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removePhoto(photo.id)}
+                    disabled={deletingPhotoId === photo.id}
+                    className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-black/60 text-xs text-white disabled:opacity-60"
+                    aria-label="Remove photo"
+                  >
+                    {deletingPhotoId === photo.id ? '…' : '✕'}
+                  </button>
+                )}
+              </div>
+            ))}
+            {profile.photos.length < MAX_PHOTOS && (
+              <label className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-line text-xs font-semibold text-inkSoft">
+                {uploadingPhoto ? 'Uploading...' : '+ Add'}
+                <input type="file" accept="image/*" className="hidden" disabled={uploadingPhoto} onChange={addPhoto} />
+              </label>
+            )}
+          </div>
+          {photoError && <p className="mt-2 text-xs text-magenta">{photoError}</p>}
+        </section>
 
         <section className="mt-8">
           <h2 className="mb-2 font-display text-lg font-bold">Intent</h2>

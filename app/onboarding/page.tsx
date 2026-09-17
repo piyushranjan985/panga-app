@@ -37,8 +37,12 @@ export default function OnboardingPage() {
     circleIds: [] as string[],
     promptAnswers: [] as { promptId: string; answer: string }[],
     familyPreviewOn: false,
+    photoUrls: [] as string[],
     avatarHue: Math.ceil(Math.random() * 6),
   });
+
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/circles')
@@ -115,6 +119,36 @@ export default function OnboardingPage() {
   const vybeCheckIncomplete =
     form.promptAnswers.length === 0 || form.promptAnswers.some((pa) => !pa.answer.trim());
 
+  // Photos: uploaded one at a time as they're picked (not deferred to
+  // "Finish") so someone sees the real upload result — and a real error —
+  // immediately, rather than discovering a bad file only at the very last
+  // step. No Profile row exists yet at this point in onboarding, so
+  // app/api/upload/route.ts just stores the file and hands back a URL;
+  // these URLs become real Photo rows once app/api/profile/route.ts saves
+  // the rest of the form.
+  async function addPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // lets the same file be picked again later
+    if (!file) return;
+    setPhotoError(null);
+    setUploadingPhoto(true);
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      const res = await fetch('/api/upload', { method: 'POST', body });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Upload failed');
+      setForm((f) => ({ ...f, photoUrls: [...f.photoUrls, data.url].slice(0, 5) }));
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+  function removePhoto(index: number) {
+    setForm((f) => ({ ...f, photoUrls: f.photoUrls.filter((_, i) => i !== index) }));
+  }
+
   // Family Preview: a curated, read-only summary (name, age, city, intent,
   // circles — no bio, no Vybe Check answers, nothing from the swipe deck)
   // that's shareable outside the app. It's the one piece of the matrimony
@@ -128,8 +162,8 @@ export default function OnboardingPage() {
   // Tinder/Bumble never ask, Shaadi/Jeevansathi ask about identity instead).
   const steps =
     form.intent === 'RISHTA_READY'
-      ? ['Intent', 'Basics', 'Interests', 'Circles', 'Vybe Check', 'Family Preview']
-      : ['Intent', 'Basics', 'Interests', 'Circles', 'Vybe Check'];
+      ? ['Intent', 'Basics', 'Photos', 'Interests', 'Circles', 'Vybe Check', 'Family Preview']
+      : ['Intent', 'Basics', 'Photos', 'Interests', 'Circles', 'Vybe Check'];
 
   async function finish() {
     setSaving(true);
@@ -267,6 +301,41 @@ export default function OnboardingPage() {
 
       {step === 2 && (
         <div className="flex flex-col gap-3">
+          <h1 className="font-display text-2xl font-extrabold">Add your photos</h1>
+          <p className="text-sm text-inkSoft">1 to 5 — real photos get real matches. The first one is what people see first.</p>
+          <div className="grid grid-cols-3 gap-2">
+            {form.photoUrls.map((url, i) => (
+              <div key={url + i} className="relative aspect-square overflow-hidden rounded-2xl border border-line">
+                {/* eslint-disable-next-line @next/next/no-img-element -- external/Blob URLs, no next/image domain config needed */}
+                <img src={url} alt="" className="h-full w-full object-cover" />
+                {i === 0 && (
+                  <span className="absolute left-1 top-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
+                    Primary
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => removePhoto(i)}
+                  className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-black/60 text-xs text-white"
+                  aria-label="Remove photo"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            {form.photoUrls.length < 5 && (
+              <label className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-line text-xs font-semibold text-inkSoft">
+                {uploadingPhoto ? 'Uploading...' : '+ Add'}
+                <input type="file" accept="image/*" className="hidden" disabled={uploadingPhoto} onChange={addPhoto} />
+              </label>
+            )}
+          </div>
+          {photoError && <p className="text-xs text-magenta">{photoError}</p>}
+        </div>
+      )}
+
+      {step === 3 && (
+        <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">Pick up to 8 interests</h1>
           <div className="flex flex-wrap gap-2">
             {interests.map((i) => (
@@ -285,7 +354,7 @@ export default function OnboardingPage() {
         </div>
       )}
 
-      {step === 3 && (
+      {step === 4 && (
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">Join up to 6 circles</h1>
           <p className="text-sm text-inkSoft">Local and interest communities in {form.city} — this is how discovery works.</p>
@@ -306,7 +375,7 @@ export default function OnboardingPage() {
         </div>
       )}
 
-      {step === 4 && (
+      {step === 5 && (
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">Vybe Check</h1>
           <p className="text-sm text-inkSoft">
@@ -357,7 +426,7 @@ export default function OnboardingPage() {
         </div>
       )}
 
-      {step === 5 && form.intent === 'RISHTA_READY' && (
+      {step === 6 && form.intent === 'RISHTA_READY' && (
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">Family Preview</h1>
           <p className="text-sm text-inkSoft">
@@ -426,7 +495,8 @@ export default function OnboardingPage() {
             onClick={() => setStep((s) => s + 1)}
             disabled={
               (step === 1 && (!form.displayName || !form.dateOfBirth || dobTooYoung)) ||
-              (step === 4 && vybeCheckIncomplete)
+              (step === 2 && form.photoUrls.length === 0) ||
+              (step === 5 && vybeCheckIncomplete)
             }
             className="gradient-btn rounded-full px-6 py-2.5 text-sm font-bold text-white disabled:opacity-50"
           >
@@ -436,7 +506,7 @@ export default function OnboardingPage() {
           <button
             type="button"
             onClick={finish}
-            disabled={saving || vybeCheckIncomplete}
+            disabled={saving || vybeCheckIncomplete || form.photoUrls.length === 0}
             className="gradient-btn rounded-full px-6 py-2.5 text-sm font-bold text-white disabled:opacity-60"
           >
             {saving ? 'Saving...' : 'Finish & discover'}

@@ -99,17 +99,34 @@ model Profile {
   verification     VerificationStatus @default(UNVERIFIED)
   familyPreviewOn  Boolean    @default(false) // Rishta Ready: optional shareable preview
 
-  avatarSeed  String  @default("A") // MVP uses generated avatar glyphs, not uploaded photos
-  avatarHue   Int     @default(1)   // 1..6, picks a gradient from the design system
+  avatarSeed  String  @default("A") // fallback glyph shown only if a profile somehow has no photos
+  avatarHue   Int     @default(1)   // 1..6, picks the fallback gradient behind that glyph
 
   interests Interest[]      @relation("ProfileInterests")
   circles   CircleMember[]
   answers   PromptAnswer[]
+  photos    Photo[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([city, intent, quietMode])
+}
+
+// 1-5 photos per profile (enforced in app/api/profile/route.ts and
+// app/api/profile/photos/route.ts, not at the schema level — Prisma/Postgres
+// don't express "array of relations, length 1-5" as a constraint). `url`
+// points at Vercel Blob for real uploads, or an external placeholder image
+// for seeded demo profiles — the column doesn't care which.
+model Photo {
+  id        String   @id @default(cuid())
+  profileId String
+  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  url       String
+  position  Int      @default(0) // display order, 0 = primary photo
+  createdAt DateTime @default(now())
+
+  @@index([profileId, position])
 }
 
 model Interest {
