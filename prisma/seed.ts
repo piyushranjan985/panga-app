@@ -71,7 +71,7 @@ const DEMO_USERS: SeedUser[] = [
     avatarHue: 1,
     verification: 'VERIFIED',
     circles: ['mumbai-indie-music', 'pune-marathon-runners'],
-    interests: ['Indie Hindi playlists', 'Trekking', 'Filter coffee'],
+    interests: ['Cafés & coffee', 'Nature & outdoors', 'Music'],
     prompts: [
       { text: 'Chai tapri or filter coffee?', answer: 'Filter coffee, no debate' },
       { text: 'Sunday plan: trek or Netflix?', answer: 'Trek, then Netflix as a reward' },
@@ -90,7 +90,7 @@ const DEMO_USERS: SeedUser[] = [
     avatarHue: 2,
     verification: 'VERIFIED',
     circles: ['bengaluru-startups', 'delhi-ncr-standup'],
-    interests: ['Stand-up comedy', 'Startups & side hustles', 'Cricket'],
+    interests: ['Creative / arts', 'Nerdy / niche interests', 'Concerts & live music'],
     prompts: [
       { text: 'Most controversial food opinion', answer: 'Pineapple absolutely belongs on pizza' },
       { text: 'My love language is...', answer: 'Sending memes at 1am' },
@@ -109,7 +109,7 @@ const DEMO_USERS: SeedUser[] = [
     avatarHue: 3,
     verification: 'VERIFIED',
     circles: ['du-north-campus', 'diwali-foodies'],
-    interests: ['Thrifting', 'Street food crawling', 'K-dramas'],
+    interests: ['Fashion & thrifting', 'Foodie', 'Movies & series'],
     prompts: [{ text: 'A memory that shaped me', answer: 'My first solo trip to Rishikesh at 19' }],
     photos: [pravatar(31), pravatar(32), pravatar(33), pravatar(34)],
   },
@@ -125,7 +125,7 @@ const DEMO_USERS: SeedUser[] = [
     avatarHue: 4,
     verification: 'VERIFIED',
     circles: ['bengaluru-startups'],
-    interests: ['Reading fiction', 'Dogs & strays', 'Festival food'],
+    interests: ['Books / BookTok', 'Pets & animals', 'Foodie'],
     prompts: [{ text: 'Family group chat energy?', answer: 'Loud, loving, mildly chaotic' }],
     photos: [pravatar(44)],
   },
@@ -141,7 +141,7 @@ const DEMO_USERS: SeedUser[] = [
     avatarHue: 5,
     verification: 'VERIFIED',
     circles: ['bengaluru-startups', 'ipl-fantasy-league'],
-    interests: ['Cricket', 'Fantasy cricket', 'Bike rides'],
+    interests: ['Nerdy / niche interests', 'Nature & outdoors', 'Fitness & gym'],
     prompts: [
       { text: 'Where I actually want to be five years from now', answer: 'Running my own studio, still terrible at cricket' },
     ],
@@ -293,8 +293,24 @@ async function main() {
     await db.circle.upsert({ where: { slug: c.slug }, update: {}, create: c });
   }
   for (const i of INTERESTS) {
-    await db.interest.upsert({ where: { label: i.label }, update: {}, create: i });
+    // Unlike the circle/prompt upserts, this one does update existing rows —
+    // interests get their emoji/tagline tweaked more often, and there's no
+    // "don't overwrite something a real session changed" concern here the
+    // way there is for user photos.
+    await db.interest.upsert({
+      where: { label: i.label },
+      update: { emoji: i.emoji, tagline: i.tagline },
+      create: i,
+    });
   }
+  // Retire interests that are no longer in the current list (e.g. a past
+  // redesign of the interest set) so onboarding's pick-list doesn't show
+  // stale options nobody can pick anymore. Cascades to each profile's
+  // interest connections — those profiles just lose that one tag, nothing
+  // else about them changes.
+  const currentLabels = INTERESTS.map((i) => i.label);
+  await db.interest.deleteMany({ where: { label: { notIn: currentLabels } } });
+
   for (const p of PROMPTS) {
     await db.prompt.upsert({ where: { text: p.text }, update: {}, create: p });
   }

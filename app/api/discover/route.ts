@@ -84,7 +84,7 @@ export async function GET() {
       avatarHue: p.avatarHue,
       photoUrl: p.photos[0]?.url ?? null,
       verification: p.verification,
-      interests: p.interests.map((i) => ({ id: i.id, label: i.label, emoji: i.emoji })),
+      interests: p.interests.map((i) => ({ id: i.id, label: i.label, emoji: i.emoji, tagline: i.tagline })),
       prompts: p.answers.map((a) => ({ id: a.promptId, text: a.prompt.text, emoji: a.prompt.emoji, answer: a.answer })),
       matchScore: r.score,
       matchReasons: r.reasons,

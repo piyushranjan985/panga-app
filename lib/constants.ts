@@ -1,23 +1,31 @@
 // Shared seed/reference data. Used by prisma/seed.ts (to populate the DB)
 // and by the onboarding UI (to render pick-lists) so the two never drift.
 
-export const INTERESTS: { label: string; emoji: string }[] = [
-  { label: 'Indie Hindi playlists', emoji: '🎧' },
-  { label: 'Trekking', emoji: '🥾' },
-  { label: 'Street food crawling', emoji: '🍜' },
-  { label: 'Cricket', emoji: '🏏' },
-  { label: 'Stand-up comedy', emoji: '🎤' },
-  { label: 'Thrifting', emoji: '👕' },
-  { label: 'Filter coffee', emoji: '☕' },
-  { label: 'K-dramas', emoji: '📺' },
-  { label: 'Gigs & live music', emoji: '🎸' },
-  { label: 'Bike rides', emoji: '🏍️' },
-  { label: 'Startups & side hustles', emoji: '🚀' },
-  { label: 'Festival food', emoji: '🪔' },
-  { label: 'Fantasy cricket', emoji: '📊' },
-  { label: 'Reading fiction', emoji: '📚' },
-  { label: 'Dogs & strays', emoji: '🐕' },
-  { label: 'Gaming', emoji: '🎮' },
+// `tagline` is the first-person phrase shown on the discover reveal card
+// (see components/VibeCard.tsx) instead of `label` — label is what
+// onboarding/profile pick-list chips show, tagline is the flirtier version
+// used once someone's browsing the feed.
+export const INTERESTS: { label: string; emoji: string; tagline: string }[] = [
+  { label: 'Travel & exploring', emoji: '✈️', tagline: "Take me somewhere" },
+  { label: 'Foodie', emoji: '🍜', tagline: "Let's find the best food" },
+  { label: 'Music', emoji: '🎵', tagline: 'Always listening to something' },
+  { label: 'Fitness & gym', emoji: '🏋️', tagline: 'Gym is therapy' },
+  { label: 'Nature & outdoors', emoji: '🌿', tagline: 'Touch grass 🌱' },
+  { label: 'Movies & series', emoji: '🎬', tagline: 'One more episode…' },
+  { label: 'Gaming', emoji: '🎮', tagline: 'Game night?' },
+  { label: 'Books / BookTok', emoji: '📚', tagline: 'Book > movie?' },
+  { label: 'Cooking together', emoji: '🧑‍🍳', tagline: "I'll cook, you judge" },
+  { label: 'Cafés & coffee', emoji: '☕', tagline: 'Coffee walk?' },
+  { label: 'Running / walking', emoji: '🏃', tagline: "Let's go for a walk" },
+  { label: 'Creative / arts', emoji: '🎨', tagline: 'Make something' },
+  { label: 'Photography / content', emoji: '📸', tagline: 'Always taking pics' },
+  { label: 'Weekend getaways', emoji: '🧳', tagline: 'Spontaneous trip?' },
+  { label: 'Pets & animals', emoji: '🐶', tagline: 'Dog person / cat person' },
+  { label: 'Concerts & live music', emoji: '🎤', tagline: 'Front row energy' },
+  { label: 'Nerdy / niche interests', emoji: '🧩', tagline: "Let's geek out" },
+  { label: 'Fashion & thrifting', emoji: '🛍️', tagline: 'Vintage > fast fashion' },
+  { label: 'Wellness / mindfulness', emoji: '🧘', tagline: 'Slow living' },
+  { label: 'Chill nights at home', emoji: '🌙', tagline: 'Cozy > clubbing' },
 ];
 
 export const PROMPTS: { text: string; emoji: string }[] = [

@@ -13,7 +13,7 @@ export interface FeedProfile {
   avatarHue: number;
   photoUrl: string | null; // primary photo; null only for a profile with none (shouldn't happen post-photo-feature, but every real one predates it)
   verification: string;
-  interests: { id: string; label: string; emoji: string }[];
+  interests: { id: string; label: string; emoji: string; tagline: string }[];
   prompts: { id: string; text: string; emoji: string; answer: string }[];
   matchScore: number;
   matchReasons: string[];
@@ -116,7 +116,7 @@ export default function VibeCard({
                   revealed.has(i.id) ? 'border-mint text-mint' : 'border-line bg-white text-ink'
                 }`}
               >
-                {revealed.has(i.id) ? `✓ ${i.emoji} into ${i.label}` : `${i.emoji} into ${i.label}?`}
+                {revealed.has(i.id) ? `✓ ${i.emoji} ${i.tagline}` : `${i.emoji} ${i.tagline}`}
               </button>
             ))}
       </div>

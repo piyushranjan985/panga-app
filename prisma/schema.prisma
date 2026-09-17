@@ -133,6 +133,12 @@ model Interest {
   id       String    @id @default(cuid())
   label    String    @unique
   emoji    String    @default("")
+  // Playful first-person phrase shown on the discover reveal card instead
+  // of the plain label (e.g. "Take me somewhere" for Travel & exploring) —
+  // see components/VibeCard.tsx. The plain label is still what onboarding
+  // and profile pick-list chips show, since selection needs to be
+  // unambiguous, not cute.
+  tagline  String    @default("")
   profiles Profile[] @relation("ProfileInterests")
 }
 
