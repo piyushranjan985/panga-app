@@ -328,7 +328,7 @@ async function main() {
       .map((p) => ({ promptId: promptByText.get(p.text), answer: p.answer }))
       .filter((p): p is { promptId: string; answer: string } => Boolean(p.promptId));
 
-    await db.profile.upsert({
+    const profile = await db.profile.upsert({
       where: { userId: user.id },
       update: {},
       create: {
@@ -349,6 +349,19 @@ async function main() {
         photos: { create: u.photos.map((url, i) => ({ url, position: i })) },
       },
     });
+
+    // profile.upsert only sets photos on CREATE (see above) — a profile
+    // that already existed before the photo feature shipped (e.g. the 5
+    // hand-written demo users, seeded in an earlier run) hits the no-op
+    // update branch and would otherwise stay photo-less forever. Backfill
+    // it here, but only when it truly has none yet, so a re-seed never
+    // wipes photos a real session uploaded onto a demo account.
+    const existingPhotoCount = await db.photo.count({ where: { profileId: profile.id } });
+    if (existingPhotoCount === 0 && u.photos.length > 0) {
+      await db.photo.createMany({
+        data: u.photos.map((url, i) => ({ profileId: profile.id, url, position: i })),
+      });
+    }
 
     // Every demo account also accepts OTP 123456 for local testing.
     await db.otpCode.create({

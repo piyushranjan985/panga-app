@@ -28,7 +28,7 @@ export default function MatchesPage() {
 
         {matches === null && <p className="text-sm text-inkSoft">Loading...</p>}
         {matches?.length === 0 && (
-          <p className="text-sm text-inkSoft">No matches yet — head to Discover and say Panga to someone.</p>
+          <p className="text-sm text-inkSoft">No matches yet — head to Discover and say Vybe to someone.</p>
         )}
 
         <div className="flex flex-col gap-2">
