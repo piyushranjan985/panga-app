@@ -20,6 +20,17 @@ const upsertSchema = z.object({
   avatarHue: z.number().int().min(1).max(6).default(1),
   interestIds: z.array(z.string()).max(8),
   circleIds: z.array(z.string()).max(6),
+  // Vybe Check: up to 2 prompt answers collected during onboarding — see
+  // app/onboarding/page.tsx. Capped at 3 server-side (a little slack above
+  // the 2-prompt UI limit) rather than matching it exactly.
+  promptAnswers: z
+    .array(z.object({ promptId: z.string(), answer: z.string().trim().min(1).max(140) }))
+    .max(3)
+    .default([]),
+  // Family Preview: off unless someone explicitly opts in during
+  // onboarding (see the Family Preview step, Rishta Ready only) or later
+  // from the profile screen's toggle (the PATCH handler below).
+  familyPreviewOn: z.boolean().default(false),
 });
 
 export async function GET() {
@@ -59,8 +70,10 @@ export async function PUT(req: Request) {
       intent: data.intent,
       avatarHue: data.avatarHue,
       avatarSeed,
+      familyPreviewOn: data.familyPreviewOn,
       interests: { connect: data.interestIds.map((id) => ({ id })) },
       circles: { create: data.circleIds.map((circleId) => ({ circleId })) },
+      answers: { create: data.promptAnswers.map((pa) => ({ promptId: pa.promptId, answer: pa.answer })) },
     },
     update: {
       displayName: data.displayName,
@@ -72,10 +85,15 @@ export async function PUT(req: Request) {
       intent: data.intent,
       avatarHue: data.avatarHue,
       avatarSeed,
+      familyPreviewOn: data.familyPreviewOn,
       interests: { set: data.interestIds.map((id) => ({ id })) },
       circles: {
         deleteMany: {},
         create: data.circleIds.map((circleId) => ({ circleId })),
+      },
+      answers: {
+        deleteMany: {},
+        create: data.promptAnswers.map((pa) => ({ promptId: pa.promptId, answer: pa.answer })),
       },
     },
   });

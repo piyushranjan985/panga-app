@@ -5,6 +5,7 @@ import Navbar from '@/components/Navbar';
 import IntentBadge from '@/components/IntentBadge';
 
 interface ProfileData {
+  userId: string;
   displayName: string;
   city: string;
   bio: string;
@@ -112,24 +113,31 @@ export default function ProfilePage() {
         </section>
 
         {profile.intent === 'RISHTA_READY' && (
-          <section className="mt-3 flex items-center justify-between rounded-2xl border border-line bg-white p-4">
-            <div>
-              <p className="font-bold">Family preview link</p>
-              <p className="text-sm text-inkSoft">Generate a read-only profile preview to share with family.</p>
+          <section className="mt-3 rounded-2xl border border-line bg-white p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-bold">Family preview link</p>
+                <p className="text-sm text-inkSoft">Generate a read-only profile preview to share with family.</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={profile.familyPreviewOn}
+                onClick={() => patch({ familyPreviewOn: !profile.familyPreviewOn })}
+                className={`h-7 w-12 flex-none rounded-full transition ${profile.familyPreviewOn ? 'bg-mint' : 'bg-line'}`}
+              >
+                <span
+                  className={`block h-5 w-5 translate-x-1 rounded-full bg-white shadow transition-transform ${
+                    profile.familyPreviewOn ? 'translate-x-6' : ''
+                  }`}
+                />
+              </button>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={profile.familyPreviewOn}
-              onClick={() => patch({ familyPreviewOn: !profile.familyPreviewOn })}
-              className={`h-7 w-12 flex-none rounded-full transition ${profile.familyPreviewOn ? 'bg-mint' : 'bg-line'}`}
-            >
-              <span
-                className={`block h-5 w-5 translate-x-1 rounded-full bg-white shadow transition-transform ${
-                  profile.familyPreviewOn ? 'translate-x-6' : ''
-                }`}
-              />
-            </button>
+            {profile.familyPreviewOn && (
+              <p className="mt-3 break-all rounded-xl border border-line bg-paper px-3 py-2 text-xs text-inkSoft">
+                {typeof window !== 'undefined' ? `${window.location.origin}/preview/${profile.userId}` : `/preview/${profile.userId}`}
+              </p>
+            )}
           </section>
         )}
 
