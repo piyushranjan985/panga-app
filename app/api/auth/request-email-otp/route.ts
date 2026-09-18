@@ -20,13 +20,13 @@ export async function POST(req: Request) {
   }
   const { email } = parsed.data;
 
-  const user = await db.user.upsert({
-    where: { email },
-    update: {},
-    create: { email },
-  });
+  // Same "tell them before they get surprised" lookup as
+  // app/api/auth/request-otp/route.ts -- see the comment there.
+  const existing = await db.user.findUnique({ where: { email }, include: { profile: true } });
+  const user = existing ?? (await db.user.create({ data: { email } }));
+  const alreadyHasProfile = Boolean(existing?.profile);
 
   const { devHint } = await issueOtp(user.id);
 
-  return NextResponse.json({ ok: true, devHint });
+  return NextResponse.json({ ok: true, devHint, alreadyHasProfile });
 }

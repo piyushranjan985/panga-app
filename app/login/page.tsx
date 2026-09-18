@@ -98,7 +98,8 @@ export default function LoginPage() {
       if (!res.ok) throw new Error(data.error ?? 'Something went wrong');
       setHint(data.devHint ?? null);
       const query = method === 'phone' ? `phone=${encodeURIComponent(phone)}` : `email=${encodeURIComponent(email)}`;
-      router.push(`/verify?method=${method}&${query}`);
+      const existingFlag = data.alreadyHasProfile ? '&existing=1' : '';
+      router.push(`/verify?method=${method}&${query}${existingFlag}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {

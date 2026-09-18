@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import IntentBadge from '@/components/IntentBadge';
 
@@ -31,6 +32,7 @@ const INTENTS = ['JUST_VIBING', 'SOMETHING_REAL', 'RISHTA_READY'];
 const MAX_PHOTOS = 5;
 
 export default function ProfilePage() {
+  const router = useRouter();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -169,12 +171,18 @@ export default function ProfilePage() {
 
         <section className="mt-8">
           <h2 className="mb-2 font-display text-lg font-bold">Intent</h2>
+          <p className="mb-2 text-xs text-inkSoft">
+            Switching updates what people see and asks you a couple of quick questions for the new vibe.
+          </p>
           <div className="flex flex-wrap gap-2">
             {INTENTS.map((i) => (
               <button
                 key={i}
                 type="button"
-                onClick={() => patch({ intent: i })}
+                onClick={() => {
+                  if (i === profile.intent) return;
+                  router.push(`/onboarding?switchIntent=${i}`);
+                }}
                 className={profile.intent === i ? 'opacity-100' : 'opacity-40'}
               >
                 <IntentBadge intent={i} />

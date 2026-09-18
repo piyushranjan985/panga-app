@@ -10,6 +10,7 @@ function VerifyForm() {
   const phone = params.get('phone') ?? '';
   const email = params.get('email') ?? '';
   const destination = method === 'email' ? email : phone;
+  const alreadyHasProfile = params.get('existing') === '1';
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +46,12 @@ function VerifyForm() {
           always <span className="mono font-semibold">123456</span>.
         </p>
       </div>
+      {alreadyHasProfile && (
+        <p className="rounded-xl bg-marigold/10 px-3 py-2 text-sm text-inkSoft">
+          Welcome back — an account already exists with this {method === 'email' ? 'email' : 'number'}. Verifying
+          will sign you in to it, not start a new profile.
+        </p>
+      )}
       <form onSubmit={submit} className="flex flex-col gap-3">
         <input
           value={code}

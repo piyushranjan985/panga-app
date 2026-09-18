@@ -22,13 +22,17 @@ export async function POST(req: Request) {
   }
   const { phone } = parsed.data;
 
-  const user = await db.user.upsert({
-    where: { phone },
-    update: {},
-    create: { phone },
-  });
+  // Look the number up before creating anything -- lets the client tell
+  // someone "welcome back, you already have an account" instead of
+  // silently treating every phone number the same way. OTP request/verify
+  // doubles as both sign-up and sign-in (see app/verify/page.tsx routing
+  // on hasProfile), so this never blocks anything -- it's purely for
+  // messaging.
+  const existing = await db.user.findUnique({ where: { phone }, include: { profile: true } });
+  const user = existing ?? (await db.user.create({ data: { phone } }));
+  const alreadyHasProfile = Boolean(existing?.profile);
 
   const { devHint } = await issueOtp(user.id);
 
-  return NextResponse.json({ ok: true, devHint });
+  return NextResponse.json({ ok: true, devHint, alreadyHasProfile });
 }

@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   CITIES,
   DATE_VIBES,
@@ -90,9 +90,18 @@ function stepsForIntent(intent: string): StepKey[] {
   return STEP_FLOWS[intent as IntentValue] ?? STEP_FLOWS.SOMETHING_REAL;
 }
 
-export default function OnboardingPage() {
+function OnboardingForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [step, setStep] = useState(0);
+  // Set when this page was reached via the Profile screen's "switch intent"
+  // link (?switchIntent=RISHTA_READY etc.) rather than fresh signup --
+  // prefills the shared fields from the existing profile, clears the old
+  // intent's data, and jumps straight past Intent/Basics/Photos so someone
+  // isn't re-typing their bio to change their tribe. minStep keeps "Back"
+  // from wandering into the skipped steps.
+  const [editMode, setEditMode] = useState(false);
+  const [minStep, setMinStep] = useState(0);
   const [interests, setInterests] = useState<Interest[]>([]);
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [tribes, setTribes] = useState<Tribe[]>([]);
@@ -151,6 +160,57 @@ export default function OnboardingPage() {
     fetch('/api/me')
       .then((r) => r.json())
       .then((d) => setMyUserId(d.userId ?? null));
+  }, []);
+
+  // Reached from the Profile screen's intent switcher: pull the existing
+  // profile and prefill the shared fields, drop everything intent-specific
+  // (see selectIntent above for why), and skip to the first step that
+  // actually differs for the new intent.
+  useEffect(() => {
+    const target = searchParams.get('switchIntent');
+    if (!target || !['JUST_VIBING', 'SOMETHING_REAL', 'RISHTA_READY'].includes(target)) return;
+    fetch('/api/profile')
+      .then((r) => r.json())
+      .then((d) => {
+        const p = d.profile;
+        if (!p) return;
+        setForm((f) => ({
+          ...f,
+          displayName: p.displayName ?? f.displayName,
+          dateOfBirth: p.dateOfBirth ? String(p.dateOfBirth).slice(0, 10) : f.dateOfBirth,
+          gender: p.gender ?? f.gender,
+          lookingFor: p.lookingFor ?? f.lookingFor,
+          city: p.city ?? f.city,
+          bio: p.bio ?? f.bio,
+          intent: target,
+          interestIds: (p.interests ?? []).map((i: { id: string }) => i.id),
+          circleIds: (p.circles ?? []).map((c: { circle: { id: string } }) => c.circle.id),
+          familyPreviewOn: p.familyPreviewOn ?? f.familyPreviewOn,
+          photoUrls: (p.photos ?? []).slice().sort((a: { position: number }, b: { position: number }) => a.position - b.position).map((ph: { url: string }) => ph.url),
+          avatarHue: p.avatarHue ?? f.avatarHue,
+          // Everything below is intent-specific -- start clean under the
+          // new intent rather than carrying over the old one's picks.
+          tribeIds: [],
+          subCommunityIds: [],
+          relationshipStyleIds: [],
+          promptAnswers: [],
+          dateVibeTags: [],
+          tonightTags: [],
+          livingPreference: '',
+          valuesTags: [],
+          futureHome: '',
+          futureFamily: '',
+          futureCareer: '',
+          futureMoney: '',
+          children: '',
+        }));
+        const entryStep = stepsForIntent(target).indexOf('interests');
+        const start = entryStep >= 0 ? entryStep : 0;
+        setStep(start);
+        setMinStep(start);
+        setEditMode(true);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function toggle<T>(list: T[], value: T, max: number): T[] {
@@ -283,6 +343,34 @@ export default function OnboardingPage() {
   // (components/VibeCard.tsx) already blurs a profile behind these
   // answers and reveals them one tap at a time ("no guessing games" is
   // the whole pitch).
+  // Switching intent mid-onboarding (via the Intent step, or later from the
+  // Profile page) must wipe every intent-specific selection -- otherwise a
+  // stale tribe/prompt/values pick from the old intent silently carries
+  // over: it can count against the new intent's pick caps (blocking new
+  // choices) and/or render as pre-checked even though the person never
+  // chose it under this intent. Basics/photos/interests/circles are
+  // intent-agnostic and are kept.
+  function selectIntent(nextIntent: string) {
+    setForm((f) => ({
+      ...f,
+      intent: nextIntent,
+      tribeIds: [],
+      subCommunityIds: [],
+      relationshipStyleIds: [],
+      promptAnswers: [],
+      dateVibeTags: [],
+      tonightTags: [],
+      livingPreference: '',
+      valuesTags: [],
+      futureHome: '',
+      futureFamily: '',
+      futureCareer: '',
+      futureMoney: '',
+      children: '',
+    }));
+    setStep(0);
+  }
+
   const vybeMax = form.intent === 'RISHTA_READY' ? 3 : 2;
   function togglePrompt(promptId: string) {
     setForm((f) => {
@@ -364,7 +452,7 @@ export default function OnboardingPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Could not save profile');
-      router.push('/discover');
+      router.push(editMode ? '/profile' : '/discover');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save profile');
     } finally {
@@ -416,6 +504,12 @@ export default function OnboardingPage() {
         </div>
       </div>
 
+      {editMode && (
+        <p className="-mt-2 rounded-xl bg-marigold/10 px-3 py-2 text-xs font-semibold text-inkSoft">
+          Switching to {INTENTS.find((i) => i.value === form.intent)?.label ?? 'your new vibe'} — just confirm a few things below.
+        </p>
+      )}
+
       {stepKey === 'intent' && (
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">What are you here for?</h1>
@@ -424,7 +518,7 @@ export default function OnboardingPage() {
             <button
               key={i.value}
               type="button"
-              onClick={() => setForm({ ...form, intent: i.value })}
+              onClick={() => selectIntent(i.value)}
               className={`flex items-start gap-3 rounded-2xl border px-4 py-3.5 text-left ${
                 form.intent === i.value ? 'border-magenta bg-magenta/5' : 'border-line'
               }`}
@@ -997,8 +1091,8 @@ export default function OnboardingPage() {
       <div className="mt-auto flex justify-between pt-4">
         <button
           type="button"
-          disabled={step === 0}
-          onClick={() => setStep((s) => s - 1)}
+          disabled={step === minStep}
+          onClick={() => setStep((s) => Math.max(minStep, s - 1))}
           className="rounded-full px-5 py-2.5 text-sm font-semibold text-inkSoft disabled:opacity-0"
         >
           Back
@@ -1024,5 +1118,13 @@ export default function OnboardingPage() {
         )}
       </div>
     </main>
+  );
+}
+
+export default function OnboardingPage() {
+  return (
+    <Suspense fallback={null}>
+      <OnboardingForm />
+    </Suspense>
   );
 }
