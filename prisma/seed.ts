@@ -345,7 +345,7 @@ function generateBulkUsers(count: number, phoneStart: number): SeedUser[] {
       // subCommunities -- mirrors the onboarding "What's your tribe?"
       // step's own cardinality, filtered to tribes tagged for this intent.
       const availableTribes = TRIBES.filter((t) => t.intents.length === 0 || t.intents.includes(intent));
-      const tribeMax = intent === 'RISHTA_READY' ? 4 : 5;
+      const tribeMax = 4; // matches app/onboarding/page.tsx's cap for both intents
       const chosenTribes = pickMany(availableTribes, randomInt(1, tribeMax, rng), rng);
       tribes = chosenTribes.map((t) => ({
         slug: t.slug,

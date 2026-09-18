@@ -212,6 +212,16 @@ export const TRIBES: {
     subCommunities: ['Vintage fashion', 'Sneaker culture', 'Upcycling & DIY', 'Flea markets', 'Streetwear'],
   },
   {
+    slug: 'outdoors',
+    label: 'Outdoors',
+    emoji: '🌿',
+    personaLabel: 'Outdoors person',
+    activityPhrase: 'Weekend hikes',
+    sharedPhrase: "You're both outdoorsy",
+    intents: ['RISHTA_READY'],
+    subCommunities: ['Hiking', 'Camping', 'Trekking', 'Nature walks', 'Road trips'],
+  },
+  {
     slug: 'internet-fandom',
     label: 'Internet & fandom',
     emoji: '🧠',

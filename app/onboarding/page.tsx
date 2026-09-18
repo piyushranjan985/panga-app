@@ -203,7 +203,10 @@ export default function OnboardingPage() {
   // Tribe: pick up to 5 (4 for Rishta Ready) sub-cultures, then drill into
   // 1-3 specific communities per tribe you picked. Deselecting a tribe
   // drops any sub-communities under it. Never shown for Just Vibing.
-  const tribeMax = form.intent === 'RISHTA_READY' ? 4 : 5;
+  // Both Something Real and Rishta Ready cap tribes at 4, not 5 — a
+  // deliberate reduction (see lib/constants.ts) to keep tribe + sub-
+  // community selection from ballooning into 30+ decisions.
+  const tribeMax = 4;
   function toggleTribe(tribeId: string) {
     setForm((f) => {
       const exists = f.tribeIds.includes(tribeId);
