@@ -518,9 +518,24 @@ async function main() {
   const subCommunityByKey = new Map(allSubCommunities.map((s) => [`${s.tribeId}::${s.label}`, s.id]));
   const relationshipStyleByLabel = new Map(allRelationshipStyles.map((r) => [r.label, r.id]));
 
-  const bulkUsers = generateBulkUsers(500, 9820000000);
+  // The 500 generated profiles exist to give /discover a realistic
+  // population to test matching/pagination against, but they're the same
+  // fixed set every run (mulberry32 with a constant seed) and re-upserting
+  // all 505 users' relations is what makes `npm run db:seed` slow -- most
+  // of the time during day-to-day dev you only changed reference data
+  // (a Tribe, a Prompt, an Interest) and just want that picked up.
+  // `SEED_SKIP_BULK=1 npm run db:seed` skips generating/upserting the 500
+  // and only touches reference data + the 5 hand-written demo users --
+  // seconds instead of a minute-plus. Omit it (or use `npm run db:seed`
+  // normally) the first time, or whenever you actually want the full
+  // population refreshed.
+  const skipBulk = process.env.SEED_SKIP_BULK === '1';
+  const bulkUsers = skipBulk ? [] : generateBulkUsers(500, 9820000000);
   const allUsers: SeedUser[] = [...DEMO_USERS, ...bulkUsers];
 
+  if (skipBulk) {
+    console.log('SEED_SKIP_BULK=1 set -- skipping the 500 generated users.');
+  }
   console.log(`Seeding ${allUsers.length} demo users (${DEMO_USERS.length} hand-written + ${bulkUsers.length} generated)...`);
   let done = 0;
   for (const u of allUsers) {
