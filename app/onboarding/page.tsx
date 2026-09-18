@@ -5,9 +5,8 @@ import { useRouter } from 'next/navigation';
 import { CITIES } from '@/lib/constants';
 import IntentBadge from '@/components/IntentBadge';
 
-type Circle = { id: string; name: string; category: string; city: string | null };
 type Interest = { id: string; label: string; emoji: string };
-type Prompt = { id: string; text: string; emoji: string };
+type Prompt = { id: string; text: string; emoji: string; optionA: string; optionB: string };
 type Tribe = { id: string; slug: string; label: string; emoji: string };
 type SubCommunity = { id: string; tribeId: string; label: string };
 type RelationshipStyle = { id: string; label: string; emoji: string };
@@ -21,7 +20,6 @@ const INTENTS = [
 export default function OnboardingPage() {
   const router = useRouter();
   const [step, setStep] = useState(0);
-  const [circles, setCircles] = useState<Circle[]>([]);
   const [interests, setInterests] = useState<Interest[]>([]);
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [tribes, setTribes] = useState<Tribe[]>([]);
@@ -57,7 +55,6 @@ export default function OnboardingPage() {
     fetch('/api/circles')
       .then((r) => r.json())
       .then((d) => {
-        setCircles(d.circles ?? []);
         setInterests(d.interests ?? []);
         setPrompts(d.prompts ?? []);
         setTribes(d.tribes ?? []);
@@ -96,17 +93,6 @@ export default function OnboardingPage() {
   }
   const dobTooYoung = form.dateOfBirth ? ageFromDob(form.dateOfBirth) < 18 : false;
   const age = form.dateOfBirth && !dobTooYoung ? Math.floor(ageFromDob(form.dateOfBirth)) : null;
-
-  // Circles fetched once cover every city and every category (college,
-  // city, interest, festival) — see lib/constants.ts. The picker only
-  // offers circles relevant to the city someone just chose: college/campus
-  // circles are left out entirely for now (too easy to end up in someone
-  // else's alma mater's circle), and city-bound circles from other cities
-  // are hidden. Circles with no city (festival/national ones like Diwali
-  // Foodies) stay visible everywhere.
-  const visibleCircles = circles.filter(
-    (c) => c.category !== 'college' && (c.city === null || c.city === form.city)
-  );
 
   // "What are you into?" (interests): a broad, casual read — 5 to 8 short
   // tags, no drill-down. Deliberately shallower than Tribe below, which is
@@ -157,12 +143,13 @@ export default function OnboardingPage() {
   // picking every flattering-sounding option.
   const relationshipIncomplete = form.relationshipStyleIds.length !== 3;
 
-  // Vybe Check: pick up to 2 prompts and actually answer them. Interests
-  // and circles exist on every dating app — this is VybeMatch's own thing.
-  // The swipe card (components/VibeCard.tsx) already blurs a profile behind
-  // these answers and reveals them one tap at a time ("no guessing games"
-  // is the whole pitch), but nothing in onboarding ever collected them, so
-  // every real profile was silently falling back to a plain interest list.
+  // Vybe Check: pick up to 2 prompts, then pick a side on each — a forced
+  // choice between two fixed options, never a typed answer. Interests
+  // exist on every dating app — this is VybeMatch's own thing. The swipe
+  // card (components/VibeCard.tsx) already blurs a profile behind these
+  // answers and reveals them one tap at a time ("no guessing games" is the
+  // whole pitch), but nothing in onboarding ever collected them, so every
+  // real profile was silently falling back to a plain interest list.
   function togglePrompt(promptId: string) {
     setForm((f) => {
       const exists = f.promptAnswers.some((pa) => pa.promptId === promptId);
@@ -171,7 +158,7 @@ export default function OnboardingPage() {
       return { ...f, promptAnswers: [...f.promptAnswers, { promptId, answer: '' }] };
     });
   }
-  function updatePromptAnswer(promptId: string, answer: string) {
+  function selectPromptOption(promptId: string, answer: string) {
     setForm((f) => ({
       ...f,
       promptAnswers: f.promptAnswers.map((pa) => (pa.promptId === promptId ? { ...pa, answer } : pa)),
@@ -223,8 +210,8 @@ export default function OnboardingPage() {
   // Tinder/Bumble never ask, Shaadi/Jeevansathi ask about identity instead).
   const steps =
     form.intent === 'RISHTA_READY'
-      ? ['Intent', 'Basics', 'Photos', 'Interests', 'Tribe', 'Relationship', 'Circles', 'Vybe Check', 'Family Preview']
-      : ['Intent', 'Basics', 'Photos', 'Interests', 'Tribe', 'Relationship', 'Circles', 'Vybe Check'];
+      ? ['Intent', 'Basics', 'Photos', 'Interests', 'Tribe', 'Relationship', 'Vybe Check', 'Family Preview']
+      : ['Intent', 'Basics', 'Photos', 'Interests', 'Tribe', 'Relationship', 'Vybe Check'];
 
   async function finish() {
     setSaving(true);
@@ -518,31 +505,11 @@ export default function OnboardingPage() {
 
       {step === 6 && (
         <div className="flex flex-col gap-3">
-          <h1 className="font-display text-2xl font-extrabold">Join up to 6 circles</h1>
-          <p className="text-sm text-inkSoft">Local and interest communities in {form.city} — this is how discovery works.</p>
-          <div className="flex flex-wrap gap-2">
-            {visibleCircles.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setForm({ ...form, circleIds: toggle(form.circleIds, c.id, 6) })}
-                className={`rounded-full border px-3 py-1.5 text-sm ${
-                  form.circleIds.includes(c.id) ? 'border-magenta bg-magenta/10 text-magenta' : 'border-line'
-                }`}
-              >
-                {c.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {step === 7 && (
-        <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">Vybe Check</h1>
           <p className="text-sm text-inkSoft">
-            Pick 2 prompts and actually answer them. On the feed, people meet these first — your photo and name
-            stay blurred until they reveal your answers. That&apos;s &quot;no guessing games,&quot; for real.
+            Pick 2 prompts, then pick a side on each — no typing. On the feed, people meet these first — your
+            photo and name stay blurred until they reveal your answers. That&apos;s &quot;no guessing games,&quot;
+            for real.
           </p>
           <div className="flex flex-wrap gap-2">
             {prompts.map((p) => {
@@ -573,13 +540,20 @@ export default function OnboardingPage() {
                     <p className="text-xs font-semibold text-inkSoft">
                       {prompt.emoji} {prompt.text}
                     </p>
-                    <input
-                      value={pa.answer}
-                      onChange={(e) => updatePromptAnswer(pa.promptId, e.target.value)}
-                      placeholder="Your answer..."
-                      maxLength={140}
-                      className="rounded-xl border border-line px-3 py-2 text-sm"
-                    />
+                    <div className="flex gap-2">
+                      {[prompt.optionA, prompt.optionB].map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => selectPromptOption(pa.promptId, option)}
+                          className={`flex-1 rounded-xl border px-3 py-2 text-sm font-semibold ${
+                            pa.answer === option ? 'border-magenta bg-magenta/10 text-magenta' : 'border-line'
+                          }`}
+                        >
+                          {option}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 );
               })}
@@ -588,7 +562,7 @@ export default function OnboardingPage() {
         </div>
       )}
 
-      {step === 8 && form.intent === 'RISHTA_READY' && (
+      {step === 7 && form.intent === 'RISHTA_READY' && (
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">Family Preview</h1>
           <p className="text-sm text-inkSoft">
@@ -661,7 +635,7 @@ export default function OnboardingPage() {
               (step === 3 && interestsIncomplete) ||
               (step === 4 && tribeStepIncomplete) ||
               (step === 5 && relationshipIncomplete) ||
-              (step === 7 && vybeCheckIncomplete)
+              (step === 6 && vybeCheckIncomplete)
             }
             className="gradient-btn rounded-full px-6 py-2.5 text-sm font-bold text-white disabled:opacity-50"
           >

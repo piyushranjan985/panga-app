@@ -210,10 +210,14 @@ model CircleMember {
 }
 
 model Prompt {
-  id     String @id @default(cuid())
-  text   String @unique
-  emoji  String @default("")
-  active Boolean @default(true)
+  id      String  @id @default(cuid())
+  text    String  @unique
+  emoji   String  @default("")
+  // Vybe Check is a forced binary pick, never free text — these are the
+  // two fixed choices someone taps between for this prompt.
+  optionA String  @default("")
+  optionB String  @default("")
+  active  Boolean @default(true)
 
   answers PromptAnswer[]
 }

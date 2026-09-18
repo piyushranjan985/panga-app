@@ -80,8 +80,8 @@ const DEMO_USERS: SeedUser[] = [
     ],
     relationshipStyles: ['Deep conversations', 'Adventure partners', 'Calm & peaceful'],
     prompts: [
-      { text: 'Chai tapri or filter coffee?', answer: 'Filter coffee, no debate' },
-      { text: 'Sunday plan: trek or Netflix?', answer: 'Trek, then Netflix as a reward' },
+      { text: 'Chai tapri or filter coffee?', answer: 'Filter coffee' },
+      { text: 'Sunday plan: trek or Netflix?', answer: 'Trek at sunrise' },
     ],
     photos: [pravatar(47), pravatar(48), pravatar(23)],
   },
@@ -104,8 +104,8 @@ const DEMO_USERS: SeedUser[] = [
     ],
     relationshipStyles: ['Lots of laughs', 'Deep conversations', 'Career + relationship balance'],
     prompts: [
-      { text: 'Most controversial food opinion', answer: 'Pineapple absolutely belongs on pizza' },
-      { text: 'My love language is...', answer: 'Sending memes at 1am' },
+      { text: 'Biryani loyalty: Hyderabadi or Lucknowi?', answer: 'Hyderabadi' },
+      { text: 'Love language: words of affirmation or acts of service?', answer: 'Words of affirmation' },
     ],
     photos: [pravatar(12), pravatar(13)],
   },
@@ -127,7 +127,7 @@ const DEMO_USERS: SeedUser[] = [
       { slug: 'foodies', subCommunities: ['Street food', 'Trying new cuisines'] },
     ],
     relationshipStyles: ['Adventure partners', 'Lots of laughs', 'Independent but close'],
-    prompts: [{ text: 'A memory that shaped me', answer: 'My first solo trip to Rishikesh at 19' }],
+    prompts: [{ text: 'Free evening: solo recharge or friends over?', answer: 'Friends over' }],
     photos: [pravatar(31), pravatar(32), pravatar(33), pravatar(34)],
   },
   {
@@ -148,7 +148,7 @@ const DEMO_USERS: SeedUser[] = [
       { slug: 'foodies', subCommunities: ['Fine dining', 'Home cooking'] },
     ],
     relationshipStyles: ['Family-oriented', 'Building a life together', 'Calm & peaceful'],
-    prompts: [{ text: 'Family group chat energy?', answer: 'Loud, loving, mildly chaotic' }],
+    prompts: [{ text: 'Family time: big joint gatherings or quiet with just parents?', answer: 'Big joint gatherings' }],
     photos: [pravatar(44)],
   },
   {
@@ -170,7 +170,7 @@ const DEMO_USERS: SeedUser[] = [
     ],
     relationshipStyles: ['Family-oriented', 'Building a life together', 'Very affectionate'],
     prompts: [
-      { text: 'Where I actually want to be five years from now', answer: 'Running my own studio, still terrible at cricket' },
+      { text: 'Five years from now: settled & stable or still chasing something new?', answer: 'Chasing something new' },
     ],
     photos: [pravatar(5), pravatar(6)],
   },
@@ -202,16 +202,7 @@ const BIO_TEMPLATES = [
   () => `Send help, my group chat has 400 unread messages.`,
 ];
 
-const PROMPT_ANSWER_BANK: Record<string, string[]> = {
-  'Chai tapri or filter coffee?': ['Chai tapri, obviously', 'Filter coffee, no contest', 'Depends on my mood, honestly'],
-  'Sunday plan: trek or Netflix?': ['Netflix, let’s be real', 'Trek if I can wake up early enough', 'Both — trek then Netflix'],
-  'Family group chat energy?': ['Loud and full of forwards', 'Surprisingly chill', 'Mostly memes and festival wishes'],
-  'A memory that shaped me': ['Moving cities alone at 19', 'My first solo trip', 'A really long train journey'],
-  'Most controversial food opinion': ['Pineapple belongs on pizza', 'Maggi is overrated', 'Filter coffee > everything'],
-  'My love language is...': ['Sending memes', 'Feeding people', 'Remembering the small things'],
-  'The last thing that made me laugh out loud': ['A typo in a work email', 'My dog attacking a cucumber', 'A very specific meme'],
-  'Where I actually want to be five years from now': ['Running my own thing', 'Somewhere by the coast', 'Honestly, still figuring it out'],
-};
+
 
 function pick<T>(arr: T[], rng: () => number): T {
   return arr[Math.floor(rng() * arr.length)] as T;
@@ -291,11 +282,13 @@ function generateBulkUsers(count: number, phoneStart: number): SeedUser[] {
     // "My ideal relationship is…" — exactly 3, matching the onboarding step.
     const relationshipStyles = pickMany(RELATIONSHIP_STYLES, 3, rng).map((r) => r.label);
 
+    // Vybe Check is a forced binary pick — every seeded answer is one of
+    // the prompt's own two fixed options, matching the real onboarding UI.
     const promptCount = randomInt(1, 2, rng);
     const chosenPrompts = pickMany(PROMPTS, promptCount, rng);
     const prompts = chosenPrompts.map((p) => ({
       text: p.text,
-      answer: pick(PROMPT_ANSWER_BANK[p.text] ?? ['Ask me in person'], rng),
+      answer: pick([p.optionA, p.optionB], rng),
     }));
 
     const photoCount = randomInt(1, 5, rng);
@@ -352,8 +345,19 @@ async function main() {
   await db.interest.deleteMany({ where: { label: { notIn: currentLabels } } });
 
   for (const p of PROMPTS) {
-    await db.prompt.upsert({ where: { text: p.text }, update: {}, create: p });
+    // Real update (not {}) so tweaking a prompt's emoji/options propagates
+    // on reseed — same pattern as the interest upsert above.
+    await db.prompt.upsert({
+      where: { text: p.text },
+      update: { emoji: p.emoji, optionA: p.optionA, optionB: p.optionB },
+      create: p,
+    });
   }
+  // Retire prompts no longer in the current list (e.g. the free-text ->
+  // binary-choice redesign) so onboarding's Vybe Check never offers a
+  // stale prompt. Cascades to each profile's PromptAnswer rows for it.
+  const currentPromptTexts = PROMPTS.map((p) => p.text);
+  await db.prompt.deleteMany({ where: { text: { notIn: currentPromptTexts } } });
 
   console.log('Seeding tribes, sub-communities, relationship styles...');
   for (const t of TRIBES) {

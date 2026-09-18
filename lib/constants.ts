@@ -196,15 +196,34 @@ export const TRIBES: {
   },
 ];
 
-export const PROMPTS: { text: string; emoji: string }[] = [
-  { text: 'Chai tapri or filter coffee?', emoji: '☕' },
-  { text: 'Sunday plan: trek or Netflix?', emoji: '🥾' },
-  { text: 'Family group chat energy?', emoji: '👨‍👩‍👧' },
-  { text: 'A memory that shaped me', emoji: '✨' },
-  { text: 'Most controversial food opinion', emoji: '🌶️' },
-  { text: 'My love language is...', emoji: '💬' },
-  { text: 'The last thing that made me laugh out loud', emoji: '😂' },
-  { text: 'Where I actually want to be five years from now', emoji: '🧭' },
+// Vybe Check prompts: deliberately a forced pick between two fixed options,
+// never free text — no typing, no blank-page anxiety, and every answer is
+// directly comparable between two people (see components/VibeCard.tsx's
+// reveal mechanic and app/onboarding/page.tsx's Vybe Check step).
+export const PROMPTS: { text: string; emoji: string; optionA: string; optionB: string }[] = [
+  { text: 'Chai tapri or filter coffee?', emoji: '☕', optionA: 'Chai tapri', optionB: 'Filter coffee' },
+  { text: 'Sunday plan: trek or Netflix?', emoji: '🥾', optionA: 'Trek at sunrise', optionB: 'Netflix all day' },
+  {
+    text: 'Family time: big joint gatherings or quiet with just parents?',
+    emoji: '👨‍👩‍👧',
+    optionA: 'Big joint gatherings',
+    optionB: 'Quiet, just parents',
+  },
+  { text: 'Free evening: solo recharge or friends over?', emoji: '✨', optionA: 'Solo recharge', optionB: 'Friends over' },
+  { text: 'Biryani loyalty: Hyderabadi or Lucknowi?', emoji: '🌶️', optionA: 'Hyderabadi', optionB: 'Lucknowi' },
+  {
+    text: 'Love language: words of affirmation or acts of service?',
+    emoji: '💬',
+    optionA: 'Words of affirmation',
+    optionB: 'Acts of service',
+  },
+  { text: 'Humor type: dry sarcasm or full-on goofy?', emoji: '😂', optionA: 'Dry sarcasm', optionB: 'Full-on goofy' },
+  {
+    text: 'Five years from now: settled & stable or still chasing something new?',
+    emoji: '🧭',
+    optionA: 'Settled & stable',
+    optionB: 'Chasing something new',
+  },
 ];
 
 export const CIRCLES: { slug: string; name: string; city: string | null; category: string; description: string }[] = [
