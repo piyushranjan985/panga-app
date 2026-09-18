@@ -18,7 +18,14 @@ const upsertSchema = z.object({
   bio: z.string().trim().max(280).default(''),
   intent: intentEnum,
   avatarHue: z.number().int().min(1).max(6).default(1),
-  interestIds: z.array(z.string()).max(8),
+  // "What are you into?" — broad/casual, 5 to 8.
+  interestIds: z.array(z.string()).min(5, 'Pick at least 5').max(8),
+  // "What's your tribe?" — up to 5 tribes, plus 1-3 sub-communities per
+  // tribe picked (validated against tribeIds below, not just count).
+  tribeIds: z.array(z.string()).max(5).default([]),
+  subCommunityIds: z.array(z.string()).default([]),
+  // "My ideal relationship is…" — exactly 3, not "up to 3".
+  relationshipStyleIds: z.array(z.string()).length(3, 'Pick exactly 3').default([]),
   circleIds: z.array(z.string()).max(6),
   // Vybe Check: up to 2 prompt answers collected during onboarding — see
   // app/onboarding/page.tsx. Capped at 3 server-side (a little slack above
@@ -47,6 +54,9 @@ export async function GET() {
     where: { userId: session.userId },
     include: {
       interests: true,
+      tribes: true,
+      subCommunities: { include: { tribe: true } },
+      relationshipStyles: true,
       circles: { include: { circle: true } },
       answers: { include: { prompt: true } },
       photos: { orderBy: { position: 'asc' } },
@@ -83,6 +93,9 @@ export async function PUT(req: Request) {
       avatarSeed,
       familyPreviewOn: data.familyPreviewOn,
       interests: { connect: data.interestIds.map((id) => ({ id })) },
+      tribes: { connect: data.tribeIds.map((id) => ({ id })) },
+      subCommunities: { connect: data.subCommunityIds.map((id) => ({ id })) },
+      relationshipStyles: { connect: data.relationshipStyleIds.map((id) => ({ id })) },
       circles: { create: data.circleIds.map((circleId) => ({ circleId })) },
       answers: { create: data.promptAnswers.map((pa) => ({ promptId: pa.promptId, answer: pa.answer })) },
       photos: { create: data.photoUrls.map((url, i) => ({ url, position: i })) },
@@ -99,6 +112,9 @@ export async function PUT(req: Request) {
       avatarSeed,
       familyPreviewOn: data.familyPreviewOn,
       interests: { set: data.interestIds.map((id) => ({ id })) },
+      tribes: { set: data.tribeIds.map((id) => ({ id })) },
+      subCommunities: { set: data.subCommunityIds.map((id) => ({ id })) },
+      relationshipStyles: { set: data.relationshipStyleIds.map((id) => ({ id })) },
       circles: {
         deleteMany: {},
         create: data.circleIds.map((circleId) => ({ circleId })),

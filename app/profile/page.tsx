@@ -22,6 +22,8 @@ interface ProfileData {
   avatarSeed: string;
   photos: Photo[];
   interests: { id: string; label: string; emoji: string }[];
+  tribes: { id: string; label: string; emoji: string; personaLabel: string }[];
+  relationshipStyles: { id: string; label: string; emoji: string }[];
   circles: { circle: { id: string; name: string } }[];
 }
 
@@ -254,8 +256,21 @@ export default function ProfilePage() {
           </div>
         </section>
 
+        {profile.tribes.length > 0 && (
+          <section className="mt-6">
+            <h2 className="mb-2 font-display text-lg font-bold">Your tribes</h2>
+            <div className="flex flex-wrap gap-2">
+              {profile.tribes.map((t) => (
+                <span key={t.id} className="rounded-full border border-line px-3 py-1 text-sm">
+                  {t.emoji} {t.personaLabel || t.label}
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
+
         <section className="mt-6">
-          <h2 className="mb-2 font-display text-lg font-bold">Interests</h2>
+          <h2 className="mb-2 font-display text-lg font-bold">What I&apos;m into</h2>
           <div className="flex flex-wrap gap-2">
             {profile.interests.map((i) => (
               <span key={i.id} className="rounded-full border border-line px-3 py-1 text-sm">
@@ -264,6 +279,19 @@ export default function ProfilePage() {
             ))}
           </div>
         </section>
+
+        {profile.relationshipStyles.length > 0 && (
+          <section className="mt-6">
+            <h2 className="mb-2 font-display text-lg font-bold">My ideal relationship is&hellip;</h2>
+            <div className="flex flex-wrap gap-2">
+              {profile.relationshipStyles.map((r) => (
+                <span key={r.id} className="rounded-full border border-line px-3 py-1 text-sm">
+                  {r.emoji} {r.label}
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="mt-6">
           <h2 className="mb-2 font-display text-lg font-bold">Circles</h2>

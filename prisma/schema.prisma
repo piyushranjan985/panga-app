@@ -102,7 +102,10 @@ model Profile {
   avatarSeed  String  @default("A") // fallback glyph shown only if a profile somehow has no photos
   avatarHue   Int     @default(1)   // 1..6, picks the fallback gradient behind that glyph
 
-  interests Interest[]      @relation("ProfileInterests")
+  interests          Interest[]          @relation("ProfileInterests")
+  tribes              Tribe[]             @relation("ProfileTribes")
+  subCommunities      SubCommunity[]      @relation("ProfileSubCommunities")
+  relationshipStyles  RelationshipStyle[] @relation("ProfileRelationshipStyles")
   circles   CircleMember[]
   answers   PromptAnswer[]
   photos    Photo[]
@@ -140,6 +143,45 @@ model Interest {
   // unambiguous, not cute.
   tagline  String    @default("")
   profiles Profile[] @relation("ProfileInterests")
+}
+
+// The deep-cut layer under Interest — see the "What's your tribe?"
+// onboarding step and the TRIBES constant in lib/constants.ts for the
+// full rationale (personaLabel/activityPhrase/sharedPhrase usage).
+model Tribe {
+  id             String         @id @default(cuid())
+  slug           String         @unique
+  label          String
+  emoji          String         @default("")
+  personaLabel   String         @default("")
+  activityPhrase String         @default("")
+  sharedPhrase   String         @default("")
+  subCommunities SubCommunity[]
+  profiles       Profile[]      @relation("ProfileTribes")
+}
+
+// Belongs to exactly one Tribe (e.g. "Nintendo" under Gaming), but many
+// profiles can share the same one — that's the richer compatibility
+// signal Tribe exists for.
+model SubCommunity {
+  id       String    @id @default(cuid())
+  tribeId  String
+  tribe    Tribe     @relation(fields: [tribeId], references: [id], onDelete: Cascade)
+  label    String
+  profiles Profile[] @relation("ProfileSubCommunities")
+
+  @@unique([tribeId, label])
+}
+
+// "My ideal relationship is…" onboarding step — the values layer, exactly
+// 3 picked per profile (enforced in app/api/profile/route.ts). pairPhrase
+// is the "Both X" line used on the Vibe Match reveal (lib/vibeMatch.ts).
+model RelationshipStyle {
+  id         String    @id @default(cuid())
+  label      String    @unique
+  emoji      String    @default("")
+  pairPhrase String    @default("")
+  profiles   Profile[] @relation("ProfileRelationshipStyles")
 }
 
 model Circle {

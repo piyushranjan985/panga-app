@@ -8,6 +8,9 @@ import IntentBadge from '@/components/IntentBadge';
 type Circle = { id: string; name: string; category: string; city: string | null };
 type Interest = { id: string; label: string; emoji: string };
 type Prompt = { id: string; text: string; emoji: string };
+type Tribe = { id: string; slug: string; label: string; emoji: string };
+type SubCommunity = { id: string; tribeId: string; label: string };
+type RelationshipStyle = { id: string; label: string; emoji: string };
 
 const INTENTS = [
   { value: 'JUST_VIBING', label: 'Just Vibing', emoji: '🌀', blurb: 'No labels, no pressure, just good energy' },
@@ -21,6 +24,9 @@ export default function OnboardingPage() {
   const [circles, setCircles] = useState<Circle[]>([]);
   const [interests, setInterests] = useState<Interest[]>([]);
   const [prompts, setPrompts] = useState<Prompt[]>([]);
+  const [tribes, setTribes] = useState<Tribe[]>([]);
+  const [subCommunities, setSubCommunities] = useState<SubCommunity[]>([]);
+  const [relationshipStyles, setRelationshipStyles] = useState<RelationshipStyle[]>([]);
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -34,6 +40,9 @@ export default function OnboardingPage() {
     bio: '',
     intent: 'SOMETHING_REAL',
     interestIds: [] as string[],
+    tribeIds: [] as string[],
+    subCommunityIds: [] as string[],
+    relationshipStyleIds: [] as string[],
     circleIds: [] as string[],
     promptAnswers: [] as { promptId: string; answer: string }[],
     familyPreviewOn: false,
@@ -51,6 +60,9 @@ export default function OnboardingPage() {
         setCircles(d.circles ?? []);
         setInterests(d.interests ?? []);
         setPrompts(d.prompts ?? []);
+        setTribes(d.tribes ?? []);
+        setSubCommunities(d.subCommunities ?? []);
+        setRelationshipStyles(d.relationshipStyles ?? []);
       });
     // Known as soon as someone's signed in (from the OTP/social step, well
     // before a Profile row exists) — fetched here only to preview the
@@ -95,6 +107,55 @@ export default function OnboardingPage() {
   const visibleCircles = circles.filter(
     (c) => c.category !== 'college' && (c.city === null || c.city === form.city)
   );
+
+  // "What are you into?" (interests): a broad, casual read — 5 to 8 short
+  // tags, no drill-down. Deliberately shallower than Tribe below, which is
+  // the "actually tell us your specific scene" layer.
+  const interestsIncomplete = form.interestIds.length < 5;
+
+  // Tribe: pick up to 5 sub-cultures, then drill into 1-3 specific
+  // communities per tribe you picked. This is the richer compatibility
+  // signal — "you both game" is a start, "you're both PC players" is a
+  // conversation. Deselecting a tribe drops any sub-communities under it.
+  function toggleTribe(tribeId: string) {
+    setForm((f) => {
+      const exists = f.tribeIds.includes(tribeId);
+      if (exists) {
+        return {
+          ...f,
+          tribeIds: f.tribeIds.filter((id) => id !== tribeId),
+          subCommunityIds: f.subCommunityIds.filter(
+            (id) => subCommunities.find((s) => s.id === id)?.tribeId !== tribeId
+          ),
+        };
+      }
+      if (f.tribeIds.length >= 5) return f;
+      return { ...f, tribeIds: [...f.tribeIds, tribeId] };
+    });
+  }
+  function toggleSubCommunity(subId: string, tribeId: string) {
+    setForm((f) => {
+      if (f.subCommunityIds.includes(subId)) {
+        return { ...f, subCommunityIds: f.subCommunityIds.filter((id) => id !== subId) };
+      }
+      const pickedForTribe = f.subCommunityIds.filter(
+        (id) => subCommunities.find((s) => s.id === id)?.tribeId === tribeId
+      ).length;
+      if (pickedForTribe >= 3) return f;
+      return { ...f, subCommunityIds: [...f.subCommunityIds, subId] };
+    });
+  }
+  const tribeStepIncomplete =
+    form.tribeIds.length === 0 ||
+    form.tribeIds.some(
+      (tribeId) => !form.subCommunityIds.some((id) => subCommunities.find((s) => s.id === id)?.tribeId === tribeId)
+    );
+
+  // "My ideal relationship is…" — the values layer, separate from Tribe
+  // (what you're into) and Intent (what you're looking for overall).
+  // Exactly 3, not "up to 3" — forces an actual choice instead of everyone
+  // picking every flattering-sounding option.
+  const relationshipIncomplete = form.relationshipStyleIds.length !== 3;
 
   // Vybe Check: pick up to 2 prompts and actually answer them. Interests
   // and circles exist on every dating app — this is VybeMatch's own thing.
@@ -162,8 +223,8 @@ export default function OnboardingPage() {
   // Tinder/Bumble never ask, Shaadi/Jeevansathi ask about identity instead).
   const steps =
     form.intent === 'RISHTA_READY'
-      ? ['Intent', 'Basics', 'Photos', 'Interests', 'Circles', 'Vybe Check', 'Family Preview']
-      : ['Intent', 'Basics', 'Photos', 'Interests', 'Circles', 'Vybe Check'];
+      ? ['Intent', 'Basics', 'Photos', 'Interests', 'Tribe', 'Relationship', 'Circles', 'Vybe Check', 'Family Preview']
+      : ['Intent', 'Basics', 'Photos', 'Interests', 'Tribe', 'Relationship', 'Circles', 'Vybe Check'];
 
   async function finish() {
     setSaving(true);
@@ -336,25 +397,126 @@ export default function OnboardingPage() {
 
       {step === 3 && (
         <div className="flex flex-col gap-3">
-          <h1 className="font-display text-2xl font-extrabold">Pick up to 8 interests</h1>
+          <h1 className="font-display text-2xl font-extrabold">✨ What are you into?</h1>
+          <p className="text-sm text-inkSoft">Pick 5 to 8 — the quick, casual read on you.</p>
           <div className="flex flex-wrap gap-2">
-            {interests.map((i) => (
-              <button
-                key={i.id}
-                type="button"
-                onClick={() => setForm({ ...form, interestIds: toggle(form.interestIds, i.id, 8) })}
-                className={`rounded-full border px-3 py-1.5 text-sm ${
-                  form.interestIds.includes(i.id) ? 'border-magenta bg-magenta/10 text-magenta' : 'border-line'
-                }`}
-              >
-                {i.emoji} {i.label}
-              </button>
-            ))}
+            {interests.map((i) => {
+              const selected = form.interestIds.includes(i.id);
+              const disabled = !selected && form.interestIds.length >= 8;
+              return (
+                <button
+                  key={i.id}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setForm({ ...form, interestIds: toggle(form.interestIds, i.id, 8) })}
+                  className={`rounded-full border px-3 py-1.5 text-sm ${
+                    selected ? 'border-magenta bg-magenta/10 text-magenta' : 'border-line'
+                  } ${disabled ? 'opacity-40' : ''}`}
+                >
+                  {i.emoji} {i.label}
+                </button>
+              );
+            })}
           </div>
+          <p className="text-xs text-inkSoft">
+            {form.interestIds.length} of 8 picked{interestsIncomplete ? ' — need at least 5' : ''}
+          </p>
         </div>
       )}
 
       {step === 4 && (
+        <div className="flex flex-col gap-4">
+          <h1 className="font-display text-2xl font-extrabold">What&apos;s your tribe?</h1>
+          <p className="text-sm text-inkSoft">
+            Pick up to 5, then tell us your specific corner of each one — this is the deep-cut layer under
+            &quot;interests,&quot; the one that finds someone who games on your platform, not just someone who
+            &quot;likes gaming.&quot;
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {tribes.map((t) => {
+              const selected = form.tribeIds.includes(t.id);
+              const disabled = !selected && form.tribeIds.length >= 5;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => toggleTribe(t.id)}
+                  className={`rounded-full border px-3 py-1.5 text-sm ${
+                    selected ? 'border-magenta bg-magenta/10 text-magenta' : 'border-line'
+                  } ${disabled ? 'opacity-40' : ''}`}
+                >
+                  {t.emoji} {t.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {form.tribeIds.map((tribeId) => {
+            const tribe = tribes.find((t) => t.id === tribeId);
+            if (!tribe) return null;
+            const subsForTribe = subCommunities.filter((s) => s.tribeId === tribeId);
+            const pickedForTribe = form.subCommunityIds.filter((id) => subsForTribe.some((s) => s.id === id)).length;
+            return (
+              <div key={tribeId} className="flex flex-col gap-2 rounded-2xl border border-line bg-white p-3">
+                <p className="text-sm font-semibold">
+                  {tribe.emoji} {tribe.label} — pick 1 to 3
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {subsForTribe.map((s) => {
+                    const selected = form.subCommunityIds.includes(s.id);
+                    const disabled = !selected && pickedForTribe >= 3;
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => toggleSubCommunity(s.id, tribeId)}
+                        className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                          selected ? 'border-mint bg-mint/10 text-mint' : 'border-line'
+                        } ${disabled ? 'opacity-40' : ''}`}
+                      >
+                        {s.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {step === 5 && (
+        <div className="flex flex-col gap-3">
+          <h1 className="font-display text-2xl font-extrabold">My ideal relationship is…</h1>
+          <p className="text-sm text-inkSoft">
+            Pick exactly 3 — this is the values layer, separate from what you&apos;re into.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {relationshipStyles.map((r) => {
+              const selected = form.relationshipStyleIds.includes(r.id);
+              const disabled = !selected && form.relationshipStyleIds.length >= 3;
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => setForm({ ...form, relationshipStyleIds: toggle(form.relationshipStyleIds, r.id, 3) })}
+                  className={`rounded-full border px-3 py-1.5 text-sm ${
+                    selected ? 'border-magenta bg-magenta/10 text-magenta' : 'border-line'
+                  } ${disabled ? 'opacity-40' : ''}`}
+                >
+                  {r.emoji} {r.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-inkSoft">{form.relationshipStyleIds.length} of 3 picked</p>
+        </div>
+      )}
+
+      {step === 6 && (
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">Join up to 6 circles</h1>
           <p className="text-sm text-inkSoft">Local and interest communities in {form.city} — this is how discovery works.</p>
@@ -375,7 +537,7 @@ export default function OnboardingPage() {
         </div>
       )}
 
-      {step === 5 && (
+      {step === 7 && (
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">Vybe Check</h1>
           <p className="text-sm text-inkSoft">
@@ -426,7 +588,7 @@ export default function OnboardingPage() {
         </div>
       )}
 
-      {step === 6 && form.intent === 'RISHTA_READY' && (
+      {step === 8 && form.intent === 'RISHTA_READY' && (
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">Family Preview</h1>
           <p className="text-sm text-inkSoft">
@@ -496,7 +658,10 @@ export default function OnboardingPage() {
             disabled={
               (step === 1 && (!form.displayName || !form.dateOfBirth || dobTooYoung)) ||
               (step === 2 && form.photoUrls.length === 0) ||
-              (step === 5 && vybeCheckIncomplete)
+              (step === 3 && interestsIncomplete) ||
+              (step === 4 && tribeStepIncomplete) ||
+              (step === 5 && relationshipIncomplete) ||
+              (step === 7 && vybeCheckIncomplete)
             }
             className="gradient-btn rounded-full px-6 py-2.5 text-sm font-bold text-white disabled:opacity-50"
           >
@@ -506,7 +671,14 @@ export default function OnboardingPage() {
           <button
             type="button"
             onClick={finish}
-            disabled={saving || vybeCheckIncomplete || form.photoUrls.length === 0}
+            disabled={
+              saving ||
+              vybeCheckIncomplete ||
+              form.photoUrls.length === 0 ||
+              interestsIncomplete ||
+              tribeStepIncomplete ||
+              relationshipIncomplete
+            }
             className="gradient-btn rounded-full px-6 py-2.5 text-sm font-bold text-white disabled:opacity-60"
           >
             {saving ? 'Saving...' : 'Finish & discover'}

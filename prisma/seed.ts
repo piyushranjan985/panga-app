@@ -20,7 +20,7 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import crypto from 'node:crypto';
-import { CIRCLES, INTERESTS, PROMPTS, CITIES } from '../lib/constants';
+import { CIRCLES, INTERESTS, PROMPTS, CITIES, TRIBES, RELATIONSHIP_STYLES } from '../lib/constants';
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const db = new PrismaClient({ adapter });
@@ -45,7 +45,9 @@ interface SeedUser {
   avatarHue: number;
   verification: Verification;
   circles: string[]; // slugs
-  interests: string[]; // labels
+  interests: string[]; // labels (the short "What are you into?" set)
+  tribes: { slug: string; subCommunities: string[] }[]; // up to 5, 1-3 subCommunities each
+  relationshipStyles: string[]; // labels, exactly 3
   prompts: { text: string; answer: string }[];
   photos: string[]; // urls
 }
@@ -71,7 +73,12 @@ const DEMO_USERS: SeedUser[] = [
     avatarHue: 1,
     verification: 'VERIFIED',
     circles: ['mumbai-indie-music', 'pune-marathon-runners'],
-    interests: ['Cafés & coffee', 'Nature & outdoors', 'Music'],
+    interests: ['Coffee', 'Nature', 'Music'],
+    tribes: [
+      { slug: 'coffee', subCommunities: ['Café hopping', 'Filter coffee purist'] },
+      { slug: 'music', subCommunities: ['Indie', 'Bollywood'] },
+    ],
+    relationshipStyles: ['Deep conversations', 'Adventure partners', 'Calm & peaceful'],
     prompts: [
       { text: 'Chai tapri or filter coffee?', answer: 'Filter coffee, no debate' },
       { text: 'Sunday plan: trek or Netflix?', answer: 'Trek, then Netflix as a reward' },
@@ -90,7 +97,12 @@ const DEMO_USERS: SeedUser[] = [
     avatarHue: 2,
     verification: 'VERIFIED',
     circles: ['bengaluru-startups', 'delhi-ncr-standup'],
-    interests: ['Creative / arts', 'Nerdy / niche interests', 'Concerts & live music'],
+    interests: ['Creativity', 'Geeky stuff', 'Concerts'],
+    tribes: [
+      { slug: 'tech', subCommunities: ['Startups & side hustles', 'AI/ML'] },
+      { slug: 'concerts', subCommunities: ['Open mics', 'Indie gigs'] },
+    ],
+    relationshipStyles: ['Lots of laughs', 'Deep conversations', 'Career + relationship balance'],
     prompts: [
       { text: 'Most controversial food opinion', answer: 'Pineapple absolutely belongs on pizza' },
       { text: 'My love language is...', answer: 'Sending memes at 1am' },
@@ -109,7 +121,12 @@ const DEMO_USERS: SeedUser[] = [
     avatarHue: 3,
     verification: 'VERIFIED',
     circles: ['du-north-campus', 'diwali-foodies'],
-    interests: ['Fashion & thrifting', 'Foodie', 'Movies & series'],
+    interests: ['Fashion', 'Foodie', 'Netflix'],
+    tribes: [
+      { slug: 'thrifting', subCommunities: ['Vintage fashion', 'Streetwear'] },
+      { slug: 'foodies', subCommunities: ['Street food', 'Trying new cuisines'] },
+    ],
+    relationshipStyles: ['Adventure partners', 'Lots of laughs', 'Independent but close'],
     prompts: [{ text: 'A memory that shaped me', answer: 'My first solo trip to Rishikesh at 19' }],
     photos: [pravatar(31), pravatar(32), pravatar(33), pravatar(34)],
   },
@@ -125,7 +142,12 @@ const DEMO_USERS: SeedUser[] = [
     avatarHue: 4,
     verification: 'VERIFIED',
     circles: ['bengaluru-startups'],
-    interests: ['Books / BookTok', 'Pets & animals', 'Foodie'],
+    interests: ['Books', 'Dogs', 'Foodie'],
+    tribes: [
+      { slug: 'booktok', subCommunities: ['Romance', 'Literary'] },
+      { slug: 'foodies', subCommunities: ['Fine dining', 'Home cooking'] },
+    ],
+    relationshipStyles: ['Family-oriented', 'Building a life together', 'Calm & peaceful'],
     prompts: [{ text: 'Family group chat energy?', answer: 'Loud, loving, mildly chaotic' }],
     photos: [pravatar(44)],
   },
@@ -141,7 +163,12 @@ const DEMO_USERS: SeedUser[] = [
     avatarHue: 5,
     verification: 'VERIFIED',
     circles: ['bengaluru-startups', 'ipl-fantasy-league'],
-    interests: ['Nerdy / niche interests', 'Nature & outdoors', 'Fitness & gym'],
+    interests: ['Geeky stuff', 'Nature', 'Gym'],
+    tribes: [
+      { slug: 'tech', subCommunities: ['Gadgets', 'AI/ML'] },
+      { slug: 'run-club', subCommunities: ['Trail running', '5K casual'] },
+    ],
+    relationshipStyles: ['Family-oriented', 'Building a life together', 'Very affectionate'],
     prompts: [
       { text: 'Where I actually want to be five years from now', answer: 'Running my own studio, still terrible at cricket' },
     ],
@@ -246,12 +273,23 @@ function generateBulkUsers(count: number, phoneStart: number): SeedUser[] {
     const intentRoll = rng();
     const intent: Intent = intentRoll < 0.4 ? 'SOMETHING_REAL' : intentRoll < 0.72 ? 'JUST_VIBING' : 'RISHTA_READY';
 
-    const interests = pickMany(INTERESTS, randomInt(3, 6, rng), rng).map((x) => x.label);
+    const interests = pickMany(INTERESTS, randomInt(5, 8, rng), rng).map((x) => x.label);
     const primaryInterest = interests[0] ?? 'good vibes';
     const bio = pick(BIO_TEMPLATES, rng)(city, primaryInterest);
 
     const cityCircles = CIRCLES.filter((c) => c.city === null || c.city === city);
     const circles = pickMany(cityCircles, randomInt(0, Math.min(3, cityCircles.length), rng), rng).map((c) => c.slug);
+
+    // Tribe: 1-5 tribes, each with 1-3 subCommunities — mirrors the
+    // onboarding "What's your tribe?" step's own cardinality.
+    const chosenTribes = pickMany(TRIBES, randomInt(1, 5, rng), rng);
+    const tribes = chosenTribes.map((t) => ({
+      slug: t.slug,
+      subCommunities: pickMany(t.subCommunities, randomInt(1, Math.min(3, t.subCommunities.length), rng), rng),
+    }));
+
+    // "My ideal relationship is…" — exactly 3, matching the onboarding step.
+    const relationshipStyles = pickMany(RELATIONSHIP_STYLES, 3, rng).map((r) => r.label);
 
     const promptCount = randomInt(1, 2, rng);
     const chosenPrompts = pickMany(PROMPTS, promptCount, rng);
@@ -279,6 +317,8 @@ function generateBulkUsers(count: number, phoneStart: number): SeedUser[] {
       verification,
       circles,
       interests,
+      tribes,
+      relationshipStyles,
       prompts,
       photos,
     });
@@ -315,16 +355,54 @@ async function main() {
     await db.prompt.upsert({ where: { text: p.text }, update: {}, create: p });
   }
 
+  console.log('Seeding tribes, sub-communities, relationship styles...');
+  for (const t of TRIBES) {
+    const tribeRow = await db.tribe.upsert({
+      where: { slug: t.slug },
+      update: { label: t.label, emoji: t.emoji, personaLabel: t.personaLabel, activityPhrase: t.activityPhrase, sharedPhrase: t.sharedPhrase },
+      create: {
+        slug: t.slug,
+        label: t.label,
+        emoji: t.emoji,
+        personaLabel: t.personaLabel,
+        activityPhrase: t.activityPhrase,
+        sharedPhrase: t.sharedPhrase,
+      },
+    });
+    for (const label of t.subCommunities) {
+      await db.subCommunity.upsert({
+        where: { tribeId_label: { tribeId: tribeRow.id, label } },
+        update: {},
+        create: { tribeId: tribeRow.id, label },
+      });
+    }
+  }
+  for (const r of RELATIONSHIP_STYLES) {
+    await db.relationshipStyle.upsert({
+      where: { label: r.label },
+      update: { emoji: r.emoji, pairPhrase: r.pairPhrase },
+      create: r,
+    });
+  }
+
   // Fetched once and looked up in memory from here on — doing this per-user
   // was fine for 5 demo users, not for hundreds.
-  const [allInterests, allCircles, allPrompts] = await Promise.all([
+  const [allInterests, allCircles, allPrompts, allTribes, allSubCommunities, allRelationshipStyles] = await Promise.all([
     db.interest.findMany(),
     db.circle.findMany(),
     db.prompt.findMany(),
+    db.tribe.findMany(),
+    db.subCommunity.findMany(),
+    db.relationshipStyle.findMany(),
   ]);
   const interestByLabel = new Map(allInterests.map((i) => [i.label, i.id]));
   const circleBySlug = new Map(allCircles.map((c) => [c.slug, c.id]));
   const promptByText = new Map(allPrompts.map((p) => [p.text, p.id]));
+  const tribeBySlug = new Map(allTribes.map((t) => [t.slug, t.id]));
+  // Sub-communities aren't globally unique by label (e.g. "Rock" could
+  // exist under two different tribes in theory), so key by tribeId+label.
+  const subCommunityByKey = new Map(allSubCommunities.map((s) => [`${s.tribeId}::${s.label}`, s.id]));
+  const relationshipStyleByLabel = new Map(allRelationshipStyles.map((r) => [r.label, r.id]));
 
   const bulkUsers = generateBulkUsers(500, 9820000000);
   const allUsers: SeedUser[] = [...DEMO_USERS, ...bulkUsers];
@@ -343,6 +421,17 @@ async function main() {
     const promptRows = u.prompts
       .map((p) => ({ promptId: promptByText.get(p.text), answer: p.answer }))
       .filter((p): p is { promptId: string; answer: string } => Boolean(p.promptId));
+    const tribeIds = u.tribes.map((t) => tribeBySlug.get(t.slug)).filter((id): id is string => Boolean(id));
+    const subCommunityIds = u.tribes.flatMap((t) => {
+      const tribeId = tribeBySlug.get(t.slug);
+      if (!tribeId) return [];
+      return t.subCommunities
+        .map((label) => subCommunityByKey.get(`${tribeId}::${label}`))
+        .filter((id): id is string => Boolean(id));
+    });
+    const relationshipStyleIds = u.relationshipStyles
+      .map((label) => relationshipStyleByLabel.get(label))
+      .filter((id): id is string => Boolean(id));
 
     const profile = await db.profile.upsert({
       where: { userId: user.id },
@@ -360,6 +449,9 @@ async function main() {
         avatarHue: u.avatarHue,
         verification: u.verification,
         interests: { connect: interestIds.map((id) => ({ id })) },
+        tribes: { connect: tribeIds.map((id) => ({ id })) },
+        subCommunities: { connect: subCommunityIds.map((id) => ({ id })) },
+        relationshipStyles: { connect: relationshipStyleIds.map((id) => ({ id })) },
         circles: { create: circleIds.map((circleId) => ({ circleId })) },
         answers: { create: promptRows.map((p) => ({ promptId: p.promptId, answer: p.answer })) },
         photos: { create: u.photos.map((url, i) => ({ url, position: i })) },
@@ -378,6 +470,21 @@ async function main() {
         data: u.photos.map((url, i) => ({ profileId: profile.id, url, position: i })),
       });
     }
+
+    // tribes/subCommunities/relationshipStyles are many-to-many relations,
+    // so `connect` (not `set`) is safe to run every time, on both the
+    // create and update paths — it only adds, it never removes. That means
+    // a profile that existed before this feature shipped still gets the
+    // seed data attached on the next re-seed, the same fix as the photo
+    // backfill above, without needing an existence check first.
+    await db.profile.update({
+      where: { id: profile.id },
+      data: {
+        tribes: { connect: tribeIds.map((id) => ({ id })) },
+        subCommunities: { connect: subCommunityIds.map((id) => ({ id })) },
+        relationshipStyles: { connect: relationshipStyleIds.map((id) => ({ id })) },
+      },
+    });
 
     // Every demo account also accepts OTP 123456 for local testing.
     await db.otpCode.create({
