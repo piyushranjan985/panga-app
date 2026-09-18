@@ -110,6 +110,21 @@ model Profile {
   answers   PromptAnswer[]
   photos    Photo[]
 
+  // --- Just Vibing only (see lib/constants.ts DATE_VIBES / TONIGHT_OPTIONS) ---
+  // Plain string tags, not relations: single-intent, no drill-down, no
+  // cross-intent reuse — a full Tribe-style table would be overkill.
+  dateVibeTags String[] @default([]) // "What's your kind of date?" — exactly 3
+  tonightTags  String[] @default([]) // "What are you looking for tonight?" — up to 2
+
+  // --- Rishta Ready only (see lib/constants.ts LIVING_PREFERENCES / VALUES_OPTIONS / FUTURE_VIBE_QUESTIONS / CHILDREN_OPTIONS) ---
+  livingPreference String?  // Basics step's extra question — one of 4 fixed slugs
+  valuesTags       String[] @default([]) // "What matters most?" — exactly 4
+  futureHome       String?  // one of FUTURE_VIBE_QUESTIONS('home').optionA/B slugs
+  futureFamily     String?
+  futureCareer     String?
+  futureMoney      String?
+  children         String?  // one of CHILDREN_OPTIONS slugs — deliberately 3-way, not binary
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -133,16 +148,20 @@ model Photo {
 }
 
 model Interest {
-  id       String    @id @default(cuid())
-  label    String    @unique
-  emoji    String    @default("")
+  id       String       @id @default(cuid())
+  label    String       @unique
+  emoji    String       @default("")
   // Playful first-person phrase shown on the discover reveal card instead
   // of the plain label (e.g. "Take me somewhere" for Travel & exploring) —
   // see components/VibeCard.tsx. The plain label is still what onboarding
   // and profile pick-list chips show, since selection needs to be
   // unambiguous, not cute.
-  tagline  String    @default("")
-  profiles Profile[] @relation("ProfileInterests")
+  tagline  String       @default("")
+  // Which onboarding intents offer this interest — empty means all three.
+  // Lets the "What are you into?" pick-list feel tailored per intent
+  // (e.g. Nightlife only for Just Vibing) without three separate tables.
+  intents  IntentType[] @default([])
+  profiles Profile[]    @relation("ProfileInterests")
 }
 
 // The deep-cut layer under Interest — see the "What's your tribe?"
@@ -156,6 +175,10 @@ model Tribe {
   personaLabel   String         @default("")
   activityPhrase String         @default("")
   sharedPhrase   String         @default("")
+  // Which onboarding intents show this tribe — empty means both
+  // Something Real and Rishta Ready (Just Vibing never sees Tribe at
+  // all; that step doesn't exist in its flow).
+  intents        IntentType[]   @default([])
   subCommunities SubCommunity[]
   profiles       Profile[]      @relation("ProfileTribes")
 }
@@ -210,14 +233,20 @@ model CircleMember {
 }
 
 model Prompt {
-  id      String  @id @default(cuid())
-  text    String  @unique
-  emoji   String  @default("")
+  id      String       @id @default(cuid())
+  text    String       @unique
+  emoji   String       @default("")
   // Vybe Check is a forced binary pick, never free text — these are the
   // two fixed choices someone taps between for this prompt.
-  optionA String  @default("")
-  optionB String  @default("")
-  active  Boolean @default(true)
+  optionA String       @default("")
+  optionB String       @default("")
+  // Vybe Check reads completely differently per intent (playful for Just
+  // Vibing, relationship-facing for Something Real, future/family-facing
+  // for Rishta Ready) — every real prompt is tagged to exactly one.
+  // Empty means show everywhere (kept as an escape hatch, not used by the
+  // current seed data).
+  intents IntentType[] @default([])
+  active  Boolean      @default(true)
 
   answers PromptAnswer[]
 }

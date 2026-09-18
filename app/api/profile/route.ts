@@ -2,6 +2,26 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { DATE_VIBES, TONIGHT_OPTIONS, VALUES_OPTIONS, LIVING_PREFERENCES, FUTURE_VIBE_QUESTIONS, CHILDREN_OPTIONS } from '@/lib/constants';
+
+// Intent-scoped pick-lists (see lib/constants.ts) validated as fixed
+// slug enums -- these aren't DB-backed relations, just plain string
+// fields on Profile, so this is the only place enforcing "must be one of
+// the real options."
+const dateVibeEnum = z.enum(DATE_VIBES.map((d) => d.slug) as [string, ...string[]]);
+const tonightEnum = z.enum(TONIGHT_OPTIONS.map((t) => t.slug) as [string, ...string[]]);
+const valuesEnum = z.enum(VALUES_OPTIONS.map((v) => v.slug) as [string, ...string[]]);
+const livingPreferenceEnum = z.enum(LIVING_PREFERENCES.map((l) => l.slug) as [string, ...string[]]);
+const childrenEnum = z.enum(CHILDREN_OPTIONS.map((c) => c.slug) as [string, ...string[]]);
+function futureVibeEnum(key: 'home' | 'family' | 'career' | 'money') {
+  const q = FUTURE_VIBE_QUESTIONS.find((question) => question.key === key);
+  if (!q) throw new Error(`Missing FUTURE_VIBE_QUESTIONS entry for "${key}"`);
+  return z.enum([q.optionA.slug, q.optionB.slug]);
+}
+const futureHomeEnum = futureVibeEnum('home');
+const futureFamilyEnum = futureVibeEnum('family');
+const futureCareerEnum = futureVibeEnum('career');
+const futureMoneyEnum = futureVibeEnum('money');
 
 const genderEnum = z.enum(['WOMAN', 'MAN', 'NON_BINARY', 'OTHER']);
 const intentEnum = z.enum(['JUST_VIBING', 'SOMETHING_REAL', 'RISHTA_READY']);
@@ -25,11 +45,15 @@ const upsertSchema = z.object({
   tribeIds: z.array(z.string()).max(5).default([]),
   subCommunityIds: z.array(z.string()).default([]),
   // "My ideal relationship is…" — exactly 3, not "up to 3".
-  relationshipStyleIds: z.array(z.string()).length(3, 'Pick exactly 3').default([]),
+  // Length enforced conditionally in the superRefine below (exactly 3 for
+  // Something Real only; empty for the other two intents, which don't
+  // have this step).
+  relationshipStyleIds: z.array(z.string()).max(3).default([]),
   circleIds: z.array(z.string()).max(6),
-  // Vybe Check: up to 2 prompt answers collected during onboarding — see
-  // app/onboarding/page.tsx. Capped at 3 server-side (a little slack above
-  // the 2-prompt UI limit) rather than matching it exactly.
+  // Vybe Check: 2-3 prompt answers collected during onboarding — see
+  // app/onboarding/page.tsx (Rishta Ready allows 3, everyone else exactly
+  // 2; enforced precisely in the superRefine below, this cap is just the
+  // outer bound).
   promptAnswers: z
     .array(z.object({ promptId: z.string(), answer: z.string().trim().min(1).max(140) }))
     .max(3)
@@ -44,6 +68,60 @@ const upsertSchema = z.object({
   // rows here once the rest of the profile is saved. Adding/removing a
   // photo after onboarding goes through app/api/profile/photos instead.
   photoUrls: z.array(z.string().min(1)).min(1, 'Add at least 1 photo').max(5),
+
+  // --- Just Vibing only ("What's your kind of date?" / "Tonight?") ---
+  dateVibeTags: z.array(dateVibeEnum).max(3).default([]),
+  tonightTags: z.array(tonightEnum).max(2).default([]),
+
+  // --- Rishta Ready only (Basics' extra question, Values, Future Vibe, Children) ---
+  livingPreference: livingPreferenceEnum.optional(),
+  valuesTags: z.array(valuesEnum).max(4).default([]),
+  futureHome: futureHomeEnum.optional(),
+  futureFamily: futureFamilyEnum.optional(),
+  futureCareer: futureCareerEnum.optional(),
+  futureMoney: futureMoneyEnum.optional(),
+  children: childrenEnum.optional(),
+}).superRefine((data, ctx) => {
+  // Every onboarding flow diverges hard by intent past the shared
+  // Basics/Photos/Interests steps (see app/onboarding/page.tsx) — this
+  // mirrors that branching server-side so a client can't skip a required
+  // step just by omitting the field.
+  if (data.intent === 'JUST_VIBING') {
+    if (data.dateVibeTags.length !== 3) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Pick exactly 3 for "What\'s your kind of date?"', path: ['dateVibeTags'] });
+    }
+  } else {
+    if (data.tribeIds.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Pick at least 1 tribe', path: ['tribeIds'] });
+    }
+    if (data.intent === 'SOMETHING_REAL') {
+      if (data.relationshipStyleIds.length !== 3) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Pick exactly 3 relationship styles', path: ['relationshipStyleIds'] });
+      }
+    } else {
+      // RISHTA_READY
+      if (!data.livingPreference) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Pick where you see yourself living', path: ['livingPreference'] });
+      }
+      if (data.valuesTags.length !== 4) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Pick exactly 4 for "What matters most?"', path: ['valuesTags'] });
+      }
+      if (!data.futureHome || !data.futureFamily || !data.futureCareer || !data.futureMoney) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Answer all 4 future vibe questions', path: ['futureHome'] });
+      }
+      if (!data.children) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Pick a children preference', path: ['children'] });
+      }
+    }
+  }
+  const vybeMax = data.intent === 'RISHTA_READY' ? 3 : 2;
+  if (data.promptAnswers.length < 2 || data.promptAnswers.length > vybeMax) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: vybeMax === 3 ? 'Pick 2-3 Vybe Check prompts' : 'Pick 2 Vybe Check prompts',
+      path: ['promptAnswers'],
+    });
+  }
 });
 
 export async function GET() {
@@ -99,6 +177,15 @@ export async function PUT(req: Request) {
       circles: { create: data.circleIds.map((circleId) => ({ circleId })) },
       answers: { create: data.promptAnswers.map((pa) => ({ promptId: pa.promptId, answer: pa.answer })) },
       photos: { create: data.photoUrls.map((url, i) => ({ url, position: i })) },
+      dateVibeTags: data.dateVibeTags,
+      tonightTags: data.tonightTags,
+      livingPreference: data.livingPreference ?? null,
+      valuesTags: data.valuesTags,
+      futureHome: data.futureHome ?? null,
+      futureFamily: data.futureFamily ?? null,
+      futureCareer: data.futureCareer ?? null,
+      futureMoney: data.futureMoney ?? null,
+      children: data.children ?? null,
     },
     update: {
       displayName: data.displayName,
@@ -123,6 +210,15 @@ export async function PUT(req: Request) {
         deleteMany: {},
         create: data.promptAnswers.map((pa) => ({ promptId: pa.promptId, answer: pa.answer })),
       },
+      dateVibeTags: data.dateVibeTags,
+      tonightTags: data.tonightTags,
+      livingPreference: data.livingPreference ?? null,
+      valuesTags: data.valuesTags,
+      futureHome: data.futureHome ?? null,
+      futureFamily: data.futureFamily ?? null,
+      futureCareer: data.futureCareer ?? null,
+      futureMoney: data.futureMoney ?? null,
+      children: data.children ?? null,
       // Deliberately not touched on update: re-submitting the rest of the
       // onboarding form (e.g. editing bio from a future "edit profile"
       // flow) shouldn't silently wipe photos added since via

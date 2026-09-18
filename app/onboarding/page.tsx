@@ -2,20 +2,93 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CITIES } from '@/lib/constants';
+import {
+  CITIES,
+  DATE_VIBES,
+  TONIGHT_OPTIONS,
+  VALUES_OPTIONS,
+  LIVING_PREFERENCES,
+  FUTURE_VIBE_QUESTIONS,
+  CHILDREN_OPTIONS,
+} from '@/lib/constants';
 import IntentBadge from '@/components/IntentBadge';
 
-type Interest = { id: string; label: string; emoji: string };
-type Prompt = { id: string; text: string; emoji: string; optionA: string; optionB: string };
-type Tribe = { id: string; slug: string; label: string; emoji: string };
+type Interest = { id: string; label: string; emoji: string; intents: string[] };
+type Prompt = { id: string; text: string; emoji: string; optionA: string; optionB: string; intents: string[] };
+type Tribe = { id: string; slug: string; label: string; emoji: string; intents: string[] };
 type SubCommunity = { id: string; tribeId: string; label: string };
 type RelationshipStyle = { id: string; label: string; emoji: string };
 
 const INTENTS = [
-  { value: 'JUST_VIBING', label: 'Just Vibing', emoji: '🌀', blurb: 'No labels, no pressure, just good energy' },
-  { value: 'SOMETHING_REAL', label: 'Something Real', emoji: '💛', blurb: 'Dating, with an actual future in mind' },
-  { value: 'RISHTA_READY', label: 'Rishta Ready', emoji: '💍', blurb: "Serious, family-aware, ready when it's right" },
+  { value: 'JUST_VIBING', label: 'Just Vibing', emoji: '\ud83d\udcab', blurb: 'Meet, date, have fun \u2014 no heavy expectations' },
+  { value: 'SOMETHING_REAL', label: 'Something Real', emoji: '\u2764\ufe0f', blurb: 'Find a meaningful long-term partner' },
+  { value: 'RISHTA_READY', label: 'Rishta Ready', emoji: '\ud83d\udc8d', blurb: 'Find someone compatible for marriage & family life' },
 ];
+
+// Onboarding is intent-specific: the first two real steps (Basics, Photos)
+// are identical for all three, then the flow progressively diverges --
+// Just Vibing skips Tribe entirely for a lighter Date Vibe/Tonight layer;
+// Something Real gets the full Tribe + Relationship Vibe layer; Rishta
+// Ready gets Tribe plus the marriage-facing Values/Future Vibe layer. Every
+// flow ends on a "ready" recap screen instead of finishing silently on the
+// last question. See lib/constants.ts for the per-intent data behind each
+// step.
+type StepKey =
+  | 'intent'
+  | 'basics'
+  | 'photos'
+  | 'interests'
+  | 'tribe'
+  | 'relationship'
+  | 'datevibe'
+  | 'tonight'
+  | 'values'
+  | 'future'
+  | 'vybecheck'
+  | 'familypreview'
+  | 'ready';
+
+const STEP_LABELS: Record<StepKey, string> = {
+  intent: 'Intent',
+  basics: 'Basics',
+  photos: 'Photos',
+  interests: 'Interests',
+  tribe: 'Tribe',
+  relationship: 'Relationship',
+  datevibe: 'Date Vibe',
+  tonight: 'Tonight',
+  values: 'Values',
+  future: 'Future',
+  vybecheck: 'Vybe Check',
+  familypreview: 'Family Preview',
+  ready: 'Your Vybe',
+};
+
+type IntentValue = 'JUST_VIBING' | 'SOMETHING_REAL' | 'RISHTA_READY';
+
+const STEP_FLOWS: Record<IntentValue, StepKey[]> = {
+  JUST_VIBING: ['intent', 'basics', 'photos', 'interests', 'datevibe', 'tonight', 'vybecheck', 'ready'],
+  SOMETHING_REAL: ['intent', 'basics', 'photos', 'interests', 'tribe', 'relationship', 'vybecheck', 'ready'],
+  RISHTA_READY: [
+    'intent',
+    'basics',
+    'photos',
+    'interests',
+    'tribe',
+    'values',
+    'future',
+    'vybecheck',
+    'familypreview',
+    'ready',
+  ],
+};
+
+// form.intent is stored as a plain string (it round-trips through a
+// <select>-free button group and the API as IntentType), but is only ever
+// set to one of the three INTENTS values below -- safe to assert.
+function stepsForIntent(intent: string): StepKey[] {
+  return STEP_FLOWS[intent as IntentValue] ?? STEP_FLOWS.SOMETHING_REAL;
+}
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -46,6 +119,17 @@ export default function OnboardingPage() {
     familyPreviewOn: false,
     photoUrls: [] as string[],
     avatarHue: Math.ceil(Math.random() * 6),
+    // Just Vibing only
+    dateVibeTags: [] as string[],
+    tonightTags: [] as string[],
+    // Rishta Ready only
+    livingPreference: '',
+    valuesTags: [] as string[],
+    futureHome: '',
+    futureFamily: '',
+    futureCareer: '',
+    futureMoney: '',
+    children: '',
   });
 
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -62,7 +146,7 @@ export default function OnboardingPage() {
         setRelationshipStyles(d.relationshipStyles ?? []);
       });
     // Known as soon as someone's signed in (from the OTP/social step, well
-    // before a Profile row exists) — fetched here only to preview the
+    // before a Profile row exists) -- fetched here only to preview the
     // Family Preview link before they've finished onboarding.
     fetch('/api/me')
       .then((r) => r.json())
@@ -75,7 +159,7 @@ export default function OnboardingPage() {
     return [...list, value];
   }
 
-  // Same 18-100 window app/api/profile/route.ts enforces server-side — this
+  // Same 18-100 window app/api/profile/route.ts enforces server-side -- this
   // just keeps someone from ever being able to *pick* an invalid date in
   // the first place, rather than finding out at the very last onboarding
   // step that today's selection doesn't count.
@@ -94,15 +178,32 @@ export default function OnboardingPage() {
   const dobTooYoung = form.dateOfBirth ? ageFromDob(form.dateOfBirth) < 18 : false;
   const age = form.dateOfBirth && !dobTooYoung ? Math.floor(ageFromDob(form.dateOfBirth)) : null;
 
-  // "What are you into?" (interests): a broad, casual read — 5 to 8 short
+  // The first two real steps (Basics, Photos) are identical for every
+  // intent; everything past Interests progressively diverges -- see
+  // STEP_FLOWS above. Falls back to Something Real's flow defensively
+  // (should never actually happen -- form.intent is always one of the
+  // three INTENTS values).
+  const steps: StepKey[] = stepsForIntent(form.intent);
+  const stepKey: StepKey = steps[step] ?? steps[steps.length - 1] ?? 'ready';
+  const hasStep = (key: StepKey) => steps.includes(key);
+
+  // Interests/Tribe/Vybe Check pick-lists are intent-scoped server-side
+  // (see lib/constants.ts) -- an empty `intents` tag means "show for
+  // every intent."
+  const visibleInterests = interests.filter((i) => i.intents.length === 0 || i.intents.includes(form.intent));
+  const visibleTribes = tribes.filter((t) => t.intents.length === 0 || t.intents.includes(form.intent));
+  const visiblePrompts = prompts.filter((p) => p.intents.length === 0 || p.intents.includes(form.intent));
+
+  // "What are you into?" (interests): a broad, casual read -- 5 to 8 short
   // tags, no drill-down. Deliberately shallower than Tribe below, which is
-  // the "actually tell us your specific scene" layer.
+  // the "actually tell us your specific scene" layer (Something Real /
+  // Rishta Ready only).
   const interestsIncomplete = form.interestIds.length < 5;
 
-  // Tribe: pick up to 5 sub-cultures, then drill into 1-3 specific
-  // communities per tribe you picked. This is the richer compatibility
-  // signal — "you both game" is a start, "you're both PC players" is a
-  // conversation. Deselecting a tribe drops any sub-communities under it.
+  // Tribe: pick up to 5 (4 for Rishta Ready) sub-cultures, then drill into
+  // 1-3 specific communities per tribe you picked. Deselecting a tribe
+  // drops any sub-communities under it. Never shown for Just Vibing.
+  const tribeMax = form.intent === 'RISHTA_READY' ? 4 : 5;
   function toggleTribe(tribeId: string) {
     setForm((f) => {
       const exists = f.tribeIds.includes(tribeId);
@@ -115,7 +216,7 @@ export default function OnboardingPage() {
           ),
         };
       }
-      if (f.tribeIds.length >= 5) return f;
+      if (f.tribeIds.length >= tribeMax) return f;
       return { ...f, tribeIds: [...f.tribeIds, tribeId] };
     });
   }
@@ -137,24 +238,55 @@ export default function OnboardingPage() {
       (tribeId) => !form.subCommunityIds.some((id) => subCommunities.find((s) => s.id === id)?.tribeId === tribeId)
     );
 
-  // "My ideal relationship is…" — the values layer, separate from Tribe
-  // (what you're into) and Intent (what you're looking for overall).
-  // Exactly 3, not "up to 3" — forces an actual choice instead of everyone
-  // picking every flattering-sounding option.
+  // "Your relationship vibe" -- Something Real only, the values layer,
+  // separate from Tribe (what you're into) and Intent (what you're
+  // looking for overall). Exactly 3, not "up to 3" -- forces an actual
+  // choice instead of everyone picking every flattering-sounding option.
   const relationshipIncomplete = form.relationshipStyleIds.length !== 3;
 
-  // Vybe Check: pick up to 2 prompts, then pick a side on each — a forced
-  // choice between two fixed options, never a typed answer. Interests
-  // exist on every dating app — this is VybeMatch's own thing. The swipe
-  // card (components/VibeCard.tsx) already blurs a profile behind these
-  // answers and reveals them one tap at a time ("no guessing games" is the
-  // whole pitch), but nothing in onboarding ever collected them, so every
-  // real profile was silently falling back to a plain interest list.
+  // "What's your kind of date?" -- Just Vibing only, replaces Tribe (too
+  // deep a layer for a casual flow). Pick exactly 3.
+  function toggleDateVibe(slug: string) {
+    setForm((f) => ({ ...f, dateVibeTags: toggle(f.dateVibeTags, slug, 3) }));
+  }
+  const dateVibeIncomplete = form.dateVibeTags.length !== 3;
+
+  // "What are you looking for tonight?" -- Just Vibing only, up to 2, no
+  // minimum -- distinguishes casual dating from hookup-oriented
+  // expectations without being explicit about it.
+  function toggleTonight(slug: string) {
+    setForm((f) => ({ ...f, tonightTags: toggle(f.tonightTags, slug, 2) }));
+  }
+
+  // "What matters most?" -- Rishta Ready only, replaces the Something
+  // Real relationship-vibe step. Pick exactly 4.
+  function toggleValue(slug: string) {
+    setForm((f) => ({ ...f, valuesTags: toggle(f.valuesTags, slug, 4) }));
+  }
+  const valuesIncomplete = form.valuesTags.length !== 4;
+
+  // "Your future vibe" -- Rishta Ready only, 4 forced binary picks plus a
+  // deliberately 3-way (not binary) Children question -- "want" / "don't
+  // want" alone can't capture someone who's unsure.
+  const futureIncomplete =
+    !form.futureHome || !form.futureFamily || !form.futureCareer || !form.futureMoney || !form.children;
+
+  // Vybe Check: pick 2 prompts (2-3 for Rishta Ready) and pick a side on
+  // each -- a forced choice between two fixed options, never a typed
+  // answer. Interests exist on every dating app -- this is VybeMatch's
+  // own thing, and its tone (playful / relationship-facing /
+  // future-facing) shifts hard by intent, so the prompt pool itself is
+  // intent-scoped (see visiblePrompts above). The swipe card
+  // (components/VibeCard.tsx) already blurs a profile behind these
+  // answers and reveals them one tap at a time ("no guessing games" is
+  // the whole pitch).
+  const vybeMax = form.intent === 'RISHTA_READY' ? 3 : 2;
   function togglePrompt(promptId: string) {
     setForm((f) => {
       const exists = f.promptAnswers.some((pa) => pa.promptId === promptId);
       if (exists) return { ...f, promptAnswers: f.promptAnswers.filter((pa) => pa.promptId !== promptId) };
-      if (f.promptAnswers.length >= 2) return f;
+      const max = f.intent === 'RISHTA_READY' ? 3 : 2;
+      if (f.promptAnswers.length >= max) return f;
       return { ...f, promptAnswers: [...f.promptAnswers, { promptId, answer: '' }] };
     });
   }
@@ -165,10 +297,10 @@ export default function OnboardingPage() {
     }));
   }
   const vybeCheckIncomplete =
-    form.promptAnswers.length === 0 || form.promptAnswers.some((pa) => !pa.answer.trim());
+    form.promptAnswers.length < 2 || form.promptAnswers.some((pa) => !pa.answer.trim());
 
   // Photos: uploaded one at a time as they're picked (not deferred to
-  // "Finish") so someone sees the real upload result — and a real error —
+  // "Finish") so someone sees the real upload result -- and a real error --
   // immediately, rather than discovering a bad file only at the very last
   // step. No Profile row exists yet at this point in onboarding, so
   // app/api/upload/route.ts just stores the file and hands back a URL;
@@ -198,29 +330,34 @@ export default function OnboardingPage() {
   }
 
   // Family Preview: a curated, read-only summary (name, age, city, intent,
-  // circles — no bio, no Vybe Check answers, nothing from the swipe deck)
+  // circles -- no bio, no Vybe Check answers, nothing from the swipe deck)
   // that's shareable outside the app. It's the one piece of the matrimony
   // side of "dating/matrimony hybrid" that no swipe app has and no
-  // matrimony site makes optional — off by default, and only offered to
+  // matrimony site makes optional -- off by default, and only offered to
   // people who picked Rishta Ready.
   const previewUrl = myUserId ? `${typeof window !== 'undefined' ? window.location.origin : ''}/preview/${myUserId}` : null;
-
-  // Intent goes first on purpose — it's the one question none of the big
-  // dating or matrimony apps ask upfront (see the "Intent First" concept:
-  // Tinder/Bumble never ask, Shaadi/Jeevansathi ask about identity instead).
-  const steps =
-    form.intent === 'RISHTA_READY'
-      ? ['Intent', 'Basics', 'Photos', 'Interests', 'Tribe', 'Relationship', 'Vybe Check', 'Family Preview']
-      : ['Intent', 'Basics', 'Photos', 'Interests', 'Tribe', 'Relationship', 'Vybe Check'];
 
   async function finish() {
     setSaving(true);
     setError(null);
     try {
+      // Rishta Ready's single-select fields default to '' in local state
+      // for the other two intents -- send them as undefined (dropped by
+      // JSON.stringify) rather than an empty string, since the server's
+      // zod schema validates each as one of a fixed set of real slugs.
+      const payload = {
+        ...form,
+        livingPreference: form.livingPreference || undefined,
+        futureHome: form.futureHome || undefined,
+        futureFamily: form.futureFamily || undefined,
+        futureCareer: form.futureCareer || undefined,
+        futureMoney: form.futureMoney || undefined,
+        children: form.children || undefined,
+      };
       const res = await fetch('/api/profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Could not save profile');
@@ -232,11 +369,42 @@ export default function OnboardingPage() {
     }
   }
 
+  const nextDisabled =
+    (stepKey === 'basics' &&
+      (!form.displayName ||
+        !form.dateOfBirth ||
+        dobTooYoung ||
+        (form.intent === 'RISHTA_READY' && !form.livingPreference))) ||
+    (stepKey === 'photos' && form.photoUrls.length === 0) ||
+    (stepKey === 'interests' && interestsIncomplete) ||
+    (stepKey === 'tribe' && tribeStepIncomplete) ||
+    (stepKey === 'relationship' && relationshipIncomplete) ||
+    (stepKey === 'datevibe' && dateVibeIncomplete) ||
+    (stepKey === 'values' && valuesIncomplete) ||
+    (stepKey === 'future' && futureIncomplete) ||
+    (stepKey === 'vybecheck' && vybeCheckIncomplete);
+
+  // Belt-and-suspenders check on the final "ready" screen's Finish button
+  // -- each Next click already gated its own step, but re-checking every
+  // step this flow actually has means a stray path (e.g. hitting Back and
+  // switching intent) can never reach a broken submit.
+  const flowIncomplete =
+    saving ||
+    form.photoUrls.length === 0 ||
+    interestsIncomplete ||
+    (hasStep('tribe') && tribeStepIncomplete) ||
+    (hasStep('relationship') && relationshipIncomplete) ||
+    (hasStep('datevibe') && dateVibeIncomplete) ||
+    (hasStep('values') && valuesIncomplete) ||
+    (hasStep('future') && futureIncomplete) ||
+    vybeCheckIncomplete ||
+    (form.intent === 'RISHTA_READY' && !form.livingPreference);
+
   return (
     <main className="mx-auto flex min-h-screen max-w-lg flex-col gap-6 px-6 py-10">
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-marigold">
-          Step {step + 1} of {steps.length} — {steps[step]}
+          Step {step + 1} of {steps.length} — {STEP_LABELS[stepKey]}
         </p>
         <div className="mt-2 flex gap-1.5">
           {steps.map((s, i) => (
@@ -245,10 +413,10 @@ export default function OnboardingPage() {
         </div>
       </div>
 
-      {step === 0 && (
+      {stepKey === 'intent' && (
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">What are you here for?</h1>
-          <p className="text-sm text-inkSoft">Pick your lane — we&apos;ll only show you people on the same page.</p>
+          <p className="text-sm text-inkSoft">Pick your lane — we'll only show you people on the same page.</p>
           {INTENTS.map((i) => (
             <button
               key={i.value}
@@ -276,7 +444,7 @@ export default function OnboardingPage() {
         </div>
       )}
 
-      {step === 1 && (
+      {stepKey === 'basics' && (
         <div className="flex flex-col gap-4">
           <h1 className="font-display text-2xl font-extrabold">First, the basics</h1>
           <input
@@ -344,10 +512,29 @@ export default function OnboardingPage() {
             className="rounded-2xl border border-line px-4 py-3"
             rows={2}
           />
+          {form.intent === 'RISHTA_READY' && (
+            <div className="flex flex-col gap-2 rounded-2xl border border-line bg-white p-3">
+              <p className="text-sm font-semibold">Where do you see yourself living?</p>
+              <div className="flex flex-wrap gap-2">
+                {LIVING_PREFERENCES.map((l) => (
+                  <button
+                    key={l.slug}
+                    type="button"
+                    onClick={() => setForm({ ...form, livingPreference: l.slug })}
+                    className={`rounded-full border px-3 py-1.5 text-sm ${
+                      form.livingPreference === l.slug ? 'border-magenta bg-magenta/10 text-magenta' : 'border-line'
+                    }`}
+                  >
+                    {l.emoji} {l.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {step === 2 && (
+      {stepKey === 'photos' && (
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">Add your photos</h1>
           <p className="text-sm text-inkSoft">1 to 5 — real photos get real matches. The first one is what people see first.</p>
@@ -382,12 +569,12 @@ export default function OnboardingPage() {
         </div>
       )}
 
-      {step === 3 && (
+      {stepKey === 'interests' && (
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">✨ What are you into?</h1>
           <p className="text-sm text-inkSoft">Pick 5 to 8 — the quick, casual read on you.</p>
           <div className="flex flex-wrap gap-2">
-            {interests.map((i) => {
+            {visibleInterests.map((i) => {
               const selected = form.interestIds.includes(i.id);
               const disabled = !selected && form.interestIds.length >= 8;
               return (
@@ -411,18 +598,18 @@ export default function OnboardingPage() {
         </div>
       )}
 
-      {step === 4 && (
+      {stepKey === 'tribe' && (
         <div className="flex flex-col gap-4">
-          <h1 className="font-display text-2xl font-extrabold">What&apos;s your tribe?</h1>
+          <h1 className="font-display text-2xl font-extrabold">What's your tribe?</h1>
           <p className="text-sm text-inkSoft">
-            Pick up to 5, then tell us your specific corner of each one — this is the deep-cut layer under
-            &quot;interests,&quot; the one that finds someone who games on your platform, not just someone who
-            &quot;likes gaming.&quot;
+            Pick up to {tribeMax}, then tell us your specific corner of each one — this is the deep-cut layer
+            under &quot;interests,&quot; the one that finds someone who games on your platform, not just someone
+            who &quot;likes gaming.&quot;
           </p>
           <div className="flex flex-wrap gap-2">
-            {tribes.map((t) => {
+            {visibleTribes.map((t) => {
               const selected = form.tribeIds.includes(t.id);
-              const disabled = !selected && form.tribeIds.length >= 5;
+              const disabled = !selected && form.tribeIds.length >= tribeMax;
               return (
                 <button
                   key={t.id}
@@ -474,11 +661,11 @@ export default function OnboardingPage() {
         </div>
       )}
 
-      {step === 5 && (
+      {stepKey === 'relationship' && (
         <div className="flex flex-col gap-3">
-          <h1 className="font-display text-2xl font-extrabold">My ideal relationship is…</h1>
+          <h1 className="font-display text-2xl font-extrabold">❤️ Your relationship vibe</h1>
           <p className="text-sm text-inkSoft">
-            Pick exactly 3 — this is the values layer, separate from what you&apos;re into.
+            Pick exactly 3 — this is the values layer, separate from what you're into.
           </p>
           <div className="flex flex-wrap gap-2">
             {relationshipStyles.map((r) => {
@@ -503,18 +690,158 @@ export default function OnboardingPage() {
         </div>
       )}
 
-      {step === 6 && (
+      {stepKey === 'datevibe' && (
+        <div className="flex flex-col gap-3">
+          <h1 className="font-display text-2xl font-extrabold">Your vibe</h1>
+          <p className="text-sm text-inkSoft">What's your kind of date? Pick exactly 3.</p>
+          <div className="flex flex-wrap gap-2">
+            {DATE_VIBES.map((d) => {
+              const selected = form.dateVibeTags.includes(d.slug);
+              const disabled = !selected && form.dateVibeTags.length >= 3;
+              return (
+                <button
+                  key={d.slug}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => toggleDateVibe(d.slug)}
+                  className={`rounded-full border px-3 py-1.5 text-sm ${
+                    selected ? 'border-magenta bg-magenta/10 text-magenta' : 'border-line'
+                  } ${disabled ? 'opacity-40' : ''}`}
+                >
+                  {d.emoji} {d.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-inkSoft">{form.dateVibeTags.length} of 3 picked</p>
+        </div>
+      )}
+
+      {stepKey === 'tonight' && (
+        <div className="flex flex-col gap-3">
+          <h1 className="font-display text-2xl font-extrabold">What are you looking for tonight?</h1>
+          <p className="text-sm text-inkSoft">Pick up to 2 — totally optional.</p>
+          <div className="flex flex-wrap gap-2">
+            {TONIGHT_OPTIONS.map((t) => {
+              const selected = form.tonightTags.includes(t.slug);
+              const disabled = !selected && form.tonightTags.length >= 2;
+              return (
+                <button
+                  key={t.slug}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => toggleTonight(t.slug)}
+                  className={`rounded-full border px-3 py-1.5 text-sm ${
+                    selected ? 'border-magenta bg-magenta/10 text-magenta' : 'border-line'
+                  } ${disabled ? 'opacity-40' : ''}`}
+                >
+                  {t.emoji} {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {stepKey === 'values' && (
+        <div className="flex flex-col gap-3">
+          <h1 className="font-display text-2xl font-extrabold">🧭 What matters most?</h1>
+          <p className="text-sm text-inkSoft">Pick exactly 4 — this becomes your values layer.</p>
+          <div className="flex flex-wrap gap-2">
+            {VALUES_OPTIONS.map((v) => {
+              const selected = form.valuesTags.includes(v.slug);
+              const disabled = !selected && form.valuesTags.length >= 4;
+              return (
+                <button
+                  key={v.slug}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => toggleValue(v.slug)}
+                  className={`rounded-full border px-3 py-1.5 text-sm ${
+                    selected ? 'border-magenta bg-magenta/10 text-magenta' : 'border-line'
+                  } ${disabled ? 'opacity-40' : ''}`}
+                >
+                  {v.emoji} {v.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-inkSoft">{form.valuesTags.length} of 4 picked</p>
+        </div>
+      )}
+
+      {stepKey === 'future' && (
+        <div className="flex flex-col gap-4">
+          <h1 className="font-display text-2xl font-extrabold">Your future vibe</h1>
+          <p className="text-sm text-inkSoft">Serious questions, playful UX — pick a side on each.</p>
+          {FUTURE_VIBE_QUESTIONS.map((q) => {
+            const key = q.key as 'home' | 'family' | 'career' | 'money';
+            const value = form[
+              key === 'home' ? 'futureHome' : key === 'family' ? 'futureFamily' : key === 'career' ? 'futureCareer' : 'futureMoney'
+            ];
+            const setValue = (slug: string) =>
+              setForm({
+                ...form,
+                ...(key === 'home'
+                  ? { futureHome: slug }
+                  : key === 'family'
+                    ? { futureFamily: slug }
+                    : key === 'career'
+                      ? { futureCareer: slug }
+                      : { futureMoney: slug }),
+              });
+            return (
+              <div key={q.key} className="flex flex-col gap-2 rounded-2xl border border-line bg-white p-3">
+                <p className="text-sm font-semibold">{q.question}</p>
+                <div className="flex gap-2">
+                  {[q.optionA, q.optionB].map((option) => (
+                    <button
+                      key={option.slug}
+                      type="button"
+                      onClick={() => setValue(option.slug)}
+                      className={`flex-1 rounded-xl border px-3 py-2 text-sm font-semibold ${
+                        value === option.slug ? 'border-magenta bg-magenta/10 text-magenta' : 'border-line'
+                      }`}
+                    >
+                      {option.emoji} {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          <div className="flex flex-col gap-2 rounded-2xl border border-line bg-white p-3">
+            <p className="text-sm font-semibold">Children?</p>
+            <div className="flex flex-wrap gap-2">
+              {CHILDREN_OPTIONS.map((c) => (
+                <button
+                  key={c.slug}
+                  type="button"
+                  onClick={() => setForm({ ...form, children: c.slug })}
+                  className={`rounded-full border px-3 py-1.5 text-sm ${
+                    form.children === c.slug ? 'border-magenta bg-magenta/10 text-magenta' : 'border-line'
+                  }`}
+                >
+                  {c.emoji} {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {stepKey === 'vybecheck' && (
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">Vybe Check</h1>
           <p className="text-sm text-inkSoft">
-            Pick 2 prompts, then pick a side on each — no typing. On the feed, people meet these first — your
-            photo and name stay blurred until they reveal your answers. That&apos;s &quot;no guessing games,&quot;
-            for real.
+            Pick {vybeMax === 3 ? '2 to 3' : '2'} prompts, then pick a side on each — no typing. On the feed,
+            people meet these first — your photo and name stay blurred until they reveal your answers.
+            That&apos;s &quot;no guessing games,&quot; for real.
           </p>
           <div className="flex flex-wrap gap-2">
-            {prompts.map((p) => {
+            {visiblePrompts.map((p) => {
               const selected = form.promptAnswers.some((pa) => pa.promptId === p.id);
-              const disabled = !selected && form.promptAnswers.length >= 2;
+              const disabled = !selected && form.promptAnswers.length >= vybeMax;
               return (
                 <button
                   key={p.id}
@@ -562,7 +889,7 @@ export default function OnboardingPage() {
         </div>
       )}
 
-      {step === 7 && form.intent === 'RISHTA_READY' && (
+      {stepKey === 'familypreview' && (
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">Family Preview</h1>
           <p className="text-sm text-inkSoft">
@@ -614,6 +941,54 @@ export default function OnboardingPage() {
         </div>
       )}
 
+      {stepKey === 'ready' && (
+        <div className="flex flex-col gap-4">
+          <h1 className="font-display text-2xl font-extrabold">⚡ Your Vybe is Ready</h1>
+          <p className="text-sm text-inkSoft">Here's what we've got — you can always change this later from your profile.</p>
+          <div className="flex flex-col gap-2 rounded-card border border-line bg-white p-4 shadow">
+            <div className="flex items-center justify-between">
+              <p className="font-display text-lg font-extrabold">
+                {form.displayName || 'You'}
+                {age !== null ? `, ${age}` : ''}
+              </p>
+              <IntentBadge intent={form.intent} />
+            </div>
+            <p className="text-sm text-inkSoft">{form.city}</p>
+            {form.interestIds.length > 0 && (
+              <p className="text-sm">
+                {interests
+                  .filter((i) => form.interestIds.includes(i.id))
+                  .map((i) => `${i.emoji} ${i.label}`)
+                  .join(' · ')}
+              </p>
+            )}
+            {form.intent === 'JUST_VIBING' && form.dateVibeTags.length > 0 && (
+              <p className="text-sm text-inkSoft">
+                {DATE_VIBES.filter((d) => form.dateVibeTags.includes(d.slug))
+                  .map((d) => `${d.emoji} ${d.label}`)
+                  .join(' · ')}
+              </p>
+            )}
+            {form.intent === 'SOMETHING_REAL' && form.relationshipStyleIds.length > 0 && (
+              <p className="text-sm text-inkSoft">
+                {relationshipStyles
+                  .filter((r) => form.relationshipStyleIds.includes(r.id))
+                  .map((r) => `${r.emoji} ${r.label}`)
+                  .join(' · ')}
+              </p>
+            )}
+            {form.intent === 'RISHTA_READY' && form.valuesTags.length > 0 && (
+              <p className="text-sm text-inkSoft">
+                {VALUES_OPTIONS.filter((v) => form.valuesTags.includes(v.slug))
+                  .map((v) => `${v.emoji} ${v.label}`)
+                  .join(' · ')}
+              </p>
+            )}
+          </div>
+          <p className="text-xs text-inkSoft">Tap &quot;Let&apos;s go&quot; below to head to your feed.</p>
+        </div>
+      )}
+
       {error && <p className="text-sm text-magenta">{error}</p>}
 
       <div className="mt-auto flex justify-between pt-4">
@@ -629,14 +1004,7 @@ export default function OnboardingPage() {
           <button
             type="button"
             onClick={() => setStep((s) => s + 1)}
-            disabled={
-              (step === 1 && (!form.displayName || !form.dateOfBirth || dobTooYoung)) ||
-              (step === 2 && form.photoUrls.length === 0) ||
-              (step === 3 && interestsIncomplete) ||
-              (step === 4 && tribeStepIncomplete) ||
-              (step === 5 && relationshipIncomplete) ||
-              (step === 6 && vybeCheckIncomplete)
-            }
+            disabled={nextDisabled}
             className="gradient-btn rounded-full px-6 py-2.5 text-sm font-bold text-white disabled:opacity-50"
           >
             Next
@@ -645,17 +1013,10 @@ export default function OnboardingPage() {
           <button
             type="button"
             onClick={finish}
-            disabled={
-              saving ||
-              vybeCheckIncomplete ||
-              form.photoUrls.length === 0 ||
-              interestsIncomplete ||
-              tribeStepIncomplete ||
-              relationshipIncomplete
-            }
+            disabled={flowIncomplete}
             className="gradient-btn rounded-full px-6 py-2.5 text-sm font-bold text-white disabled:opacity-60"
           >
-            {saving ? 'Saving...' : 'Finish & discover'}
+            {saving ? 'Saving...' : "Let's go →"}
           </button>
         )}
       </div>

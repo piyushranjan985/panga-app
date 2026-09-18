@@ -1,18 +1,25 @@
 /**
- * Seeds reference data (circles, interests, prompts) plus demo users so
- * /discover has something real to show right after setup.
+ * Seeds reference data (circles, interests, prompts, tribes, date vibes,
+ * values, etc.) plus demo users so /discover has something real to show
+ * right after setup.
  *
  * Two kinds of demo users:
  *  - DEMO_USERS: 5 hand-written, specific profiles (used in walkthroughs,
- *    screenshots, etc. — keep these recognizable).
+ *    screenshots, etc. -- keep these recognizable).
  *  - generateBulkUsers(500): programmatically generated profiles for
  *    load-testing the discover/matching feed at a realistic population
  *    size. Randomized from fixed pools below, not meant to be individually
  *    memorable the way the 5 hand-written ones are.
  *
- * Every seeded user (both kinds) gets 1-5 photos — pravatar.cc URLs, not
+ * Every seeded user (both kinds) gets 1-5 photos -- pravatar.cc URLs, not
  * Vercel Blob, since these aren't real uploads and don't need real storage;
  * Photo.url doesn't care which kind of URL it holds.
+ *
+ * Onboarding -- and this seed file's data -- is intent-specific (see
+ * app/onboarding/page.tsx and lib/constants.ts): Just Vibing gets Date
+ * Vibe/Tonight instead of Tribe/Relationship; Rishta Ready gets
+ * Tribe/Values/Future Vibe/Children instead of Relationship. Every demo
+ * and generated user below only sets the fields that exist for its intent.
  *
  * Run with: npm run db:seed
  */
@@ -20,7 +27,20 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import crypto from 'node:crypto';
-import { CIRCLES, INTERESTS, PROMPTS, CITIES, TRIBES, RELATIONSHIP_STYLES } from '../lib/constants';
+import {
+  CIRCLES,
+  INTERESTS,
+  PROMPTS,
+  CITIES,
+  TRIBES,
+  RELATIONSHIP_STYLES,
+  DATE_VIBES,
+  TONIGHT_OPTIONS,
+  VALUES_OPTIONS,
+  LIVING_PREFERENCES,
+  FUTURE_VIBE_QUESTIONS,
+  CHILDREN_OPTIONS,
+} from '../lib/constants';
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const db = new PrismaClient({ adapter });
@@ -46,13 +66,22 @@ interface SeedUser {
   verification: Verification;
   circles: string[]; // slugs
   interests: string[]; // labels (the short "What are you into?" set)
-  tribes: { slug: string; subCommunities: string[] }[]; // up to 5, 1-3 subCommunities each
-  relationshipStyles: string[]; // labels, exactly 3
+  tribes: { slug: string; subCommunities: string[] }[]; // Something Real / Rishta Ready only
+  relationshipStyles: string[]; // Something Real only, exactly 3
+  dateVibeTags?: string[]; // Just Vibing only, exactly 3 (slugs)
+  tonightTags?: string[]; // Just Vibing only, up to 2 (slugs)
+  valuesTags?: string[]; // Rishta Ready only, exactly 4 (slugs)
+  livingPreference?: string; // Rishta Ready only (slug)
+  futureHome?: string; // Rishta Ready only (slug)
+  futureFamily?: string;
+  futureCareer?: string;
+  futureMoney?: string;
+  children?: string; // Rishta Ready only (slug)
   prompts: { text: string; answer: string }[];
   photos: string[]; // urls
 }
 
-// pravatar.cc serves a fixed set of 70 real face-crop photos by number —
+// pravatar.cc serves a fixed set of 70 real face-crop photos by number --
 // no API key, no rate limit that matters at this volume. Real duplicate
 // faces across 500 seeded accounts are expected and fine; this is filler
 // data for exercising the feed/matching code, not a photo library.
@@ -75,13 +104,13 @@ const DEMO_USERS: SeedUser[] = [
     circles: ['mumbai-indie-music', 'pune-marathon-runners'],
     interests: ['Coffee', 'Nature', 'Music'],
     tribes: [
-      { slug: 'coffee', subCommunities: ['Café hopping', 'Filter coffee purist'] },
+      { slug: 'coffee', subCommunities: ['Cafe hopping', 'Filter coffee purist'] },
       { slug: 'music', subCommunities: ['Indie', 'Bollywood'] },
     ],
     relationshipStyles: ['Deep conversations', 'Adventure partners', 'Calm & peaceful'],
     prompts: [
-      { text: 'Chai tapri or filter coffee?', answer: 'Filter coffee' },
-      { text: 'Sunday plan: trek or Netflix?', answer: 'Trek at sunrise' },
+      { text: 'Communication: talk it out or take space first?', answer: 'Give me some space first' },
+      { text: 'Relationship pace: feeling or building slowly?', answer: 'Build it slowly' },
     ],
     photos: [pravatar(47), pravatar(48), pravatar(23)],
   },
@@ -104,8 +133,8 @@ const DEMO_USERS: SeedUser[] = [
     ],
     relationshipStyles: ['Lots of laughs', 'Deep conversations', 'Career + relationship balance'],
     prompts: [
-      { text: 'Biryani loyalty: Hyderabadi or Lucknowi?', answer: 'Hyderabadi' },
-      { text: 'Love language: words of affirmation or acts of service?', answer: 'Words of affirmation' },
+      { text: 'Love language: words or actions?', answer: 'Words & reassurance' },
+      { text: 'Ideal evening: laugh until 2AM or quiet talk?', answer: 'Laugh until 2 AM' },
     ],
     photos: [pravatar(12), pravatar(13)],
   },
@@ -121,13 +150,15 @@ const DEMO_USERS: SeedUser[] = [
     avatarHue: 3,
     verification: 'VERIFIED',
     circles: ['du-north-campus', 'diwali-foodies'],
-    interests: ['Fashion', 'Foodie', 'Netflix'],
-    tribes: [
-      { slug: 'thrifting', subCommunities: ['Vintage fashion', 'Streetwear'] },
-      { slug: 'foodies', subCommunities: ['Street food', 'Trying new cuisines'] },
+    interests: ['Fashion', 'Foodie', 'Nightlife'],
+    tribes: [],
+    relationshipStyles: [],
+    dateVibeTags: ['food-adventure', 'shopping-exploring', 'drinks-nightlife'],
+    tonightTags: ['go-out', 'chemistry'],
+    prompts: [
+      { text: 'Social battery: more the merrier or small group?', answer: 'The more people, the better' },
+      { text: 'Friday night: stay in or go out?', answer: "Let's go out" },
     ],
-    relationshipStyles: ['Adventure partners', 'Lots of laughs', 'Independent but close'],
-    prompts: [{ text: 'Free evening: solo recharge or friends over?', answer: 'Friends over' }],
     photos: [pravatar(31), pravatar(32), pravatar(33), pravatar(34)],
   },
   {
@@ -147,8 +178,18 @@ const DEMO_USERS: SeedUser[] = [
       { slug: 'booktok', subCommunities: ['Romance', 'Literary'] },
       { slug: 'foodies', subCommunities: ['Fine dining', 'Home cooking'] },
     ],
-    relationshipStyles: ['Family-oriented', 'Building a life together', 'Calm & peaceful'],
-    prompts: [{ text: 'Family time: big joint gatherings or quiet with just parents?', answer: 'Big joint gatherings' }],
+    relationshipStyles: [],
+    livingPreference: 'close-to-family',
+    valuesTags: ['family', 'partnership', 'peace-stability', 'building-a-home'],
+    futureHome: 'suburban',
+    futureFamily: 'family_central',
+    futureCareer: 'balance',
+    futureMoney: 'save_build',
+    children: 'want-children',
+    prompts: [
+      { text: 'Family size: big family or small & close-knit?', answer: 'Big family life' },
+      { text: 'Home: build our own or stay close to family?', answer: 'Stay close to family' },
+    ],
     photos: [pravatar(44)],
   },
   {
@@ -168,9 +209,17 @@ const DEMO_USERS: SeedUser[] = [
       { slug: 'tech', subCommunities: ['Gadgets', 'AI/ML'] },
       { slug: 'run-club', subCommunities: ['Trail running', '5K casual'] },
     ],
-    relationshipStyles: ['Family-oriented', 'Building a life together', 'Very affectionate'],
+    relationshipStyles: [],
+    livingPreference: 'urban',
+    valuesTags: ['career', 'financial-stability', 'personal-growth', 'partnership'],
+    futureHome: 'city',
+    futureFamily: 'couple_first',
+    futureCareer: 'career_priority',
+    futureMoney: 'save_build',
+    children: 'open-unsure',
     prompts: [
-      { text: 'Five years from now: settled & stable or still chasing something new?', answer: 'Chasing something new' },
+      { text: 'Five years from now: settled or still chasing something new?', answer: 'Still chasing something new' },
+      { text: 'Career: chase ambitions or protect our life together?', answer: 'Chase big ambitions' },
     ],
     photos: [pravatar(5), pravatar(6)],
   },
@@ -202,8 +251,6 @@ const BIO_TEMPLATES = [
   () => `Send help, my group chat has 400 unread messages.`,
 ];
 
-
-
 function pick<T>(arr: T[], rng: () => number): T {
   return arr[Math.floor(rng() * arr.length)] as T;
 }
@@ -216,7 +263,7 @@ function randomInt(min: number, max: number, rng: () => number): number {
 }
 
 // Small seeded PRNG (mulberry32) so a reseed produces the same 500 profiles
-// rather than a new random set each time — makes `npm run db:seed` runs
+// rather than a new random set each time -- makes `npm run db:seed` runs
 // reproducible and diffable.
 function mulberry32(seed: number) {
   return function () {
@@ -264,28 +311,74 @@ function generateBulkUsers(count: number, phoneStart: number): SeedUser[] {
     const intentRoll = rng();
     const intent: Intent = intentRoll < 0.4 ? 'SOMETHING_REAL' : intentRoll < 0.72 ? 'JUST_VIBING' : 'RISHTA_READY';
 
-    const interests = pickMany(INTERESTS, randomInt(5, 8, rng), rng).map((x) => x.label);
+    // Interests are intent-scoped (see lib/constants.ts) -- an empty
+    // `intents` tag means "shown for every intent."
+    const availableInterests = INTERESTS.filter((x) => x.intents.length === 0 || x.intents.includes(intent));
+    const interests = pickMany(availableInterests, randomInt(5, 8, rng), rng).map((x) => x.label);
     const primaryInterest = interests[0] ?? 'good vibes';
     const bio = pick(BIO_TEMPLATES, rng)(city, primaryInterest);
 
     const cityCircles = CIRCLES.filter((c) => c.city === null || c.city === city);
     const circles = pickMany(cityCircles, randomInt(0, Math.min(3, cityCircles.length), rng), rng).map((c) => c.slug);
 
-    // Tribe: 1-5 tribes, each with 1-3 subCommunities — mirrors the
-    // onboarding "What's your tribe?" step's own cardinality.
-    const chosenTribes = pickMany(TRIBES, randomInt(1, 5, rng), rng);
-    const tribes = chosenTribes.map((t) => ({
-      slug: t.slug,
-      subCommunities: pickMany(t.subCommunities, randomInt(1, Math.min(3, t.subCommunities.length), rng), rng),
-    }));
+    // Everything past this point branches hard by intent -- see
+    // app/onboarding/page.tsx's per-intent step lists. Just Vibing never
+    // sees Tribe/Relationship; Rishta Ready sees Tribe but swaps
+    // Relationship for Values/Future Vibe/Children.
+    let tribes: { slug: string; subCommunities: string[] }[] = [];
+    let relationshipStyles: string[] = [];
+    let dateVibeTags: string[] | undefined;
+    let tonightTags: string[] | undefined;
+    let valuesTags: string[] | undefined;
+    let livingPreference: string | undefined;
+    let futureHome: string | undefined;
+    let futureFamily: string | undefined;
+    let futureCareer: string | undefined;
+    let futureMoney: string | undefined;
+    let children: string | undefined;
 
-    // "My ideal relationship is…" — exactly 3, matching the onboarding step.
-    const relationshipStyles = pickMany(RELATIONSHIP_STYLES, 3, rng).map((r) => r.label);
+    if (intent === 'JUST_VIBING') {
+      dateVibeTags = pickMany(DATE_VIBES, 3, rng).map((d) => d.slug);
+      tonightTags = pickMany(TONIGHT_OPTIONS, randomInt(0, 2, rng), rng).map((t) => t.slug);
+    } else {
+      // Tribe: 1-5 tribes (1-4 for Rishta Ready), each with 1-3
+      // subCommunities -- mirrors the onboarding "What's your tribe?"
+      // step's own cardinality, filtered to tribes tagged for this intent.
+      const availableTribes = TRIBES.filter((t) => t.intents.length === 0 || t.intents.includes(intent));
+      const tribeMax = intent === 'RISHTA_READY' ? 4 : 5;
+      const chosenTribes = pickMany(availableTribes, randomInt(1, tribeMax, rng), rng);
+      tribes = chosenTribes.map((t) => ({
+        slug: t.slug,
+        subCommunities: pickMany(t.subCommunities, randomInt(1, Math.min(3, t.subCommunities.length), rng), rng),
+      }));
 
-    // Vybe Check is a forced binary pick — every seeded answer is one of
+      if (intent === 'SOMETHING_REAL') {
+        // "My ideal relationship is..." -- exactly 3, matching the
+        // onboarding step.
+        relationshipStyles = pickMany(RELATIONSHIP_STYLES, 3, rng).map((r) => r.label);
+      } else {
+        // Rishta Ready: Values (exactly 4), Future Vibe (4 binary picks),
+        // Children (3-way), and the Basics step's living-preference
+        // question -- matching the onboarding step cardinalities.
+        valuesTags = pickMany(VALUES_OPTIONS, 4, rng).map((v) => v.slug);
+        livingPreference = pick(LIVING_PREFERENCES, rng).slug;
+        for (const q of FUTURE_VIBE_QUESTIONS) {
+          const answer = rng() < 0.5 ? q.optionA.slug : q.optionB.slug;
+          if (q.key === 'home') futureHome = answer;
+          else if (q.key === 'family') futureFamily = answer;
+          else if (q.key === 'career') futureCareer = answer;
+          else futureMoney = answer;
+        }
+        children = pick(CHILDREN_OPTIONS, rng).slug;
+      }
+    }
+
+    // Vybe Check is a forced binary pick -- every seeded answer is one of
     // the prompt's own two fixed options, matching the real onboarding UI.
-    const promptCount = randomInt(1, 2, rng);
-    const chosenPrompts = pickMany(PROMPTS, promptCount, rng);
+    // Prompts are intent-scoped; Rishta Ready allows 2-3, everyone else 2.
+    const availablePrompts = PROMPTS.filter((p) => p.intents.length === 0 || p.intents.includes(intent));
+    const promptCount = intent === 'RISHTA_READY' ? randomInt(2, 3, rng) : 2;
+    const chosenPrompts = pickMany(availablePrompts, promptCount, rng);
     const prompts = chosenPrompts.map((p) => ({
       text: p.text,
       answer: pick([p.optionA, p.optionB], rng),
@@ -312,6 +405,15 @@ function generateBulkUsers(count: number, phoneStart: number): SeedUser[] {
       interests,
       tribes,
       relationshipStyles,
+      dateVibeTags,
+      tonightTags,
+      valuesTags,
+      livingPreference,
+      futureHome,
+      futureFamily,
+      futureCareer,
+      futureMoney,
+      children,
       prompts,
       photos,
     });
@@ -326,36 +428,36 @@ async function main() {
     await db.circle.upsert({ where: { slug: c.slug }, update: {}, create: c });
   }
   for (const i of INTERESTS) {
-    // Unlike the circle/prompt upserts, this one does update existing rows —
-    // interests get their emoji/tagline tweaked more often, and there's no
-    // "don't overwrite something a real session changed" concern here the
-    // way there is for user photos.
+    // Unlike the circle/prompt upserts, this one does update existing rows --
+    // interests get their emoji/tagline/intents tweaked more often, and
+    // there's no "don't overwrite something a real session changed"
+    // concern here the way there is for user photos.
     await db.interest.upsert({
       where: { label: i.label },
-      update: { emoji: i.emoji, tagline: i.tagline },
+      update: { emoji: i.emoji, tagline: i.tagline, intents: i.intents },
       create: i,
     });
   }
   // Retire interests that are no longer in the current list (e.g. a past
   // redesign of the interest set) so onboarding's pick-list doesn't show
   // stale options nobody can pick anymore. Cascades to each profile's
-  // interest connections — those profiles just lose that one tag, nothing
+  // interest connections -- those profiles just lose that one tag, nothing
   // else about them changes.
   const currentLabels = INTERESTS.map((i) => i.label);
   await db.interest.deleteMany({ where: { label: { notIn: currentLabels } } });
 
   for (const p of PROMPTS) {
-    // Real update (not {}) so tweaking a prompt's emoji/options propagates
-    // on reseed — same pattern as the interest upsert above.
+    // Real update (not {}) so tweaking a prompt's emoji/options/intents
+    // propagates on reseed -- same pattern as the interest upsert above.
     await db.prompt.upsert({
       where: { text: p.text },
-      update: { emoji: p.emoji, optionA: p.optionA, optionB: p.optionB },
+      update: { emoji: p.emoji, optionA: p.optionA, optionB: p.optionB, intents: p.intents },
       create: p,
     });
   }
-  // Retire prompts no longer in the current list (e.g. the free-text ->
-  // binary-choice redesign) so onboarding's Vybe Check never offers a
-  // stale prompt. Cascades to each profile's PromptAnswer rows for it.
+  // Retire prompts no longer in the current list (e.g. the intent-specific
+  // Vybe Check redesign) so onboarding never offers a stale prompt.
+  // Cascades to each profile's PromptAnswer rows for it.
   const currentPromptTexts = PROMPTS.map((p) => p.text);
   await db.prompt.deleteMany({ where: { text: { notIn: currentPromptTexts } } });
 
@@ -363,7 +465,14 @@ async function main() {
   for (const t of TRIBES) {
     const tribeRow = await db.tribe.upsert({
       where: { slug: t.slug },
-      update: { label: t.label, emoji: t.emoji, personaLabel: t.personaLabel, activityPhrase: t.activityPhrase, sharedPhrase: t.sharedPhrase },
+      update: {
+        label: t.label,
+        emoji: t.emoji,
+        personaLabel: t.personaLabel,
+        activityPhrase: t.activityPhrase,
+        sharedPhrase: t.sharedPhrase,
+        intents: t.intents,
+      },
       create: {
         slug: t.slug,
         label: t.label,
@@ -371,6 +480,7 @@ async function main() {
         personaLabel: t.personaLabel,
         activityPhrase: t.activityPhrase,
         sharedPhrase: t.sharedPhrase,
+        intents: t.intents,
       },
     });
     for (const label of t.subCommunities) {
@@ -389,7 +499,7 @@ async function main() {
     });
   }
 
-  // Fetched once and looked up in memory from here on — doing this per-user
+  // Fetched once and looked up in memory from here on -- doing this per-user
   // was fine for 5 demo users, not for hundreds.
   const [allInterests, allCircles, allPrompts, allTribes, allSubCommunities, allRelationshipStyles] = await Promise.all([
     db.interest.findMany(),
@@ -459,10 +569,19 @@ async function main() {
         circles: { create: circleIds.map((circleId) => ({ circleId })) },
         answers: { create: promptRows.map((p) => ({ promptId: p.promptId, answer: p.answer })) },
         photos: { create: u.photos.map((url, i) => ({ url, position: i })) },
+        dateVibeTags: u.dateVibeTags ?? [],
+        tonightTags: u.tonightTags ?? [],
+        valuesTags: u.valuesTags ?? [],
+        livingPreference: u.livingPreference ?? null,
+        futureHome: u.futureHome ?? null,
+        futureFamily: u.futureFamily ?? null,
+        futureCareer: u.futureCareer ?? null,
+        futureMoney: u.futureMoney ?? null,
+        children: u.children ?? null,
       },
     });
 
-    // profile.upsert only sets photos on CREATE (see above) — a profile
+    // profile.upsert only sets photos on CREATE (see above) -- a profile
     // that already existed before the photo feature shipped (e.g. the 5
     // hand-written demo users, seeded in an earlier run) hits the no-op
     // update branch and would otherwise stay photo-less forever. Backfill
@@ -477,7 +596,7 @@ async function main() {
 
     // tribes/subCommunities/relationshipStyles are many-to-many relations,
     // so `connect` (not `set`) is safe to run every time, on both the
-    // create and update paths — it only adds, it never removes. That means
+    // create and update paths -- it only adds, it never removes. That means
     // a profile that existed before this feature shipped still gets the
     // seed data attached on the next re-seed, the same fix as the photo
     // backfill above, without needing an existence check first.
@@ -503,7 +622,7 @@ async function main() {
     if (done % 50 === 0) console.log(`  ...${done}/${allUsers.length}`);
   }
 
-  console.log(`Done. ${allUsers.length} demo users seeded — log in with any of their numbers and OTP 123456.`);
+  console.log(`Done. ${allUsers.length} demo users seeded -- log in with any of their numbers and OTP 123456.`);
 }
 
 main()
