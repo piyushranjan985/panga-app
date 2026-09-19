@@ -171,23 +171,37 @@ export default function ProfilePage() {
 
         <section className="mt-8">
           <h2 className="mb-2 font-display text-lg font-bold">Intent</h2>
-          <p className="mb-2 text-xs text-inkSoft">
+          <p className="mb-3 text-xs text-inkSoft">
             Switching updates what people see and asks you a couple of quick questions for the new vibe.
           </p>
-          <div className="flex flex-wrap gap-2">
-            {INTENTS.map((i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => {
-                  if (i === profile.intent) return;
-                  router.push(`/onboarding?switchIntent=${i}`);
-                }}
-                className={profile.intent === i ? 'opacity-100' : 'opacity-40'}
-              >
-                <IntentBadge intent={i} />
-              </button>
-            ))}
+          {/* Previously three bare badges distinguished only by opacity -- easy
+              to miss as a control at all, not just hard to tell which one was
+              "on." Full-width bordered rows plus an explicit Current/Switch
+              label on each make it unmistakably a set of tappable options. */}
+          <div className="flex flex-col gap-2">
+            {INTENTS.map((i) => {
+              const isCurrent = profile.intent === i;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => {
+                    if (isCurrent) return;
+                    router.push(`/onboarding?switchIntent=${i}`);
+                  }}
+                  className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+                    isCurrent ? 'border-magenta bg-magenta/5' : 'border-line hover:border-inkSoft/40'
+                  }`}
+                >
+                  <IntentBadge intent={i} />
+                  {isCurrent ? (
+                    <span className="text-xs font-semibold text-magenta">Current</span>
+                  ) : (
+                    <span className="text-xs font-semibold text-inkSoft">Switch →</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </section>
 
