@@ -741,7 +741,7 @@ export default function ProfilePage() {
         {(profile.intent === 'SOMETHING_REAL' || profile.intent === 'RISHTA_READY') && (
           <section className="mt-6">
             <div className="mb-2 flex items-center justify-between">
-              <h2 className="font-display text-lg font-bold">Your tribes</h2>
+              <h2 className="font-display text-lg font-bold">My tribes</h2>
               {editing !== 'tribes' && catalog && (
                 <EditButton
                   label="Edit tribes"
