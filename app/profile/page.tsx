@@ -422,7 +422,10 @@ export default function ProfilePage() {
             </div>
           ) : (
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm text-inkSoft">{profile.bio || 'No bio yet — tell people your vibe.'}</p>
+              {/* Bio is optional -- nothing shown at all when it's empty,
+                  not a placeholder nudge. The edit affordance stays either
+                  way, so it's still just as easy to add one. */}
+              <p className="text-sm text-inkSoft">{profile.bio}</p>
               <EditButton
                 label="Edit bio"
                 onClick={() => {
