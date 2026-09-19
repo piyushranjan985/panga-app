@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   CITIES,
@@ -490,7 +491,13 @@ function OnboardingForm() {
     (form.intent === 'RISHTA_READY' && !form.livingPreference);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-lg flex-col gap-6 px-6 py-10">
+    <>
+      <header className="sticky top-0 z-20 border-b border-line bg-white/95 px-6 py-3 backdrop-blur">
+        <Link href="/discover" className="font-display text-lg font-extrabold">
+          Vybe<span className="text-magenta">Match</span>
+        </Link>
+      </header>
+      <main className="mx-auto flex min-h-screen max-w-lg flex-col gap-6 px-6 py-10">
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-marigold">
           Step {step + 1} of {steps.length} — {STEP_LABELS[stepKey]}
@@ -1116,6 +1123,7 @@ function OnboardingForm() {
         )}
       </div>
     </main>
+    </>
   );
 }
 
