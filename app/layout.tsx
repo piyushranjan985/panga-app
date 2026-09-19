@@ -4,7 +4,7 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'VybeMatch — say the quiet part first',
   description:
-    'VybeMatch is a vibe-based dating & matrimony-lite platform for Indian Gen Z: transparent intent, community circles, and a trust layer that respects your pace.',
+    'VybeMatch is a vibe-based dating & matrimony-lite platform for Indian Gen Z: transparent intent and a trust layer that respects your pace.',
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, statusBarStyle: 'default', title: 'VybeMatch' },
 };

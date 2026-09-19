@@ -12,7 +12,6 @@ function toMatchable(p: {
   city: string;
   intent: string;
   quietMode: boolean;
-  circles: { circleId: string }[];
   interests: { id: string }[];
   user: { lastActiveAt: Date };
 }): MatchableProfile {
@@ -23,7 +22,6 @@ function toMatchable(p: {
     city: p.city,
     intent: p.intent as MatchableProfile['intent'],
     quietMode: p.quietMode,
-    circleIds: p.circles.map((c) => c.circleId),
     interestIds: p.interests.map((i) => i.id),
     lastActiveAt: p.user.lastActiveAt,
   };
@@ -41,7 +39,7 @@ export async function GET() {
 
   const viewerProfile = await db.profile.findUnique({
     where: { userId: session.userId },
-    include: { circles: true, interests: true, user: { select: { lastActiveAt: true } } },
+    include: { interests: true, user: { select: { lastActiveAt: true } } },
   });
   if (!viewerProfile) {
     return NextResponse.json({ error: 'Finish onboarding first' }, { status: 409 });
@@ -50,12 +48,11 @@ export async function GET() {
   const [alreadySwiped, candidatePool] = await Promise.all([
     db.swipe.findMany({ where: { fromUserId: session.userId }, select: { toUserId: true } }),
     // MVP-scale candidate pool: everyone else with a profile. At real scale
-    // this becomes a geo + circle-indexed query (see scaling section) —
-    // pulling "everyone" is fine below a few thousand users, not beyond it.
+    // this becomes a geo-indexed query — pulling "everyone" is fine below a
+    // few thousand users, not beyond it.
     db.profile.findMany({
       where: { userId: { not: session.userId } },
       include: {
-        circles: true,
         interests: true,
         user: { select: { lastActiveAt: true } },
         answers: { include: { prompt: true }, take: 3 },

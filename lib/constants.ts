@@ -384,17 +384,6 @@ export const CHILDREN_OPTIONS: { slug: string; label: string; emoji: string }[] 
   { slug: 'open-unsure', label: 'Open / unsure', emoji: '🤔' },
 ];
 
-export const CIRCLES: { slug: string; name: string; city: string | null; category: string; description: string }[] = [
-  { slug: 'iitb-27', name: "IIT Bombay '27", city: 'Mumbai', category: 'college', description: 'Current students & recent grads' },
-  { slug: 'du-north-campus', name: 'DU North Campus', city: 'Delhi NCR', category: 'college', description: 'Delhi University, North Campus colleges' },
-  { slug: 'mumbai-indie-music', name: 'Mumbai Indie Music', city: 'Mumbai', category: 'interest', description: 'Gig-goers and bedroom musicians' },
-  { slug: 'bengaluru-startups', name: 'Bengaluru Startup Circle', city: 'Bengaluru', category: 'interest', description: 'Builders, first hires, and the eternally-fundraising' },
-  { slug: 'diwali-foodies', name: 'Diwali Foodies', city: null, category: 'festival', description: 'Mithai opinions welcome, fights encouraged' },
-  { slug: 'pune-marathon-runners', name: 'Pune Marathon Runners', city: 'Pune', category: 'interest', description: '5am starts, unreasonable enthusiasm' },
-  { slug: 'delhi-ncr-standup', name: 'Delhi NCR Open Mics', city: 'Delhi NCR', category: 'interest', description: 'Comedy nights and the people who suffer through them' },
-  { slug: 'ipl-fantasy-league', name: 'IPL Fantasy League', city: null, category: 'interest', description: 'Season-long chaos, one group chat' },
-];
-
 export const CITIES = ['Bengaluru', 'Mumbai', 'Delhi NCR', 'Pune', 'Hyderabad', 'Chennai'];
 
 export const AVATAR_HUES = [1, 2, 3, 4, 5, 6] as const;

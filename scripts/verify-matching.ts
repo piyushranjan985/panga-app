@@ -13,7 +13,6 @@ function profile(overrides: Partial<MatchableProfile> & { userId: string }): Mat
     city: 'Bengaluru',
     intent: 'SOMETHING_REAL',
     quietMode: false,
-    circleIds: [],
     interestIds: [],
     lastActiveAt: new Date(),
     ...overrides,
@@ -56,13 +55,7 @@ test('mutual gender preference is enforced both directions', () => {
   assert.equal(isEligibleCandidate(viewer, candidate), false);
 });
 
-test('different city but a shared circle is still eligible', () => {
-  const viewer = profile({ userId: 'v', gender: 'WOMAN', lookingFor: ['MAN'], city: 'Pune', circleIds: ['iit-b-27'] });
-  const candidate = profile({ userId: 'c', gender: 'MAN', lookingFor: ['WOMAN'], city: 'Delhi NCR', circleIds: ['iit-b-27'] });
-  assert.equal(isEligibleCandidate(viewer, candidate), true);
-});
-
-test('no shared city and no shared circle is excluded', () => {
+test('different city is excluded -- same city is the only "real path to meet" signal left now that circles are gone', () => {
   const viewer = profile({ userId: 'v', gender: 'WOMAN', lookingFor: ['MAN'], city: 'Pune' });
   const candidate = profile({ userId: 'c', gender: 'MAN', lookingFor: ['WOMAN'], city: 'Delhi NCR' });
   assert.equal(isEligibleCandidate(viewer, candidate), false);
@@ -75,15 +68,14 @@ test('quiet mode profiles never appear', () => {
 });
 
 test('rankCandidates sorts best match first and respects exclusions', () => {
-  const viewer = profile({ userId: 'v', gender: 'WOMAN', lookingFor: ['MAN'], city: 'Bengaluru', circleIds: ['music'], interestIds: ['trekking'] });
+  const viewer = profile({ userId: 'v', gender: 'WOMAN', lookingFor: ['MAN'], city: 'Bengaluru', interestIds: ['trekking', 'coffee'] });
   const weak = profile({ userId: 'weak', gender: 'MAN', lookingFor: ['WOMAN'], city: 'Bengaluru' });
   const strong = profile({
     userId: 'strong',
     gender: 'MAN',
     lookingFor: ['WOMAN'],
     city: 'Bengaluru',
-    circleIds: ['music'],
-    interestIds: ['trekking'],
+    interestIds: ['trekking', 'coffee'],
   });
   const excludedAlready = profile({ userId: 'excluded', gender: 'MAN', lookingFor: ['WOMAN'], city: 'Bengaluru' });
 

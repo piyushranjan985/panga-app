@@ -49,7 +49,6 @@ const upsertSchema = z.object({
   // Something Real only; empty for the other two intents, which don't
   // have this step).
   relationshipStyleIds: z.array(z.string()).max(3).default([]),
-  circleIds: z.array(z.string()).max(6),
   // Vybe Check: 2-3 prompt answers collected during onboarding — see
   // app/onboarding/page.tsx (Rishta Ready allows 3, everyone else exactly
   // 2; enforced precisely in the superRefine below, this cap is just the
@@ -135,7 +134,6 @@ export async function GET() {
       tribes: true,
       subCommunities: { include: { tribe: true } },
       relationshipStyles: true,
-      circles: { include: { circle: true } },
       answers: { include: { prompt: true } },
       photos: { orderBy: { position: 'asc' } },
     },
@@ -174,7 +172,6 @@ export async function PUT(req: Request) {
       tribes: { connect: data.tribeIds.map((id) => ({ id })) },
       subCommunities: { connect: data.subCommunityIds.map((id) => ({ id })) },
       relationshipStyles: { connect: data.relationshipStyleIds.map((id) => ({ id })) },
-      circles: { create: data.circleIds.map((circleId) => ({ circleId })) },
       answers: { create: data.promptAnswers.map((pa) => ({ promptId: pa.promptId, answer: pa.answer })) },
       photos: { create: data.photoUrls.map((url, i) => ({ url, position: i })) },
       dateVibeTags: data.dateVibeTags,
@@ -202,10 +199,6 @@ export async function PUT(req: Request) {
       tribes: { set: data.tribeIds.map((id) => ({ id })) },
       subCommunities: { set: data.subCommunityIds.map((id) => ({ id })) },
       relationshipStyles: { set: data.relationshipStyleIds.map((id) => ({ id })) },
-      circles: {
-        deleteMany: {},
-        create: data.circleIds.map((circleId) => ({ circleId })),
-      },
       answers: {
         deleteMany: {},
         create: data.promptAnswers.map((pa) => ({ promptId: pa.promptId, answer: pa.answer })),

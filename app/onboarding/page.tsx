@@ -123,7 +123,6 @@ function OnboardingForm() {
     tribeIds: [] as string[],
     subCommunityIds: [] as string[],
     relationshipStyleIds: [] as string[],
-    circleIds: [] as string[],
     promptAnswers: [] as { promptId: string; answer: string }[],
     familyPreviewOn: false,
     photoUrls: [] as string[],
@@ -145,7 +144,7 @@ function OnboardingForm() {
   const [photoError, setPhotoError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/circles')
+    fetch('/api/onboarding-options')
       .then((r) => r.json())
       .then((d) => {
         setInterests(d.interests ?? []);
@@ -184,7 +183,6 @@ function OnboardingForm() {
           bio: p.bio ?? f.bio,
           intent: target,
           interestIds: (p.interests ?? []).map((i: { id: string }) => i.id),
-          circleIds: (p.circles ?? []).map((c: { circle: { id: string } }) => c.circle.id),
           familyPreviewOn: p.familyPreviewOn ?? f.familyPreviewOn,
           photoUrls: (p.photos ?? []).slice().sort((a: { position: number }, b: { position: number }) => a.position - b.position).map((ph: { url: string }) => ph.url),
           avatarHue: p.avatarHue ?? f.avatarHue,
@@ -348,8 +346,8 @@ function OnboardingForm() {
   // stale tribe/prompt/values pick from the old intent silently carries
   // over: it can count against the new intent's pick caps (blocking new
   // choices) and/or render as pre-checked even though the person never
-  // chose it under this intent. Basics/photos/interests/circles are
-  // intent-agnostic and are kept.
+  // chose it under this intent. Basics/photos/interests are intent-agnostic
+  // and are kept.
   function selectIntent(nextIntent: string) {
     setForm((f) => ({
       ...f,
@@ -420,9 +418,9 @@ function OnboardingForm() {
     setForm((f) => ({ ...f, photoUrls: f.photoUrls.filter((_, i) => i !== index) }));
   }
 
-  // Family Preview: a curated, read-only summary (name, age, city, intent,
-  // circles -- no bio, no Vybe Check answers, nothing from the swipe deck)
-  // that's shareable outside the app. It's the one piece of the matrimony
+  // Family Preview: a curated, read-only summary (name, age, city, intent --
+  // no bio, no Vybe Check answers, nothing from the swipe deck) that's
+  // shareable outside the app. It's the one piece of the matrimony
   // side of "dating/matrimony hybrid" that no swipe app has and no
   // matrimony site makes optional -- off by default, and only offered to
   // people who picked Rishta Ready.
@@ -537,7 +535,7 @@ function OnboardingForm() {
               )}
             </button>
           ))}
-          <p className="text-xs text-inkSoft">You can change this anytime — vibes shift.</p>
+          <p className="text-xs text-inkSoft">Your vibe can change. Switch your intent anytime.</p>
         </div>
       )}
 
@@ -991,8 +989,8 @@ function OnboardingForm() {
           <h1 className="font-display text-2xl font-extrabold">Family Preview</h1>
           <p className="text-sm text-inkSoft">
             An optional, read-only introduction card you can share outside VybeMatch — with family, say. Far less
-            than your real profile: just your name, age, city, intent, and circles. No bio, no Vybe Check answers,
-            nothing from the swipe deck. Off by default, and you can turn it off anytime from your profile.
+            than your real profile: just your name, age, city, and intent. No bio, no Vybe Check answers, nothing
+            from the swipe deck. Off by default, and you can turn it off anytime from your profile.
           </p>
 
           <div className="flex items-center justify-between rounded-2xl border border-line bg-white p-4">

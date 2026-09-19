@@ -11,7 +11,6 @@ interface Preview {
   intent: string;
   verification: string;
   photoUrl: string | null;
-  circles: string[];
 }
 
 // Public page behind a shared Family Preview link (see the Family Preview
@@ -79,15 +78,6 @@ export default function FamilyPreviewPage() {
         <div className="mt-4">
           <IntentBadge intent={preview.intent} />
         </div>
-        {preview.circles.length > 0 && (
-          <div className="mt-4 flex flex-wrap justify-center gap-2">
-            {preview.circles.map((name) => (
-              <span key={name} className="rounded-full border border-line px-3 py-1 text-xs text-inkSoft">
-                {name}
-              </span>
-            ))}
-          </div>
-        )}
       </div>
 
       <p className="text-center text-xs text-inkSoft">Shared via VybeMatch&apos;s optional Family Preview.</p>

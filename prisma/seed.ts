@@ -1,5 +1,5 @@
 /**
- * Seeds reference data (circles, interests, prompts, tribes, date vibes,
+ * Seeds reference data (interests, prompts, tribes, date vibes,
  * values, etc.) plus demo users so /discover has something real to show
  * right after setup.
  *
@@ -28,7 +28,6 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import crypto from 'node:crypto';
 import {
-  CIRCLES,
   INTERESTS,
   PROMPTS,
   CITIES,
@@ -64,7 +63,6 @@ interface SeedUser {
   intent: Intent;
   avatarHue: number;
   verification: Verification;
-  circles: string[]; // slugs
   interests: string[]; // labels (the short "What are you into?" set)
   tribes: { slug: string; subCommunities: string[] }[]; // Something Real / Rishta Ready only
   relationshipStyles: string[]; // Something Real only, exactly 3
@@ -101,7 +99,6 @@ const DEMO_USERS: SeedUser[] = [
     intent: 'SOMETHING_REAL',
     avatarHue: 1,
     verification: 'VERIFIED',
-    circles: ['mumbai-indie-music', 'pune-marathon-runners'],
     interests: ['Coffee', 'Nature', 'Music'],
     tribes: [
       { slug: 'coffee', subCommunities: ['Cafe hopping', 'Filter coffee purist'] },
@@ -125,7 +122,6 @@ const DEMO_USERS: SeedUser[] = [
     intent: 'SOMETHING_REAL',
     avatarHue: 2,
     verification: 'VERIFIED',
-    circles: ['bengaluru-startups', 'delhi-ncr-standup'],
     interests: ['Creativity', 'Geeky stuff', 'Concerts'],
     tribes: [
       { slug: 'tech', subCommunities: ['Startups & side hustles', 'AI/ML'] },
@@ -149,7 +145,6 @@ const DEMO_USERS: SeedUser[] = [
     intent: 'JUST_VIBING',
     avatarHue: 3,
     verification: 'VERIFIED',
-    circles: ['du-north-campus', 'diwali-foodies'],
     interests: ['Fashion', 'Foodie', 'Nightlife'],
     tribes: [],
     relationshipStyles: [],
@@ -172,7 +167,6 @@ const DEMO_USERS: SeedUser[] = [
     intent: 'RISHTA_READY',
     avatarHue: 4,
     verification: 'VERIFIED',
-    circles: ['bengaluru-startups'],
     interests: ['Books', 'Dogs', 'Foodie'],
     tribes: [
       { slug: 'booktok', subCommunities: ['Romance', 'Literary'] },
@@ -203,7 +197,6 @@ const DEMO_USERS: SeedUser[] = [
     intent: 'RISHTA_READY',
     avatarHue: 5,
     verification: 'VERIFIED',
-    circles: ['bengaluru-startups', 'ipl-fantasy-league'],
     interests: ['Geeky stuff', 'Nature', 'Gym'],
     tribes: [
       { slug: 'tech', subCommunities: ['Gadgets', 'AI/ML'] },
@@ -318,9 +311,6 @@ function generateBulkUsers(count: number, phoneStart: number): SeedUser[] {
     const primaryInterest = interests[0] ?? 'good vibes';
     const bio = pick(BIO_TEMPLATES, rng)(city, primaryInterest);
 
-    const cityCircles = CIRCLES.filter((c) => c.city === null || c.city === city);
-    const circles = pickMany(cityCircles, randomInt(0, Math.min(3, cityCircles.length), rng), rng).map((c) => c.slug);
-
     // Everything past this point branches hard by intent -- see
     // app/onboarding/page.tsx's per-intent step lists. Just Vibing never
     // sees Tribe/Relationship; Rishta Ready sees Tribe but swaps
@@ -401,7 +391,6 @@ function generateBulkUsers(count: number, phoneStart: number): SeedUser[] {
       intent,
       avatarHue: randomInt(1, 6, rng),
       verification,
-      circles,
       interests,
       tribes,
       relationshipStyles,
@@ -423,12 +412,9 @@ function generateBulkUsers(count: number, phoneStart: number): SeedUser[] {
 }
 
 async function main() {
-  console.log('Seeding circles, interests, prompts...');
-  for (const c of CIRCLES) {
-    await db.circle.upsert({ where: { slug: c.slug }, update: {}, create: c });
-  }
+  console.log('Seeding interests, prompts...');
   for (const i of INTERESTS) {
-    // Unlike the circle/prompt upserts, this one does update existing rows --
+    // Unlike the prompt upserts, this one does update existing rows --
     // interests get their emoji/tagline/intents tweaked more often, and
     // there's no "don't overwrite something a real session changed"
     // concern here the way there is for user photos.
@@ -501,16 +487,14 @@ async function main() {
 
   // Fetched once and looked up in memory from here on -- doing this per-user
   // was fine for 5 demo users, not for hundreds.
-  const [allInterests, allCircles, allPrompts, allTribes, allSubCommunities, allRelationshipStyles] = await Promise.all([
+  const [allInterests, allPrompts, allTribes, allSubCommunities, allRelationshipStyles] = await Promise.all([
     db.interest.findMany(),
-    db.circle.findMany(),
     db.prompt.findMany(),
     db.tribe.findMany(),
     db.subCommunity.findMany(),
     db.relationshipStyle.findMany(),
   ]);
   const interestByLabel = new Map(allInterests.map((i) => [i.label, i.id]));
-  const circleBySlug = new Map(allCircles.map((c) => [c.slug, c.id]));
   const promptByText = new Map(allPrompts.map((p) => [p.text, p.id]));
   const tribeBySlug = new Map(allTribes.map((t) => [t.slug, t.id]));
   // Sub-communities aren't globally unique by label (e.g. "Rock" could
@@ -546,7 +530,6 @@ async function main() {
     });
 
     const interestIds = u.interests.map((label) => interestByLabel.get(label)).filter((id): id is string => Boolean(id));
-    const circleIds = u.circles.map((slug) => circleBySlug.get(slug)).filter((id): id is string => Boolean(id));
     const promptRows = u.prompts
       .map((p) => ({ promptId: promptByText.get(p.text), answer: p.answer }))
       .filter((p): p is { promptId: string; answer: string } => Boolean(p.promptId));
@@ -581,7 +564,6 @@ async function main() {
         tribes: { connect: tribeIds.map((id) => ({ id })) },
         subCommunities: { connect: subCommunityIds.map((id) => ({ id })) },
         relationshipStyles: { connect: relationshipStyleIds.map((id) => ({ id })) },
-        circles: { create: circleIds.map((circleId) => ({ circleId })) },
         answers: { create: promptRows.map((p) => ({ promptId: p.promptId, answer: p.answer })) },
         photos: { create: u.photos.map((url, i) => ({ url, position: i })) },
         dateVibeTags: u.dateVibeTags ?? [],

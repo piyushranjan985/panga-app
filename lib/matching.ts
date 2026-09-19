@@ -18,7 +18,6 @@ export interface MatchableProfile {
   city: string;
   intent: IntentType;
   quietMode: boolean;
-  circleIds: string[];
   interestIds: string[];
   lastActiveAt: Date;
 }
@@ -43,7 +42,6 @@ export const INTENT_LABELS: Record<IntentType, string> = {
 };
 
 const WEIGHTS = {
-  sharedCircle: 18, // per shared circle, community context matters most
   sharedInterest: 7, // per shared interest
   sameCity: 12,
   intent: 40, // scaled by the 0..1 compatibility factor above
@@ -74,9 +72,10 @@ export function isEligibleCandidate(viewer: MatchableProfile, candidate: Matchab
   if (compatibility <= 0) return false;
 
   const sameCity = viewer.city === candidate.city;
-  const sharedCircles = sharedCount(viewer.circleIds, candidate.circleIds);
-  // Must share a city OR a circle — otherwise there's no real path to meet.
-  if (!sameCity && sharedCircles === 0) return false;
+  // Circles used to offer a second path to eligibility here (share a
+  // circle even across cities); now that they're gone, same city is the
+  // only "there's a real path to meet" signal left.
+  if (!sameCity) return false;
 
   return true;
 }
@@ -90,12 +89,6 @@ export interface ScoredCandidate {
 export function scoreCandidate(viewer: MatchableProfile, candidate: MatchableProfile, now: Date = new Date()): ScoredCandidate {
   const reasons: string[] = [];
   let score = 0;
-
-  const sharedCircles = sharedCount(viewer.circleIds, candidate.circleIds);
-  if (sharedCircles > 0) {
-    score += sharedCircles * WEIGHTS.sharedCircle;
-    reasons.push(`${sharedCircles} shared circle${sharedCircles > 1 ? 's' : ''}`);
-  }
 
   const sharedInterests = sharedCount(viewer.interestIds, candidate.interestIds);
   if (sharedInterests > 0) {

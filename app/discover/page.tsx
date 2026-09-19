@@ -39,7 +39,7 @@ export default function DiscoverPage() {
       <Navbar />
       <main className="mx-auto max-w-3xl px-4 py-6">
         <h1 className="mb-1 font-display text-2xl font-extrabold">Discover</h1>
-        <p className="mb-6 text-sm text-inkSoft">Ranked by shared circles, interests, city, and intent.</p>
+        <p className="mb-6 text-sm text-inkSoft">Ranked by shared interests, city, and intent.</p>
 
         {banner && (
           <div className="mb-4 rounded-2xl bg-mint/15 px-4 py-3 text-sm font-semibold text-mint">{banner}</div>
@@ -51,7 +51,7 @@ export default function DiscoverPage() {
           <div className="rounded-card border border-line bg-white p-8 text-center">
             <p className="font-display text-lg font-bold">No one here yet</p>
             <p className="mt-1 text-sm text-inkSoft">
-              Join more circles or widen your city in your profile — or seed the database with demo
+              Try widening your city in your profile — or seed the database with demo
               users via <code className="mono">npm run db:seed</code>.
             </p>
           </div>

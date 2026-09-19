@@ -106,7 +106,6 @@ model Profile {
   tribes              Tribe[]             @relation("ProfileTribes")
   subCommunities      SubCommunity[]      @relation("ProfileSubCommunities")
   relationshipStyles  RelationshipStyle[] @relation("ProfileRelationshipStyles")
-  circles   CircleMember[]
   answers   PromptAnswer[]
   photos    Photo[]
 
@@ -205,31 +204,6 @@ model RelationshipStyle {
   emoji      String    @default("")
   pairPhrase String    @default("")
   profiles   Profile[] @relation("ProfileRelationshipStyles")
-}
-
-model Circle {
-  id          String   @id @default(cuid())
-  slug        String   @unique
-  name        String
-  description String   @default("")
-  city        String? // null = not city-bound (e.g. a national interest circle)
-  category    String   @default("interest") // "college" | "city" | "interest" | "festival"
-
-  members CircleMember[]
-
-  createdAt DateTime @default(now())
-}
-
-model CircleMember {
-  id        String   @id @default(cuid())
-  profileId String
-  circleId  String
-  profile   Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  circle    Circle   @relation(fields: [circleId], references: [id], onDelete: Cascade)
-  joinedAt  DateTime @default(now())
-
-  @@unique([profileId, circleId])
-  @@index([circleId])
 }
 
 model Prompt {
