@@ -222,26 +222,79 @@ export async function PUT(req: Request) {
   return NextResponse.json({ ok: true, profile });
 }
 
+// Partial-update schema for everything editable straight from the profile
+// screen (see app/profile/page.tsx's per-section "Edit" buttons) --
+// simple toggles plus every relation/tag field upsertSchema above also
+// accepts, all optional so a save only ever touches the one section it
+// came from. Reuses the same enums as upsertSchema so a slug field can
+// never drift out of sync between onboarding and profile-page editing.
 const patchSchema = z.object({
   intent: intentEnum.optional(),
   quietMode: z.boolean().optional(),
   familyPreviewOn: z.boolean().optional(),
+  bio: z.string().trim().max(280).optional(),
+  interestIds: z.array(z.string()).max(8).optional(),
+  tribeIds: z.array(z.string()).max(5).optional(),
+  subCommunityIds: z.array(z.string()).optional(),
+  relationshipStyleIds: z.array(z.string()).max(3).optional(),
+  promptAnswers: z
+    .array(z.object({ promptId: z.string(), answer: z.string().trim().min(1).max(140) }))
+    .max(3)
+    .optional(),
+  dateVibeTags: z.array(dateVibeEnum).max(3).optional(),
+  tonightTags: z.array(tonightEnum).max(2).optional(),
+  livingPreference: livingPreferenceEnum.optional(),
+  valuesTags: z.array(valuesEnum).max(4).optional(),
+  futureHome: futureHomeEnum.optional(),
+  futureFamily: futureFamilyEnum.optional(),
+  futureCareer: futureCareerEnum.optional(),
+  futureMoney: futureMoneyEnum.optional(),
+  children: childrenEnum.optional(),
 });
 
-// Lightweight partial update for the toggles surfaced directly on the
-// profile screen (intent, quiet mode, family preview) without resubmitting
-// the whole onboarding payload.
+// Lightweight partial update for everything editable directly from the
+// profile screen -- the simple toggles (intent, quiet mode, family
+// preview) plus, since the "show the rest of the data + make it
+// editable" profile-page rework, one section's worth of relation/tag
+// fields at a time (e.g. just interestIds, or just promptAnswers).
+// Doesn't resubmit the whole onboarding payload, and unlike PUT doesn't
+// require every required-for-that-intent field to be present -- a
+// section can be saved on its own once it's already been set once via
+// onboarding. Returns the full profile (same include as GET) so the
+// profile page can just re-sync its local state from the response.
 export async function PATCH(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
   const json = await req.json().catch(() => null);
   const parsed = patchSchema.safeParse(json);
-  if (!parsed.success) return NextResponse.json({ error: 'Invalid update' }, { status: 400 });
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid update' }, { status: 400 });
+  }
+  const { interestIds, tribeIds, subCommunityIds, relationshipStyleIds, promptAnswers, ...scalarUpdates } = parsed.data;
 
   const profile = await db.profile.update({
     where: { userId: session.userId },
-    data: parsed.data,
+    data: {
+      ...scalarUpdates,
+      ...(interestIds !== undefined ? { interests: { set: interestIds.map((id) => ({ id })) } } : {}),
+      ...(tribeIds !== undefined ? { tribes: { set: tribeIds.map((id) => ({ id })) } } : {}),
+      ...(subCommunityIds !== undefined ? { subCommunities: { set: subCommunityIds.map((id) => ({ id })) } } : {}),
+      ...(relationshipStyleIds !== undefined
+        ? { relationshipStyles: { set: relationshipStyleIds.map((id) => ({ id })) } }
+        : {}),
+      ...(promptAnswers !== undefined
+        ? { answers: { deleteMany: {}, create: promptAnswers.map((pa) => ({ promptId: pa.promptId, answer: pa.answer })) } }
+        : {}),
+    },
+    include: {
+      interests: true,
+      tribes: true,
+      subCommunities: { include: { tribe: true } },
+      relationshipStyles: true,
+      answers: { include: { prompt: true } },
+      photos: { orderBy: { position: 'asc' } },
+    },
   });
 
   return NextResponse.json({ ok: true, profile });

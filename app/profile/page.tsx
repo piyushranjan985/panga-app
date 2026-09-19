@@ -32,7 +32,9 @@ interface ProfileData {
   photos: Photo[];
   interests: { id: string; label: string; emoji: string }[];
   tribes: { id: string; label: string; emoji: string; personaLabel: string }[];
+  subCommunities: { id: string; label: string; tribe: { id: string; label: string; emoji: string; personaLabel: string } }[];
   relationshipStyles: { id: string; label: string; emoji: string }[];
+  answers: { id: string; answer: string; prompt: { id: string; text: string; emoji: string; optionA: string; optionB: string } }[];
   // Intent-specific fields (see the per-intent steps in app/onboarding/page.tsx)
   // -- each is only ever populated for the intent that actually collects it,
   // so the sections below only render the ones relevant to profile.intent.
@@ -47,6 +49,24 @@ interface ProfileData {
   children: string | null;
 }
 
+// Reference catalogs (with real DB ids) for the inline "edit here" pickers
+// below -- the same data app/onboarding/page.tsx fetches from
+// /api/onboarding-options to render its pick-lists, reused here so editing
+// a section on the profile screen feels identical to picking it the first
+// time, without redoing the whole onboarding flow.
+interface CatalogItem { id: string; label: string; emoji: string; intents: string[] }
+interface CatalogTribe { id: string; slug: string; label: string; emoji: string; personaLabel: string; intents: string[] }
+interface CatalogSub { id: string; tribeId: string; label: string }
+interface CatalogRelationshipStyle { id: string; label: string; emoji: string }
+interface CatalogPrompt { id: string; text: string; emoji: string; optionA: string; optionB: string; intents: string[] }
+interface Catalog {
+  interests: CatalogItem[];
+  tribes: CatalogTribe[];
+  subCommunities: CatalogSub[];
+  relationshipStyles: CatalogRelationshipStyle[];
+  prompts: CatalogPrompt[];
+}
+
 const INTENTS = ['JUST_VIBING', 'SOMETHING_REAL', 'RISHTA_READY'] as const;
 const INTENT_EMOJI: Record<string, string> = {
   JUST_VIBING: '💫',
@@ -59,6 +79,7 @@ const INTENT_LABEL: Record<string, string> = {
   RISHTA_READY: 'Rishta Ready',
 };
 const MAX_PHOTOS = 5;
+const TRIBE_MAX = 4; // matches app/onboarding/page.tsx's tribeMax
 
 // slug -> {label, emoji} lookups for the intent-specific tag fields, which
 // store plain slugs on Profile (see prisma/schema.prisma), not relations --
@@ -80,13 +101,134 @@ function futureVibeAnswer(key: 'home' | 'family' | 'career' | 'money', slug: str
   return option ? { question: q.question, option } : null;
 }
 
+function toggleId(list: string[], id: string, max: number): string[] {
+  if (list.includes(id)) return list.filter((v) => v !== id);
+  if (list.length >= max) return list;
+  return [...list, id];
+}
+
+// A pick-list chip, used identically in read-only display and in edit
+// mode (just fed a different onClick) -- keeps every section's picker
+// looking and behaving the same way.
+function Chip({
+  label,
+  emoji,
+  selected,
+  disabled,
+  onClick,
+  tone = 'magenta',
+}: {
+  label: string;
+  emoji?: string;
+  selected: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  tone?: 'magenta' | 'mint';
+}) {
+  const active = tone === 'mint' ? 'border-mint bg-mint/10 text-mint' : 'border-magenta bg-magenta/10 text-magenta';
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${selected ? active : 'border-line'} ${
+        disabled ? 'opacity-40' : ''
+      }`}
+    >
+      {emoji ? `${emoji} ` : ''}
+      {label}
+    </button>
+  );
+}
+
+// Small pencil affordance that opens a section's edit mode -- shown next
+// to a section heading only once the edit catalog has loaded (so it never
+// opens onto empty pick-lists).
+function EditButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="rounded-full border border-line px-2.5 py-1 text-xs font-semibold text-inkSoft transition hover:border-magenta hover:text-magenta"
+    >
+      ✏️ Edit
+    </button>
+  );
+}
+
+// Shared Save/Cancel bar for every inline editor below.
+function EditActions({
+  onSave,
+  onCancel,
+  saving,
+  disabled,
+  hint,
+  error,
+}: {
+  onSave: () => void;
+  onCancel: () => void;
+  saving: boolean;
+  disabled?: boolean;
+  hint?: string;
+  error?: string | null;
+}) {
+  return (
+    <div className="mt-3 flex items-center justify-between gap-3">
+      <p className="text-xs">{error ? <span className="font-semibold text-magenta">{error}</span> : <span className="text-inkSoft">{hint}</span>}</p>
+      <div className="flex flex-none gap-2">
+        <button type="button" onClick={onCancel} className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-inkSoft">
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saving || disabled}
+          className="gradient-btn rounded-full px-4 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+type EditSection =
+  | 'bio'
+  | 'interests'
+  | 'tribes'
+  | 'relationship'
+  | 'datevibe'
+  | 'tonight'
+  | 'values'
+  | 'living'
+  | 'future'
+  | 'children'
+  | 'vybecheck';
+
 export default function ProfilePage() {
   const router = useRouter();
   const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
+
+  // Inline "edit here" state -- one section open at a time, so a handful
+  // of generic draft slots (reset whenever a section opens) is simpler
+  // than a form per field. See the section renderers below for how each
+  // one is used.
+  const [editing, setEditing] = useState<EditSection | null>(null);
+  const [savingSection, setSavingSection] = useState(false);
+  const [sectionError, setSectionError] = useState<string | null>(null);
+  const [draftBio, setDraftBio] = useState('');
+  const [draftIds, setDraftIds] = useState<string[]>([]); // interests / relationship / date vibe / tonight / values
+  const [draftTribeIds, setDraftTribeIds] = useState<string[]>([]);
+  const [draftSubIds, setDraftSubIds] = useState<string[]>([]);
+  const [draftSingle, setDraftSingle] = useState(''); // living preference / children
+  const [draftFuture, setDraftFuture] = useState({ home: '', family: '', career: '', money: '' });
+  const [draftPromptAnswers, setDraftPromptAnswers] = useState<{ promptId: string; answer: string }[]>([]);
 
   function load() {
     fetch('/api/profile')
@@ -94,7 +236,73 @@ export default function ProfilePage() {
       .then((d) => setProfile(d.profile));
   }
 
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+    // Same reference data onboarding uses -- fetched once up front so
+    // every "Edit" button below can open straight into a picker instead
+    // of showing a spinner.
+    fetch('/api/onboarding-options')
+      .then((r) => r.json())
+      .then((d) =>
+        setCatalog({
+          interests: d.interests ?? [],
+          tribes: d.tribes ?? [],
+          subCommunities: d.subCommunities ?? [],
+          relationshipStyles: d.relationshipStyles ?? [],
+          prompts: d.prompts ?? [],
+        })
+      );
+  }, []);
+
+  function closeEdit() {
+    setEditing(null);
+    setSectionError(null);
+  }
+
+  // Every section's Save button funnels through here -- PATCH now returns
+  // the full profile (same shape GET returns, see app/api/profile/route.ts)
+  // so the whole page just re-syncs from the response instead of hand-
+  // merging each field's shape back into local state.
+  async function saveSection(payload: Record<string, unknown>) {
+    setSavingSection(true);
+    setSectionError(null);
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Could not save');
+      setProfile(data.profile);
+      setEditing(null);
+    } catch (err) {
+      setSectionError(err instanceof Error ? err.message : 'Could not save');
+    } finally {
+      setSavingSection(false);
+    }
+  }
+
+  function toggleDraftTribe(tribeId: string) {
+    setDraftTribeIds((prev) => {
+      if (prev.includes(tribeId)) {
+        setDraftSubIds((subs) => subs.filter((id) => catalog?.subCommunities.find((s) => s.id === id)?.tribeId !== tribeId));
+        return prev.filter((id) => id !== tribeId);
+      }
+      if (prev.length >= TRIBE_MAX) return prev;
+      return [...prev, tribeId];
+    });
+  }
+
+  function toggleDraftSub(subId: string, tribeId: string) {
+    setDraftSubIds((prev) => {
+      if (prev.includes(subId)) return prev.filter((id) => id !== subId);
+      const subsForTribe = catalog?.subCommunities.filter((s) => s.tribeId === tribeId) ?? [];
+      const pickedForTribe = prev.filter((id) => subsForTribe.some((s) => s.id === id)).length;
+      if (pickedForTribe >= 3) return prev;
+      return [...prev, subId];
+    });
+  }
 
   async function patch(update: Partial<Pick<ProfileData, 'quietMode' | 'familyPreviewOn'>>) {
     setProfile((p) => (p ? { ...p, ...update } : p));
@@ -160,6 +368,7 @@ export default function ProfilePage() {
   }
 
   const primaryPhoto = profile.photos[0]?.url;
+  const vybeMax = profile.intent === 'RISHTA_READY' ? 3 : 2;
   const futureVibeAnswers = [
     futureVibeAnswer('home', profile.futureHome),
     futureVibeAnswer('family', profile.futureFamily),
@@ -168,6 +377,11 @@ export default function ProfilePage() {
   ].filter((a): a is { question: string; option: { slug: string; label: string; emoji: string } } => Boolean(a));
   const livingPreference = profile.livingPreference ? LIVING_PREFERENCE_BY_SLUG.get(profile.livingPreference) : null;
   const childrenPreference = profile.children ? CHILDREN_BY_SLUG.get(profile.children) : null;
+  const tribesIncomplete =
+    draftTribeIds.length === 0 ||
+    draftTribeIds.some(
+      (tribeId) => !draftSubIds.some((id) => catalog?.subCommunities.find((s) => s.id === id)?.tribeId === tribeId)
+    );
 
   return (
     <div className="min-h-screen pb-24 sm:pb-10">
@@ -188,7 +402,38 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {profile.bio && <p className="mt-4 text-sm text-inkSoft">{profile.bio}</p>}
+        <section className="mt-4">
+          {editing === 'bio' ? (
+            <div>
+              <textarea
+                value={draftBio}
+                onChange={(e) => setDraftBio(e.target.value.slice(0, 280))}
+                rows={3}
+                placeholder="Tell people your vibe..."
+                className="w-full rounded-2xl border border-line bg-white p-3 text-sm outline-none focus:border-magenta"
+              />
+              <EditActions
+                onSave={() => saveSection({ bio: draftBio.trim() })}
+                onCancel={closeEdit}
+                saving={savingSection}
+                hint={`${draftBio.length}/280`}
+                error={sectionError}
+              />
+            </div>
+          ) : (
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-sm text-inkSoft">{profile.bio || 'No bio yet — tell people your vibe.'}</p>
+              <EditButton
+                label="Edit bio"
+                onClick={() => {
+                  setDraftBio(profile.bio);
+                  setSectionError(null);
+                  setEditing('bio');
+                }}
+              />
+            </div>
+          )}
+        </section>
 
         <section className="mt-8">
           <h2 className="mb-2 font-display text-lg font-bold">Photos</h2>
@@ -229,10 +474,6 @@ export default function ProfilePage() {
         <section className="mt-8">
           <h2 className="mb-2 font-display text-lg font-bold">Intent</h2>
           <p className="mb-3 text-xs text-inkSoft">Your vibe can change. Switch your intent anytime.</p>
-          {/* The current intent gets its own large, unmistakable card instead
-              of just being one row among three -- "immediately understandable"
-              means not having to compare opacity/borders across three equal
-              options to figure out which one is active. */}
           <div className="flex items-center gap-3 rounded-2xl border-2 border-magenta bg-magenta/5 px-4 py-4">
             <span className="text-3xl leading-none" aria-hidden>
               {INTENT_EMOJI[profile.intent]}
@@ -331,27 +572,379 @@ export default function ProfilePage() {
         </section>
 
         <section className="mt-6">
-          <h2 className="mb-2 font-display text-lg font-bold">What I&apos;m into</h2>
-          <div className="flex flex-wrap gap-2">
-            {profile.interests.map((i) => (
-              <span key={i.id} className="rounded-full border border-line px-3 py-1 text-sm">
-                {i.emoji} {i.label}
-              </span>
-            ))}
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="font-display text-lg font-bold">What I&apos;m into</h2>
+            {editing !== 'interests' && catalog && (
+              <EditButton
+                label="Edit interests"
+                onClick={() => {
+                  setDraftIds(profile.interests.map((i) => i.id));
+                  setSectionError(null);
+                  setEditing('interests');
+                }}
+              />
+            )}
           </div>
+          {editing === 'interests' && catalog ? (
+            <div>
+              <div className="flex flex-wrap gap-2">
+                {catalog.interests
+                  .filter((i) => i.intents.length === 0 || i.intents.includes(profile.intent))
+                  .map((i) => {
+                    const selected = draftIds.includes(i.id);
+                    const disabled = !selected && draftIds.length >= 8;
+                    return (
+                      <Chip
+                        key={i.id}
+                        label={i.label}
+                        emoji={i.emoji}
+                        selected={selected}
+                        disabled={disabled}
+                        onClick={() => setDraftIds((prev) => toggleId(prev, i.id, 8))}
+                      />
+                    );
+                  })}
+              </div>
+              <EditActions
+                onSave={() => saveSection({ interestIds: draftIds })}
+                onCancel={closeEdit}
+                saving={savingSection}
+                disabled={draftIds.length < 5}
+                hint={`${draftIds.length} of 8 picked${draftIds.length < 5 ? ' — pick at least 5' : ''}`}
+                error={sectionError}
+              />
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {profile.interests.map((i) => (
+                <span key={i.id} className="rounded-full border border-line px-3 py-1 text-sm">
+                  {i.emoji} {i.label}
+                </span>
+              ))}
+            </div>
+          )}
         </section>
 
-        {/* Everything below is intent-specific -- see the per-intent steps in
-            app/onboarding/page.tsx. Just Vibing never collects Tribe/
-            Relationship data; Rishta Ready swaps Relationship for Values/
-            Future Vibe/Children -- so this profile only ever shows the
-            sections that match the intent someone is currently on. */}
+        <section className="mt-6">
+          <div className="mb-1 flex items-center justify-between">
+            <h2 className="font-display text-lg font-bold">Vybe Check</h2>
+            {editing !== 'vybecheck' && catalog && (
+              <EditButton
+                label="Edit Vybe Check"
+                onClick={() => {
+                  setDraftPromptAnswers(profile.answers.map((a) => ({ promptId: a.prompt.id, answer: a.answer })));
+                  setSectionError(null);
+                  setEditing('vybecheck');
+                }}
+              />
+            )}
+          </div>
+          <p className="mb-2 text-xs text-inkSoft">The prompts people unlock about you on the feed.</p>
+          {editing === 'vybecheck' && catalog ? (
+            <div className="flex flex-col gap-3">
+              <p className="text-xs text-inkSoft">Pick {vybeMax === 3 ? '2 to 3' : '2'} prompts, then pick a side on each.</p>
+              <div className="flex flex-wrap gap-2">
+                {catalog.prompts
+                  .filter((p) => p.intents.length === 0 || p.intents.includes(profile.intent))
+                  .map((p) => {
+                    const selected = draftPromptAnswers.some((pa) => pa.promptId === p.id);
+                    const disabled = !selected && draftPromptAnswers.length >= vybeMax;
+                    return (
+                      <Chip
+                        key={p.id}
+                        label={p.text}
+                        emoji={p.emoji}
+                        selected={selected}
+                        disabled={disabled}
+                        onClick={() =>
+                          setDraftPromptAnswers((prev) =>
+                            prev.some((pa) => pa.promptId === p.id)
+                              ? prev.filter((pa) => pa.promptId !== p.id)
+                              : prev.length >= vybeMax
+                                ? prev
+                                : [...prev, { promptId: p.id, answer: '' }]
+                          )
+                        }
+                      />
+                    );
+                  })}
+              </div>
+              {draftPromptAnswers.length > 0 && (
+                <div className="flex flex-col gap-3">
+                  {draftPromptAnswers.map((pa) => {
+                    const prompt = catalog.prompts.find((p) => p.id === pa.promptId);
+                    if (!prompt) return null;
+                    return (
+                      <div key={pa.promptId} className="flex flex-col gap-1.5 rounded-2xl border border-line bg-white p-3">
+                        <p className="text-xs font-semibold text-inkSoft">
+                          {prompt.emoji} {prompt.text}
+                        </p>
+                        <div className="flex gap-2">
+                          {[prompt.optionA, prompt.optionB].map((option) => (
+                            <button
+                              key={option}
+                              type="button"
+                              onClick={() =>
+                                setDraftPromptAnswers((prev) =>
+                                  prev.map((x) => (x.promptId === pa.promptId ? { ...x, answer: option } : x))
+                                )
+                              }
+                              className={`flex-1 rounded-xl border px-3 py-2 text-sm font-semibold ${
+                                pa.answer === option ? 'border-magenta bg-magenta/10 text-magenta' : 'border-line'
+                              }`}
+                            >
+                              {option}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <EditActions
+                onSave={() => saveSection({ promptAnswers: draftPromptAnswers })}
+                onCancel={closeEdit}
+                saving={savingSection}
+                disabled={draftPromptAnswers.length < 2 || draftPromptAnswers.some((pa) => !pa.answer)}
+                hint={`${draftPromptAnswers.length} of ${vybeMax} picked`}
+                error={sectionError}
+              />
+            </div>
+          ) : profile.answers.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {profile.answers.map((a) => (
+                <div key={a.id} className="rounded-2xl border border-line bg-white p-3">
+                  <p className="text-xs font-semibold text-inkSoft">
+                    {a.prompt.emoji} {a.prompt.text}
+                  </p>
+                  <div className="mt-1.5 flex gap-2">
+                    {[a.prompt.optionA, a.prompt.optionB].map((option) => (
+                      <span
+                        key={option}
+                        className={`flex-1 rounded-xl border px-3 py-1.5 text-center text-sm font-semibold ${
+                          option === a.answer ? 'border-magenta bg-magenta/10 text-magenta' : 'border-line text-inkSoft/50'
+                        }`}
+                      >
+                        {option}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-inkSoft">No Vybe Check answers yet.</p>
+          )}
+        </section>
+
+        {(profile.intent === 'SOMETHING_REAL' || profile.intent === 'RISHTA_READY') && (
+          <section className="mt-6">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="font-display text-lg font-bold">Your tribes</h2>
+              {editing !== 'tribes' && catalog && (
+                <EditButton
+                  label="Edit tribes"
+                  onClick={() => {
+                    setDraftTribeIds(profile.tribes.map((t) => t.id));
+                    setDraftSubIds(profile.subCommunities.map((s) => s.id));
+                    setSectionError(null);
+                    setEditing('tribes');
+                  }}
+                />
+              )}
+            </div>
+            {editing === 'tribes' && catalog ? (
+              <div className="flex flex-col gap-3">
+                <p className="text-xs text-inkSoft">
+                  Pick up to {TRIBE_MAX} tribes, then 1 to 3 specific communities under each.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {catalog.tribes
+                    .filter((t) => t.intents.length === 0 || t.intents.includes(profile.intent))
+                    .map((t) => {
+                      const selected = draftTribeIds.includes(t.id);
+                      const disabled = !selected && draftTribeIds.length >= TRIBE_MAX;
+                      return (
+                        <Chip
+                          key={t.id}
+                          label={t.label}
+                          emoji={t.emoji}
+                          selected={selected}
+                          disabled={disabled}
+                          onClick={() => toggleDraftTribe(t.id)}
+                        />
+                      );
+                    })}
+                </div>
+                {draftTribeIds.map((tribeId) => {
+                  const tribe = catalog.tribes.find((t) => t.id === tribeId);
+                  if (!tribe) return null;
+                  const subsForTribe = catalog.subCommunities.filter((s) => s.tribeId === tribeId);
+                  const pickedForTribe = draftSubIds.filter((id) => subsForTribe.some((s) => s.id === id)).length;
+                  return (
+                    <div key={tribeId} className="flex flex-col gap-2 rounded-2xl border border-line bg-white p-3">
+                      <p className="text-sm font-semibold">
+                        {tribe.emoji} {tribe.label} — pick 1 to 3
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {subsForTribe.map((s) => {
+                          const selected = draftSubIds.includes(s.id);
+                          const disabled = !selected && pickedForTribe >= 3;
+                          return (
+                            <Chip
+                              key={s.id}
+                              label={s.label}
+                              selected={selected}
+                              disabled={disabled}
+                              tone="mint"
+                              onClick={() => toggleDraftSub(s.id, tribeId)}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+                <EditActions
+                  onSave={() => saveSection({ tribeIds: draftTribeIds, subCommunityIds: draftSubIds })}
+                  onCancel={closeEdit}
+                  saving={savingSection}
+                  disabled={tribesIncomplete}
+                  hint={
+                    draftTribeIds.length === 0
+                      ? 'Pick at least 1 tribe'
+                      : tribesIncomplete
+                        ? 'Pick at least 1 community for each tribe'
+                        : `${draftTribeIds.length} of ${TRIBE_MAX} tribes picked`
+                  }
+                  error={sectionError}
+                />
+              </div>
+            ) : profile.tribes.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                {profile.tribes.map((t) => {
+                  const subs = profile.subCommunities.filter((s) => s.tribe.id === t.id);
+                  return (
+                    <div key={t.id} className="flex flex-wrap items-center gap-1.5">
+                      <span className="rounded-full border border-line px-3 py-1 text-sm font-semibold">
+                        {t.emoji} {t.personaLabel || t.label}
+                      </span>
+                      {subs.map((s) => (
+                        <span key={s.id} className="rounded-full border border-mint/40 bg-mint/10 px-2.5 py-1 text-xs font-semibold text-mint">
+                          {s.label}
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-inkSoft">No tribes picked yet.</p>
+            )}
+          </section>
+        )}
+
+        {profile.intent === 'SOMETHING_REAL' && (
+          <section className="mt-6">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="font-display text-lg font-bold">My ideal relationship is&hellip;</h2>
+              {editing !== 'relationship' && catalog && (
+                <EditButton
+                  label="Edit relationship vibe"
+                  onClick={() => {
+                    setDraftIds(profile.relationshipStyles.map((r) => r.id));
+                    setSectionError(null);
+                    setEditing('relationship');
+                  }}
+                />
+              )}
+            </div>
+            {editing === 'relationship' && catalog ? (
+              <div>
+                <div className="flex flex-wrap gap-2">
+                  {catalog.relationshipStyles.map((r) => {
+                    const selected = draftIds.includes(r.id);
+                    const disabled = !selected && draftIds.length >= 3;
+                    return (
+                      <Chip
+                        key={r.id}
+                        label={r.label}
+                        emoji={r.emoji}
+                        selected={selected}
+                        disabled={disabled}
+                        onClick={() => setDraftIds((prev) => toggleId(prev, r.id, 3))}
+                      />
+                    );
+                  })}
+                </div>
+                <EditActions
+                  onSave={() => saveSection({ relationshipStyleIds: draftIds })}
+                  onCancel={closeEdit}
+                  saving={savingSection}
+                  disabled={draftIds.length !== 3}
+                  hint={`${draftIds.length} of 3 picked`}
+                  error={sectionError}
+                />
+              </div>
+            ) : profile.relationshipStyles.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {profile.relationshipStyles.map((r) => (
+                  <span key={r.id} className="rounded-full border border-line px-3 py-1 text-sm">
+                    {r.emoji} {r.label}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-inkSoft">Not picked yet.</p>
+            )}
+          </section>
+        )}
 
         {profile.intent === 'JUST_VIBING' && (
           <>
-            {profile.dateVibeTags.length > 0 && (
-              <section className="mt-6">
-                <h2 className="mb-2 font-display text-lg font-bold">My kind of date</h2>
+            <section className="mt-6">
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="font-display text-lg font-bold">My kind of date</h2>
+                {editing !== 'datevibe' && (
+                  <EditButton
+                    label="Edit date vibe"
+                    onClick={() => {
+                      setDraftIds(profile.dateVibeTags);
+                      setSectionError(null);
+                      setEditing('datevibe');
+                    }}
+                  />
+                )}
+              </div>
+              {editing === 'datevibe' ? (
+                <div>
+                  <div className="flex flex-wrap gap-2">
+                    {DATE_VIBES.map((d) => {
+                      const selected = draftIds.includes(d.slug);
+                      const disabled = !selected && draftIds.length >= 3;
+                      return (
+                        <Chip
+                          key={d.slug}
+                          label={d.label}
+                          emoji={d.emoji}
+                          selected={selected}
+                          disabled={disabled}
+                          onClick={() => setDraftIds((prev) => toggleId(prev, d.slug, 3))}
+                        />
+                      );
+                    })}
+                  </div>
+                  <EditActions
+                    onSave={() => saveSection({ dateVibeTags: draftIds })}
+                    onCancel={closeEdit}
+                    saving={savingSection}
+                    disabled={draftIds.length !== 3}
+                    hint={`${draftIds.length} of 3 picked`}
+                    error={sectionError}
+                  />
+                </div>
+              ) : profile.dateVibeTags.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {profile.dateVibeTags.map((slug) => {
                     const option = DATE_VIBE_BY_SLUG.get(slug);
@@ -362,11 +955,52 @@ export default function ProfilePage() {
                     );
                   })}
                 </div>
-              </section>
-            )}
-            {profile.tonightTags.length > 0 && (
-              <section className="mt-6">
-                <h2 className="mb-2 font-display text-lg font-bold">Looking for tonight</h2>
+              ) : (
+                <p className="text-sm text-inkSoft">Not picked yet.</p>
+              )}
+            </section>
+
+            <section className="mt-6">
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="font-display text-lg font-bold">Looking for tonight</h2>
+                {editing !== 'tonight' && (
+                  <EditButton
+                    label="Edit tonight"
+                    onClick={() => {
+                      setDraftIds(profile.tonightTags);
+                      setSectionError(null);
+                      setEditing('tonight');
+                    }}
+                  />
+                )}
+              </div>
+              {editing === 'tonight' ? (
+                <div>
+                  <div className="flex flex-wrap gap-2">
+                    {TONIGHT_OPTIONS.map((t) => {
+                      const selected = draftIds.includes(t.slug);
+                      const disabled = !selected && draftIds.length >= 2;
+                      return (
+                        <Chip
+                          key={t.slug}
+                          label={t.label}
+                          emoji={t.emoji}
+                          selected={selected}
+                          disabled={disabled}
+                          onClick={() => setDraftIds((prev) => toggleId(prev, t.slug, 2))}
+                        />
+                      );
+                    })}
+                  </div>
+                  <EditActions
+                    onSave={() => saveSection({ tonightTags: draftIds })}
+                    onCancel={closeEdit}
+                    saving={savingSection}
+                    hint={`${draftIds.length} of 2 picked (optional)`}
+                    error={sectionError}
+                  />
+                </div>
+              ) : profile.tonightTags.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {profile.tonightTags.map((slug) => {
                     const option = TONIGHT_BY_SLUG.get(slug);
@@ -377,42 +1011,57 @@ export default function ProfilePage() {
                     );
                   })}
                 </div>
-              </section>
-            )}
+              ) : (
+                <p className="text-sm text-inkSoft">Not picked yet.</p>
+              )}
+            </section>
           </>
-        )}
-
-        {(profile.intent === 'SOMETHING_REAL' || profile.intent === 'RISHTA_READY') && profile.tribes.length > 0 && (
-          <section className="mt-6">
-            <h2 className="mb-2 font-display text-lg font-bold">Your tribes</h2>
-            <div className="flex flex-wrap gap-2">
-              {profile.tribes.map((t) => (
-                <span key={t.id} className="rounded-full border border-line px-3 py-1 text-sm">
-                  {t.emoji} {t.personaLabel || t.label}
-                </span>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {profile.intent === 'SOMETHING_REAL' && profile.relationshipStyles.length > 0 && (
-          <section className="mt-6">
-            <h2 className="mb-2 font-display text-lg font-bold">My ideal relationship is&hellip;</h2>
-            <div className="flex flex-wrap gap-2">
-              {profile.relationshipStyles.map((r) => (
-                <span key={r.id} className="rounded-full border border-line px-3 py-1 text-sm">
-                  {r.emoji} {r.label}
-                </span>
-              ))}
-            </div>
-          </section>
         )}
 
         {profile.intent === 'RISHTA_READY' && (
           <>
-            {profile.valuesTags.length > 0 && (
-              <section className="mt-6">
-                <h2 className="mb-2 font-display text-lg font-bold">What matters most</h2>
+            <section className="mt-6">
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="font-display text-lg font-bold">What matters most</h2>
+                {editing !== 'values' && (
+                  <EditButton
+                    label="Edit values"
+                    onClick={() => {
+                      setDraftIds(profile.valuesTags);
+                      setSectionError(null);
+                      setEditing('values');
+                    }}
+                  />
+                )}
+              </div>
+              {editing === 'values' ? (
+                <div>
+                  <div className="flex flex-wrap gap-2">
+                    {VALUES_OPTIONS.map((v) => {
+                      const selected = draftIds.includes(v.slug);
+                      const disabled = !selected && draftIds.length >= 4;
+                      return (
+                        <Chip
+                          key={v.slug}
+                          label={v.label}
+                          emoji={v.emoji}
+                          selected={selected}
+                          disabled={disabled}
+                          onClick={() => setDraftIds((prev) => toggleId(prev, v.slug, 4))}
+                        />
+                      );
+                    })}
+                  </div>
+                  <EditActions
+                    onSave={() => saveSection({ valuesTags: draftIds })}
+                    onCancel={closeEdit}
+                    saving={savingSection}
+                    disabled={draftIds.length !== 4}
+                    hint={`${draftIds.length} of 4 picked`}
+                    error={sectionError}
+                  />
+                </div>
+              ) : profile.valuesTags.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {profile.valuesTags.map((slug) => {
                     const option = VALUES_BY_SLUG.get(slug);
@@ -423,19 +1072,115 @@ export default function ProfilePage() {
                     );
                   })}
                 </div>
-              </section>
-            )}
-            {livingPreference && (
-              <section className="mt-6">
-                <h2 className="mb-2 font-display text-lg font-bold">Where I see myself living</h2>
+              ) : (
+                <p className="text-sm text-inkSoft">Not picked yet.</p>
+              )}
+            </section>
+
+            <section className="mt-6">
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="font-display text-lg font-bold">Where I see myself living</h2>
+                {editing !== 'living' && (
+                  <EditButton
+                    label="Edit living preference"
+                    onClick={() => {
+                      setDraftSingle(profile.livingPreference ?? '');
+                      setSectionError(null);
+                      setEditing('living');
+                    }}
+                  />
+                )}
+              </div>
+              {editing === 'living' ? (
+                <div>
+                  <div className="flex flex-wrap gap-2">
+                    {LIVING_PREFERENCES.map((l) => (
+                      <Chip
+                        key={l.slug}
+                        label={l.label}
+                        emoji={l.emoji}
+                        selected={draftSingle === l.slug}
+                        onClick={() => setDraftSingle(l.slug)}
+                      />
+                    ))}
+                  </div>
+                  <EditActions
+                    onSave={() => saveSection({ livingPreference: draftSingle })}
+                    onCancel={closeEdit}
+                    saving={savingSection}
+                    disabled={!draftSingle}
+                    error={sectionError}
+                  />
+                </div>
+              ) : livingPreference ? (
                 <span className="rounded-full border border-line px-3 py-1 text-sm">
                   {livingPreference.emoji} {livingPreference.label}
                 </span>
-              </section>
-            )}
-            {futureVibeAnswers.length > 0 && (
-              <section className="mt-6">
-                <h2 className="mb-2 font-display text-lg font-bold">Future vibe</h2>
+              ) : (
+                <p className="text-sm text-inkSoft">Not picked yet.</p>
+              )}
+            </section>
+
+            <section className="mt-6">
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="font-display text-lg font-bold">Future vibe</h2>
+                {editing !== 'future' && (
+                  <EditButton
+                    label="Edit future vibe"
+                    onClick={() => {
+                      setDraftFuture({
+                        home: profile.futureHome ?? '',
+                        family: profile.futureFamily ?? '',
+                        career: profile.futureCareer ?? '',
+                        money: profile.futureMoney ?? '',
+                      });
+                      setSectionError(null);
+                      setEditing('future');
+                    }}
+                  />
+                )}
+              </div>
+              {editing === 'future' ? (
+                <div className="flex flex-col gap-3">
+                  {FUTURE_VIBE_QUESTIONS.map((q) => {
+                    const key = q.key as 'home' | 'family' | 'career' | 'money';
+                    const value = draftFuture[key];
+                    return (
+                      <div key={q.key} className="flex flex-col gap-2 rounded-2xl border border-line bg-white p-3">
+                        <p className="text-sm font-semibold">{q.question}</p>
+                        <div className="flex gap-2">
+                          {[q.optionA, q.optionB].map((option) => (
+                            <button
+                              key={option.slug}
+                              type="button"
+                              onClick={() => setDraftFuture((f) => ({ ...f, [key]: option.slug }))}
+                              className={`flex-1 rounded-xl border px-3 py-2 text-sm font-semibold ${
+                                value === option.slug ? 'border-magenta bg-magenta/10 text-magenta' : 'border-line'
+                              }`}
+                            >
+                              {option.emoji} {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <EditActions
+                    onSave={() =>
+                      saveSection({
+                        futureHome: draftFuture.home,
+                        futureFamily: draftFuture.family,
+                        futureCareer: draftFuture.career,
+                        futureMoney: draftFuture.money,
+                      })
+                    }
+                    onCancel={closeEdit}
+                    saving={savingSection}
+                    disabled={!draftFuture.home || !draftFuture.family || !draftFuture.career || !draftFuture.money}
+                    error={sectionError}
+                  />
+                </div>
+              ) : futureVibeAnswers.length > 0 ? (
                 <div className="flex flex-col gap-2">
                   {futureVibeAnswers.map(({ question, option }) => (
                     <div key={question} className="flex items-center justify-between gap-3 rounded-xl border border-line px-3 py-2 text-sm">
@@ -446,16 +1191,54 @@ export default function ProfilePage() {
                     </div>
                   ))}
                 </div>
-              </section>
-            )}
-            {childrenPreference && (
-              <section className="mt-6">
-                <h2 className="mb-2 font-display text-lg font-bold">On children</h2>
+              ) : (
+                <p className="text-sm text-inkSoft">Not picked yet.</p>
+              )}
+            </section>
+
+            <section className="mt-6">
+              <div className="mb-2 flex items-center justify-between">
+                <h2 className="font-display text-lg font-bold">On children</h2>
+                {editing !== 'children' && (
+                  <EditButton
+                    label="Edit children preference"
+                    onClick={() => {
+                      setDraftSingle(profile.children ?? '');
+                      setSectionError(null);
+                      setEditing('children');
+                    }}
+                  />
+                )}
+              </div>
+              {editing === 'children' ? (
+                <div>
+                  <div className="flex flex-wrap gap-2">
+                    {CHILDREN_OPTIONS.map((c) => (
+                      <Chip
+                        key={c.slug}
+                        label={c.label}
+                        emoji={c.emoji}
+                        selected={draftSingle === c.slug}
+                        onClick={() => setDraftSingle(c.slug)}
+                      />
+                    ))}
+                  </div>
+                  <EditActions
+                    onSave={() => saveSection({ children: draftSingle })}
+                    onCancel={closeEdit}
+                    saving={savingSection}
+                    disabled={!draftSingle}
+                    error={sectionError}
+                  />
+                </div>
+              ) : childrenPreference ? (
                 <span className="rounded-full border border-line px-3 py-1 text-sm">
                   {childrenPreference.emoji} {childrenPreference.label}
                 </span>
-              </section>
-            )}
+              ) : (
+                <p className="text-sm text-inkSoft">Not picked yet.</p>
+              )}
+            </section>
           </>
         )}
       </main>
