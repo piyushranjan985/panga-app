@@ -9,7 +9,13 @@ export async function GET() {
   const matches = await db.match.findMany({
     where: {
       unmatchedAt: null,
-      OR: [{ userAId: session.userId }, { userBId: session.userId }],
+      OR: [
+        // "Hide conversation" (see the chat screen's ... menu) is
+        // per-side, not a real unmatch -- excluded here rather than at
+        // the schema level so the other person's list is unaffected.
+        { userAId: session.userId, hiddenAAt: null },
+        { userBId: session.userId, hiddenBAt: null },
+      ],
     },
     include: {
       userA: { include: { profile: true } },

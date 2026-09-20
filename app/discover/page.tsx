@@ -3,11 +3,19 @@
 import { useEffect, useState } from 'react';
 import Navbar from '@/components/Navbar';
 import VibeCard, { type FeedProfile } from '@/components/VibeCard';
+import MatchModal from '@/components/MatchModal';
+
+interface MatchInfo {
+  matchId: string;
+  name: string;
+  avatarSeed: string;
+  avatarHue: number;
+}
 
 export default function DiscoverPage() {
   const [feed, setFeed] = useState<FeedProfile[] | null>(null);
   const [index, setIndex] = useState(0);
-  const [banner, setBanner] = useState<string | null>(null);
+  const [match, setMatch] = useState<MatchInfo | null>(null);
 
   useEffect(() => {
     fetch('/api/discover')
@@ -26,9 +34,12 @@ export default function DiscoverPage() {
       body: JSON.stringify({ toUserId: current.userId, action }),
     });
     const data = await res.json();
-    if (data.matched) {
-      setBanner(`It's a match! You and ${current.displayName} both said yes.`);
-      setTimeout(() => setBanner(null), 4000);
+    // The full "IT'S A VYBE!" screen (components/MatchModal.tsx) replaces
+    // what used to be a small dismissible banner here -- see the match
+    // modal for the 3-action post-match design (Start chatting / Send a
+    // Vybe / Say hi).
+    if (data.matched && data.matchId) {
+      setMatch({ matchId: data.matchId, name: current.displayName, avatarSeed: current.avatarSeed, avatarHue: current.avatarHue });
     }
   }
 
@@ -41,8 +52,14 @@ export default function DiscoverPage() {
         <h1 className="mb-1 font-display text-2xl font-extrabold">Discover</h1>
         <p className="mb-6 text-sm text-inkSoft">Ranked by shared interests, city, and intent.</p>
 
-        {banner && (
-          <div className="mb-4 rounded-2xl bg-mint/15 px-4 py-3 text-sm font-semibold text-mint">{banner}</div>
+        {match && (
+          <MatchModal
+            matchId={match.matchId}
+            otherName={match.name}
+            otherAvatarSeed={match.avatarSeed}
+            otherAvatarHue={match.avatarHue}
+            onClose={() => setMatch(null)}
+          />
         )}
 
         {feed === null && <p className="text-sm text-inkSoft">Loading your feed...</p>}

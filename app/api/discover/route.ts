@@ -45,8 +45,10 @@ export async function GET() {
     return NextResponse.json({ error: 'Finish onboarding first' }, { status: 409 });
   }
 
-  const [alreadySwiped, candidatePool] = await Promise.all([
+  const [alreadySwiped, blockedByMe, blockedMe, candidatePool] = await Promise.all([
     db.swipe.findMany({ where: { fromUserId: session.userId }, select: { toUserId: true } }),
+    db.block.findMany({ where: { blockerId: session.userId }, select: { blockedId: true } }),
+    db.block.findMany({ where: { blockedId: session.userId }, select: { blockerId: true } }),
     // MVP-scale candidate pool: everyone else with a profile. At real scale
     // this becomes a geo-indexed query — pulling "everyone" is fine below a
     // few thousand users, not beyond it.
@@ -62,7 +64,14 @@ export async function GET() {
     }),
   ]);
 
-  const excluded = new Set(alreadySwiped.map((s) => s.toUserId));
+  // Blocking (see app/api/matches/[matchId]/block/route.ts) excludes both
+  // directions from discovery from then on, same as an already-swiped-on
+  // profile -- one combined exclusion set.
+  const excluded = new Set([
+    ...alreadySwiped.map((s) => s.toUserId),
+    ...blockedByMe.map((b) => b.blockedId),
+    ...blockedMe.map((b) => b.blockerId),
+  ]);
   const viewer = toMatchable({ ...viewerProfile, userId: viewerProfile.userId });
   const candidates = candidatePool.map((c) => toMatchable({ ...c, userId: c.userId }));
 

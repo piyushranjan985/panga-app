@@ -49,6 +49,20 @@ enum MessageStatus {
   READ
 }
 
+// TEXT is a normal chat bubble. PROMPT is a tap-to-answer conversation
+// starter ("Chai tapri or fancy cafe?" + two buttons) -- see
+// lib/conversationStarters.ts for how these get generated from two
+// people's shared interests/tribes, and app/matches/[matchId]/page.tsx
+// for how tapping an option just sends a normal TEXT reply with that
+// option's label, rather than needing any stateful "who answered" tracking.
+// PLAN is the static card rendered by "Make a plan" (activity + vibe),
+// meant to be discussed in ordinary messages underneath it.
+enum MessageKind {
+  TEXT
+  PROMPT
+  PLAN
+}
+
 model User {
   id            String   @id @default(cuid())
   // Every identity field below is optional and independently unique: a user
@@ -78,6 +92,8 @@ model User {
   messagesSent     Message[]      @relation("MessagesBySender")
   reportsFiled     Report[]       @relation("ReportsByReporter")
   reportsReceived  Report[]       @relation("ReportsAboutUser")
+  blocksMade       Block[]        @relation("BlocksByBlocker")
+  blocksReceived   Block[]        @relation("BlocksByBlocked")
 
   @@index([lastActiveAt])
 }
@@ -273,6 +289,12 @@ model Match {
   userB     User     @relation("MatchUserB", fields: [userBId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   unmatchedAt DateTime?
+  // "Hide conversation" (see the chat screen's ... menu) removes a match
+  // from just one person's list without unmatching or notifying the other
+  // side -- one nullable timestamp per side, since Match doesn't have a
+  // per-viewer row to hang a single flag off of.
+  hiddenAAt DateTime?
+  hiddenBAt DateTime?
 
   messages Message[]
 
@@ -288,6 +310,11 @@ model Message {
   sender    User          @relation("MessagesBySender", fields: [senderId], references: [id], onDelete: Cascade)
   body      String
   status    MessageStatus @default(SENT)
+  kind      MessageKind   @default(TEXT)
+  // Structured payload for PROMPT ({ question, emoji, options: [{label,
+  // emoji}, {label, emoji}] }) and PLAN ({ activity: {label, emoji}, vibe
+  // }) kinds -- see MessageKind above. Always null for plain TEXT.
+  meta      Json?
   createdAt DateTime      @default(now())
 
   @@index([matchId, createdAt])
@@ -304,4 +331,22 @@ model Report {
   createdAt  DateTime @default(now())
 
   @@index([aboutId])
+}
+
+// Blocking a match (see the chat screen's ... menu) creates one of these,
+// ends the match (unmatchedAt), and excludes both directions from each
+// other's discover feed from then on -- see app/api/discover/route.ts.
+// Deliberately directional/one-row, unlike Match's ordered-pair unique
+// constraint: only the blocker's choice matters, so there's nothing to
+// dedupe against a reverse row.
+model Block {
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  blocker   User     @relation("BlocksByBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("BlocksByBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
 }
