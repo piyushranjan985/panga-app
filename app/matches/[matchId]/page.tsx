@@ -38,6 +38,8 @@ interface Message {
   kind: 'TEXT' | 'PROMPT' | 'PLAN' | 'VIDEO_VYBE';
   meta: PromptMeta | PlanMeta | Record<string, never> | null;
   createdAt: string;
+  likes: { userId: string }[];
+  replyTo: { id: string; body: string; senderId: string; kind: string } | null;
 }
 
 interface SignalsData {
@@ -70,6 +72,17 @@ interface Partner {
 
 const REPORT_REASONS = ['Inappropriate messages', 'Fake profile', 'Harassment', 'Spam or scam', 'Other'] as const;
 
+// A small curated emoji set for the composer's picker -- no external
+// package (no network to install one in this environment), just enough
+// variety for quick reactions/flourishes in a message.
+const EMOJI_PICKER_SET = [
+  '😀', '😂', '🥰', '😍', '😅', '😉', '😊', '😘',
+  '😎', '🤔', '😏', '😭', '🙈', '🥺', '😴', '🤗',
+  '👍', '🙌', '👏', '🙏', '💪', '✌️', '🤝', '👀',
+  '❤️', '💛', '💚', '💙', '💜', '🔥', '✨', '💯',
+  '🎉', '☕', '🍕', '🍜', '🎮', '🎵', '✈️', '🌙',
+];
+
 // MVP heuristics for progressive unlocking -- no real "engagement" signal
 // exists yet, so message counts stand in for it (see the post-match
 // spec's "progressive feature unlocking" section). Documented here so a
@@ -95,6 +108,8 @@ export default function ChatPage() {
   const [dateFeedbackSubmitted, setDateFeedbackSubmitted] = useState<boolean | null>(null);
   const [keepGoingDismissed, setKeepGoingDismissed] = useState(false);
   const [readyOfflineDismissed, setReadyOfflineDismissed] = useState(false);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Every overlay this screen can show, one at a time -- keeps "keep the
@@ -176,9 +191,23 @@ export default function ChatPage() {
     e.preventDefault();
     if (!draft.trim() || sending) return;
     setSending(true);
-    await postMessage({ body: draft.trim() });
+    // Only the plain-text composer attaches replyToId -- other actions
+    // (Vybe, Ask about me, Plan, ...) never quote a message, even if a
+    // reply happened to be staged when one of those was tapped.
+    await postMessage(replyingTo ? { body: draft.trim(), replyToId: replyingTo.id } : { body: draft.trim() });
     setDraft('');
+    setReplyingTo(null);
     setSending(false);
+  }
+
+  // Swipe-to-reply's simplified tap equivalent: a small "reply" action on
+  // any bubble quotes it above the composer until the next message sends
+  // (or the reply is cancelled). Liking is a straight toggle -- see
+  // app/api/matches/[matchId]/messages/[messageId]/like/route.ts.
+  async function toggleLike(messageId: string) {
+    if (busy) return;
+    await fetch(`/api/matches/${params.matchId}/messages/${messageId}/like`, { method: 'POST' });
+    await load();
   }
 
   // "⚡ Vybe" -- the signature mechanic: post a fresh tap-to-answer
@@ -240,10 +269,13 @@ export default function ChatPage() {
 
   function pickPlanOption(stepId: string, option: PlanOption) {
     setPlanAnswers((prev) => ({ ...prev, [stepId]: option }));
-    if (planStepIndex + 1 < planFlow.length) {
-      setPlanStepIndex((i) => i + 1);
-    }
-    // Otherwise the safety interstitial renders next (see the panel body).
+    // Always advance -- once the index reaches planFlow.length the panel's
+    // render check (`planStepIndex < planFlow.length`) naturally falls
+    // through to the safety interstitial next. (Previously this only
+    // advanced when another step remained, which left the wizard stuck
+    // showing the *last* step forever -- e.g. tapping a "time of day"
+    // option looked like it did nothing.)
+    setPlanStepIndex((i) => i + 1);
   }
 
   async function proposeCasualPlan(activity: PlanOption) {
@@ -527,10 +559,11 @@ export default function ChatPage() {
                   <p className="font-semibold">
                     {meta.emoji} {meta.question}
                   </p>
-                  {/* Only the newest prompt is still answerable -- once the
-                      conversation has moved on, stale option buttons would
-                      just be clutter. */}
-                  {isLatest && (
+                  {/* Only the recipient answers their own Vybe prompt
+                      (not the person who proposed it), and only while it's
+                      still the newest message -- once the conversation has
+                      moved on, stale option buttons would just be clutter. */}
+                  {isLatest && !mine && (
                     <div className="mt-2 flex gap-2">
                       {meta.options.map((opt) => (
                         <button
@@ -610,14 +643,31 @@ export default function ChatPage() {
             );
           }
 
+          const iLikedThis = m.likes.some((l) => l.userId === myUserId);
           return (
-            <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+            <div key={m.id} className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
+              {/* Quoted preview when this message is a reply -- see the
+                  reply/like row below for how it got tagged. */}
+              {m.replyTo && (
+                <div className="mb-1 max-w-[75%] truncate rounded-lg border-l-2 border-magenta/40 bg-paper px-2 py-1 text-xs text-inkSoft">
+                  ↩ {m.replyTo.body}
+                </div>
+              )}
               <div
                 className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm ${
                   mine ? 'gradient-btn text-white' : 'border border-line bg-white text-ink'
                 }`}
               >
                 {m.body}
+              </div>
+              <div className={`mt-0.5 flex items-center gap-2 px-1 ${mine ? 'flex-row-reverse' : ''}`}>
+                <button type="button" onClick={() => setReplyingTo(m)} className="text-[11px] font-semibold text-inkSoft">
+                  ↩ Reply
+                </button>
+                <button type="button" onClick={() => toggleLike(m.id)} className="text-[11px] font-semibold text-inkSoft">
+                  {iLikedThis ? '❤️' : '🤍'}
+                  {m.likes.length > 0 ? ` ${m.likes.length}` : ''}
+                </button>
               </div>
             </div>
           );
@@ -702,10 +752,46 @@ export default function ChatPage() {
         )}
       </div>
 
+      {replyingTo && (
+        <div className="flex items-center justify-between gap-2 border-t border-line bg-paper px-3 py-1.5">
+          <p className="truncate text-xs text-inkSoft">
+            ↩ Replying to: <span className="font-semibold">{replyingTo.body}</span>
+          </p>
+          <button
+            type="button"
+            onClick={() => setReplyingTo(null)}
+            aria-label="Cancel reply"
+            className="shrink-0 text-xs font-bold text-inkSoft"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      {emojiPickerOpen && (
+        <div className="border-t border-line bg-white px-3 py-2">
+          <div className="grid grid-cols-8 gap-1">
+            {EMOJI_PICKER_SET.map((e) => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => setDraft((d) => d + e)}
+                className="grid h-8 w-8 place-items-center rounded-lg text-lg hover:bg-paper"
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <form onSubmit={send} className="flex items-center gap-2 border-t border-line bg-white p-3">
-        <span aria-hidden className="text-lg">
+        <button
+          type="button"
+          onClick={() => setEmojiPickerOpen((v) => !v)}
+          aria-label="Emoji picker"
+          className="shrink-0 text-lg"
+        >
           🙂
-        </span>
+        </button>
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}

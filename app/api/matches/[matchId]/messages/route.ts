@@ -16,6 +16,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ matchId
   const messages = await db.message.findMany({
     where: { matchId },
     orderBy: { createdAt: 'asc' },
+    include: {
+      likes: { select: { userId: true } },
+      replyTo: { select: { id: true, body: true, senderId: true, kind: true } },
+    },
   });
 
   return NextResponse.json({ messages });
@@ -34,6 +38,11 @@ const bodySchema = z.object({
   noGhostClose: z.boolean().optional(),
   kind: z.enum(['TEXT', 'PROMPT', 'PLAN', 'VIDEO_VYBE']).optional(),
   meta: z.record(z.string(), z.unknown()).optional(),
+  // Swipe-to-reply -- an earlier message's id in this same match. Not
+  // deeply validated against matchId here (the FK alone guarantees it's
+  // *some* real message); a reply quoting a message from a different
+  // match would only be reachable by tampering with the request directly.
+  replyToId: z.string().optional(),
 });
 
 // A PROMPT/PLAN message still needs a plain-text `body` -- it's what
@@ -87,6 +96,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ matchId
       // union, so it needs an explicit cast -- meta is already validated
       // loosely by design (see the comment on bodySchema above).
       meta: kind === 'TEXT' ? undefined : (parsed.data.meta as Prisma.InputJsonValue),
+      replyToId: parsed.data.replyToId,
+    },
+    include: {
+      likes: { select: { userId: true } },
+      replyTo: { select: { id: true, body: true, senderId: true, kind: true } },
     },
   });
 

@@ -101,6 +101,7 @@ model User {
   blocksMade       Block[]        @relation("BlocksByBlocker")
   blocksReceived   Block[]        @relation("BlocksByBlocked")
   dateFeedback     DateFeedback[]
+  messageLikes     MessageLike[]
 
   @@index([lastActiveAt])
 }
@@ -331,7 +332,32 @@ model Message {
   meta      Json?
   createdAt DateTime      @default(now())
 
+  // Swipe-to-reply -- quotes an earlier message in this same match.
+  // onDelete: SetNull so a reply survives its original being (hypothetically)
+  // removed later, rather than cascading a delete through the whole thread.
+  replyToId String?
+  replyTo   Message?      @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   Message[]     @relation("MessageReplies")
+
+  likes MessageLike[]
+
   @@index([matchId, createdAt])
+}
+
+// A lightweight "like" (heart) on a single message -- deliberately just a
+// boolean per (message, user) rather than a full multi-emoji reaction
+// system, since that's all the product ask calls for. Toggled by the
+// liker; @@unique enforces one like per person per message.
+model MessageLike {
+  id        String   @id @default(cuid())
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, userId])
+  @@index([messageId])
 }
 
 model Report {
