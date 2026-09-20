@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
+import type { Prisma } from '@prisma/client';
 import { getSession } from '@/lib/session';
 import { assertParticipant } from '@/lib/matchAuthz';
 
@@ -78,7 +79,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ matchId
       senderId: session.userId,
       body,
       kind,
-      meta: kind === 'TEXT' ? undefined : parsed.data.meta,
+      // z.record(...) types this as Record<string, unknown>; unknown
+      // values aren't structurally assignable to Prisma's recursive Json
+      // union, so it needs an explicit cast -- meta is already validated
+      // loosely by design (see the comment on bodySchema above).
+      meta: kind === 'TEXT' ? undefined : (parsed.data.meta as Prisma.InputJsonValue),
     },
   });
 
