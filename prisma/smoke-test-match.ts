@@ -21,7 +21,7 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import crypto from 'node:crypto';
-import { INTERESTS, TRIBES, RELATIONSHIP_STYLES } from '../lib/constants';
+import { INTERESTS, TRIBES, RELATIONSHIP_STYLES, PROMPTS } from '../lib/constants';
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const db = new PrismaClient({ adapter });
@@ -44,6 +44,14 @@ function orderedPair(a: string, b: string): [string, string] {
 const SHARED_INTERESTS = ['Coffee', 'Gaming', 'Travel'];
 const SHARED_TRIBE_SLUG = 'gaming';
 const SHARED_RELATIONSHIP_STYLES = ['Deep conversations', 'Lots of laughs'];
+
+// Two Vybe Check prompts, seeded with one MATCHING answer (both pick the
+// same option -- Tier 1 "exactVybe" in lib/matchSignals.ts) and one
+// DIFFERING answer (the "complementary/difference" signal) -- otherwise
+// neither of those two tiers would ever be testable against these two
+// accounts. See the post-match spec's tiered signal engine.
+const MATCHING_PROMPT_TEXT = 'Communication: talk it out or take space first?';
+const DIFFERING_PROMPT_TEXT = 'Love language: words or actions?';
 
 interface TestUser {
   phone: string;
@@ -137,7 +145,18 @@ async function ensureReferenceData() {
     });
   }
 
-  return { tribeRow, subCommunityRow };
+  const neededPromptTexts = new Set([MATCHING_PROMPT_TEXT, DIFFERING_PROMPT_TEXT]);
+  const promptRows = new Map<string, { id: string }>();
+  for (const p of PROMPTS.filter((p) => neededPromptTexts.has(p.text))) {
+    const row = await db.prompt.upsert({
+      where: { text: p.text },
+      update: { emoji: p.emoji, optionA: p.optionA, optionB: p.optionB, intents: p.intents },
+      create: p,
+    });
+    promptRows.set(p.text, row);
+  }
+
+  return { tribeRow, subCommunityRow, promptRows };
 }
 
 async function upsertTestUser(
@@ -211,10 +230,38 @@ async function upsertTestUser(
 }
 
 async function main() {
-  const { tribeRow, subCommunityRow } = await ensureReferenceData();
+  const { tribeRow, subCommunityRow, promptRows } = await ensureReferenceData();
 
   const userA = await upsertTestUser(USER_A, tribeRow.id, subCommunityRow?.id ?? null);
   const userB = await upsertTestUser(USER_B, tribeRow.id, subCommunityRow?.id ?? null);
+
+  // Vybe Check answers -- one matching pair, one differing pair (see the
+  // MATCHING_PROMPT_TEXT / DIFFERING_PROMPT_TEXT comment above).
+  const profileA = await db.profile.findUniqueOrThrow({ where: { userId: userA.id } });
+  const profileB = await db.profile.findUniqueOrThrow({ where: { userId: userB.id } });
+  const matchingPrompt = promptRows.get(MATCHING_PROMPT_TEXT);
+  const differingPrompt = promptRows.get(DIFFERING_PROMPT_TEXT);
+  if (matchingPrompt) {
+    for (const profile of [profileA, profileB]) {
+      await db.promptAnswer.upsert({
+        where: { profileId_promptId: { profileId: profile.id, promptId: matchingPrompt.id } },
+        update: { answer: 'Talk it out immediately' },
+        create: { profileId: profile.id, promptId: matchingPrompt.id, answer: 'Talk it out immediately' },
+      });
+    }
+  }
+  if (differingPrompt) {
+    await db.promptAnswer.upsert({
+      where: { profileId_promptId: { profileId: profileA.id, promptId: differingPrompt.id } },
+      update: { answer: 'Words & reassurance' },
+      create: { profileId: profileA.id, promptId: differingPrompt.id, answer: 'Words & reassurance' },
+    });
+    await db.promptAnswer.upsert({
+      where: { profileId_promptId: { profileId: profileB.id, promptId: differingPrompt.id } },
+      update: { answer: 'Actions & affection' },
+      create: { profileId: profileB.id, promptId: differingPrompt.id, answer: 'Actions & affection' },
+    });
+  }
 
   // Mutual VYBE swipes, then the Match row -- exactly what
   // app/api/swipe/route.ts does when both sides like each other, just

@@ -40,7 +40,7 @@ type StarterSeed = Omit<Starter, 'source'>;
 // lib/constants.ts's INTERESTS. Not every interest needs to be here (a
 // missing one just never gets picked as a starter source), but all of
 // them are, for variety.
-const INTEREST_STARTERS: Record<string, StarterSeed> = {
+export const INTEREST_STARTERS: Record<string, StarterSeed> = {
   Coffee: { question: 'Chai tapri or fancy café?', emoji: '☕', options: [{ label: 'Chai tapri', emoji: '☕' }, { label: 'Fancy café', emoji: '✨' }] },
   Foodie: { question: 'Street food or fine dining?', emoji: '🍜', options: [{ label: 'Street food', emoji: '🌮' }, { label: 'Fine dining', emoji: '🍽️' }] },
   Concerts: { question: 'Front row or chill in the back?', emoji: '🎤', options: [{ label: 'Front row', emoji: '🙌' }, { label: 'Chill in the back', emoji: '😌' }] },
@@ -73,7 +73,7 @@ const INTEREST_STARTERS: Record<string, StarterSeed> = {
 // TRIBES. Kept on a different axis from the same-named interest above
 // where both exist (e.g. tribe "coffee" vs interest "Coffee") so picking
 // up both as shared doesn't just repeat the same question twice.
-const TRIBE_STARTERS: Record<string, StarterSeed> = {
+export const TRIBE_STARTERS: Record<string, StarterSeed> = {
   gaming: { question: 'Couch co-op or ranked solo?', emoji: '🎮', options: [{ label: 'Couch co-op', emoji: '🕹️' }, { label: 'Ranked solo', emoji: '🏆' }] },
   anime: { question: 'Sub or dub?', emoji: '🎌', options: [{ label: 'Sub', emoji: '📝' }, { label: 'Dub', emoji: '🎙️' }] },
   music: { question: 'New release or an old favorite?', emoji: '🎧', options: [{ label: 'New release', emoji: '🆕' }, { label: 'Old favorite', emoji: '💿' }] },

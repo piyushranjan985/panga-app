@@ -2,41 +2,29 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { assertParticipant, otherUserId } from '@/lib/matchAuthz';
-import { computeVibeMatch, type VibeMatchProfile, type IntentType } from '@/lib/vibeMatch';
+import { toSignalProfile } from '@/lib/signalProfile';
+import {
+  computeSharedSignals,
+  rankPositiveSignals,
+  pickComplementarySignals,
+  resolvePairIntent,
+} from '@/lib/matchSignals';
+import { getMatchExplanation, getQuickHelloMessages, NO_STRONG_SIGNAL_TEXT } from '@/lib/vybeContent';
 
 const PROFILE_INCLUDE = {
   interests: true,
   tribes: true,
   subCommunities: true,
   relationshipStyles: true,
+  answers: { include: { prompt: true } },
 } as const;
 
-type LoadedProfile = {
-  intent: string;
-  interests: { id: string; label: string; emoji: string }[];
-  tribes: { id: string; slug: string; emoji: string; activityPhrase: string; sharedPhrase: string }[];
-  subCommunities: { id: string; tribeId: string }[];
-  relationshipStyles: { id: string; pairPhrase: string }[];
-};
-
-function toVibeMatchProfile(p: LoadedProfile): VibeMatchProfile {
-  return {
-    intent: p.intent as IntentType,
-    interests: p.interests,
-    tribes: p.tribes,
-    subCommunities: p.subCommunities,
-    relationshipStyles: p.relationshipStyles,
-  };
-}
-
-// The Vibe Match reveal ("🔥 87% Vibe Match ... you both love ...") shown
-// at the top of a match's chat — see lib/vibeMatch.ts for why this is a
-// separate, friendlier calculation from the discover feed's ranking score.
-// Also returns the plain shared-interest labels and shared-tribe slugs
-// (not the "pretty" activityPhrase text `vibe.sharedTribes` uses) --
-// lib/conversationStarters.ts's pickStarter/askQuestionFor need the raw
-// keys to look starters up by, for the match modal's "Send a Vybe" and
-// the chat page's "⚡ Vybe" / "Ask about me" features.
+// The post-match "why you two might click" engine -- see lib/matchSignals.ts
+// for the tiered scoring this is built on. Deliberately supersedes the old
+// percent-based lib/vibeMatch.ts reveal for every post-match screen: the
+// product spec bans showing anything that reads as a manufactured
+// compatibility score. `sharedInterestLabels`/`sharedTribeSlugs` are kept
+// for lib/conversationStarters.ts's pickStarter/askQuestionFor callers.
 export async function GET(_req: Request, { params }: { params: Promise<{ matchId: string }> }) {
   const { matchId } = await params;
   const session = await getSession();
@@ -52,11 +40,28 @@ export async function GET(_req: Request, { params }: { params: Promise<{ matchId
   ]);
   if (!myProfile || !otherProfile) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
-  const vibe = computeVibeMatch(toVibeMatchProfile(myProfile), toVibeMatchProfile(otherProfile));
+  const mySignalProfile = toSignalProfile(myProfile);
+  const otherSignalProfile = toSignalProfile(otherProfile);
+  const pairIntent = resolvePairIntent(mySignalProfile.intent, otherSignalProfile.intent);
+
+  const rawSignals = computeSharedSignals(mySignalProfile, otherSignalProfile);
+  const rankedSignals = rankPositiveSignals(rawSignals);
+  const complementarySignals = pickComplementarySignals(rawSignals);
+  const matchExplanation = getMatchExplanation(rankedSignals);
 
   const myTribeSlugs = new Set(myProfile.tribes.map((t) => t.slug));
   const sharedTribeSlugs = otherProfile.tribes.filter((t) => myTribeSlugs.has(t.slug)).map((t) => t.slug);
-  const sharedInterestLabels = vibe.sharedInterests.map((i) => i.label);
+  const myInterestLabels = new Set(myProfile.interests.map((i) => i.label));
+  const sharedInterestLabels = otherProfile.interests.filter((i) => myInterestLabels.has(i.label)).map((i) => i.label);
 
-  return NextResponse.json({ vibe, sharedInterestLabels, sharedTribeSlugs });
+  return NextResponse.json({
+    pairIntent,
+    rankedSignals,
+    complementarySignals,
+    matchExplanation, // null means: show NO_STRONG_SIGNAL_TEXT
+    noStrongSignalText: NO_STRONG_SIGNAL_TEXT,
+    quickHelloMessages: getQuickHelloMessages(pairIntent),
+    sharedInterestLabels,
+    sharedTribeSlugs,
+  });
 }

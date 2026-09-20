@@ -32,7 +32,7 @@ const NO_GHOST_CLOSE =
 const bodySchema = z.object({
   body: z.string().trim().min(1).max(1000).optional(),
   noGhostClose: z.boolean().optional(),
-  kind: z.enum(['TEXT', 'PROMPT', 'PLAN']).optional(),
+  kind: z.enum(['TEXT', 'PROMPT', 'PLAN', 'VIDEO_VYBE']).optional(),
   meta: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -40,7 +40,7 @@ const bodySchema = z.object({
 // shows as the preview on /api/matches' matches list, and what a client
 // that doesn't know about `kind` yet would fall back to. Derived
 // server-side so the caller only ever has to send the structured `meta`.
-function fallbackBody(kind: 'TEXT' | 'PROMPT' | 'PLAN', meta: Record<string, unknown> | undefined): string | null {
+function fallbackBody(kind: 'TEXT' | 'PROMPT' | 'PLAN' | 'VIDEO_VYBE', meta: Record<string, unknown> | undefined): string | null {
   if (kind === 'PROMPT') {
     const question = typeof meta?.question === 'string' ? meta.question : null;
     const emoji = typeof meta?.emoji === 'string' ? meta.emoji : '⚡';
@@ -51,6 +51,9 @@ function fallbackBody(kind: 'TEXT' | 'PROMPT' | 'PLAN', meta: Record<string, unk
     const vibe = typeof meta?.vibe === 'string' ? meta.vibe : null;
     if (!activity?.label) return null;
     return `✨ Plan: ${activity.emoji ? `${activity.emoji} ` : ''}${activity.label}${vibe ? ` · ${vibe} vibe` : ''}`;
+  }
+  if (kind === 'VIDEO_VYBE') {
+    return '📹 Quick video Vybe — 10 min?';
   }
   return null;
 }

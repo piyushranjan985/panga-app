@@ -61,6 +61,12 @@ enum MessageKind {
   TEXT
   PROMPT
   PLAN
+  // The "📹 Quick video Vybe" offer (see the post-match spec's progressive-
+  // unlocking section) -- a lightweight, tap-to-respond invite like PROMPT,
+  // not a real video call: this MVP has no calling infrastructure, so
+  // tapping either option just sends a normal TEXT reply, same mechanic as
+  // PROMPT/PLAN. meta is `{}` (no payload needed beyond the kind itself).
+  VIDEO_VYBE
 }
 
 model User {
@@ -94,6 +100,7 @@ model User {
   reportsReceived  Report[]       @relation("ReportsAboutUser")
   blocksMade       Block[]        @relation("BlocksByBlocker")
   blocksReceived   Block[]        @relation("BlocksByBlocked")
+  dateFeedback     DateFeedback[]
 
   @@index([lastActiveAt])
 }
@@ -295,8 +302,15 @@ model Match {
   // per-viewer row to hang a single flag off of.
   hiddenAAt DateTime?
   hiddenBAt DateTime?
+  // "Mute" (see the ... safety menu) -- per side, suppresses nothing more
+  // than a "new message" affordance client-side; this MVP has no push
+  // notifications yet, so today this only silences the in-app unread
+  // treatment, not a real notification.
+  mutedAAt  DateTime?
+  mutedBAt  DateTime?
 
-  messages Message[]
+  messages      Message[]
+  dateFeedback  DateFeedback[]
 
   @@unique([userAId, userBId])
   @@index([userBId])
@@ -349,4 +363,22 @@ model Block {
 
   @@unique([blockerId, blockedId])
   @@index([blockedId])
+}
+
+// Private, own-eyes-only post-date check-in ("How did the Vybe feel?" --
+// see the post-match spec). Never shown to the other person; a real
+// "did they actually meet" signal doesn't exist here, so the chat screen
+// offers this once a plan has been proposed and surfaces it as optional,
+// dismissible UI rather than trying to detect an actual date happening.
+model DateFeedback {
+  id                  String   @id @default(cuid())
+  matchId             String
+  userId              String
+  match               Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating              String   // 'MEET_AGAIN' | 'MAYBE' | 'NOT_FOR_ME'
+  wantsToKeepChatting Boolean?
+  createdAt           DateTime @default(now())
+
+  @@unique([matchId, userId])
 }
