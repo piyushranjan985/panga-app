@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import IntentBadge from '@/components/IntentBadge';
+import { getCurrentPosition } from '@/lib/native';
 import {
   DATE_VIBES,
   TONIGHT_OPTIONS,
@@ -323,35 +324,26 @@ export default function ProfilePage() {
   // triggered only by this explicit tap, never on page load. Raw
   // coordinates never leave this device except to this one endpoint;
   // everyone else only ever sees a rounded distance (see lib/geo.ts).
-  function shareLocation() {
-    if (!('geolocation' in navigator)) {
-      setLocationError('Location is not available on this device.');
-      return;
-    }
+  async function shareLocation() {
     setLocationBusy(true);
     setLocationError(null);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        const res = await fetch('/api/profile/location', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ latitude, longitude }),
-        });
-        const data = await res.json();
-        setProfile((p) => (p ? { ...p, latitude, longitude, locationUpdatedAt: data.locationUpdatedAt } : p));
-        setLocationBusy(false);
-      },
-      (err) => {
-        setLocationError(
-          err.code === err.PERMISSION_DENIED
-            ? 'Location permission was denied — enable it in your browser settings to share it.'
-            : 'Could not get your location. Try again.'
-        );
-        setLocationBusy(false);
-      },
-      { enableHighAccuracy: false, timeout: 10000 }
-    );
+    try {
+      // Goes through the native permission dialog + location provider when
+      // this is running inside the iOS/Android app shell, and the ordinary
+      // browser Geolocation API otherwise -- see lib/native.ts.
+      const { latitude, longitude } = await getCurrentPosition();
+      const res = await fetch('/api/profile/location', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ latitude, longitude }),
+      });
+      const data = await res.json();
+      setProfile((p) => (p ? { ...p, latitude, longitude, locationUpdatedAt: data.locationUpdatedAt } : p));
+    } catch (err) {
+      setLocationError(err instanceof Error ? err.message : 'Could not get your location. Try again.');
+    } finally {
+      setLocationBusy(false);
+    }
   }
 
   async function clearLocation() {
