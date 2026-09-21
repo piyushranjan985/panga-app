@@ -126,6 +126,15 @@ model Profile {
   avatarSeed  String  @default("A") // fallback glyph shown only if a profile somehow has no photos
   avatarHue   Int     @default(1)   // 1..6, picks the fallback gradient behind that glyph
 
+  // Optional, opt-in precise location (browser Geolocation API, set from
+  // the Profile screen's "Location" section -- never collected silently).
+  // Only ever used to compute a rounded *distance* shown to someone else
+  // (see lib/geo.ts) -- raw latitude/longitude for another person's
+  // profile is never sent to the client, only back to its own owner.
+  latitude         Float?
+  longitude        Float?
+  locationUpdatedAt DateTime?
+
   interests          Interest[]          @relation("ProfileInterests")
   tribes              Tribe[]             @relation("ProfileTribes")
   subCommunities      SubCommunity[]      @relation("ProfileSubCommunities")

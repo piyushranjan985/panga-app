@@ -47,6 +47,9 @@ interface ProfileData {
   futureCareer: string | null;
   futureMoney: string | null;
   children: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  locationUpdatedAt: string | null;
 }
 
 // Reference catalogs (with real DB ids) for the inline "edit here" pickers
@@ -313,6 +316,51 @@ export default function ProfilePage() {
     });
   }
 
+  const [locationBusy, setLocationBusy] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+
+  // Opt-in only -- the browser's own permission prompt is the consent UI,
+  // triggered only by this explicit tap, never on page load. Raw
+  // coordinates never leave this device except to this one endpoint;
+  // everyone else only ever sees a rounded distance (see lib/geo.ts).
+  function shareLocation() {
+    if (!('geolocation' in navigator)) {
+      setLocationError('Location is not available on this device.');
+      return;
+    }
+    setLocationBusy(true);
+    setLocationError(null);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        const res = await fetch('/api/profile/location', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ latitude, longitude }),
+        });
+        const data = await res.json();
+        setProfile((p) => (p ? { ...p, latitude, longitude, locationUpdatedAt: data.locationUpdatedAt } : p));
+        setLocationBusy(false);
+      },
+      (err) => {
+        setLocationError(
+          err.code === err.PERMISSION_DENIED
+            ? 'Location permission was denied — enable it in your browser settings to share it.'
+            : 'Could not get your location. Try again.'
+        );
+        setLocationBusy(false);
+      },
+      { enableHighAccuracy: false, timeout: 10000 }
+    );
+  }
+
+  async function clearLocation() {
+    setLocationBusy(true);
+    await fetch('/api/profile/location', { method: 'DELETE' });
+    setProfile((p) => (p ? { ...p, latitude: null, longitude: null, locationUpdatedAt: null } : p));
+    setLocationBusy(false);
+  }
+
   async function requestVerification() {
     setVerifying(true);
     await fetch('/api/verification', { method: 'POST' });
@@ -519,6 +567,42 @@ export default function ProfilePage() {
               }`}
             />
           </button>
+        </section>
+
+        <section className="mt-3 rounded-2xl border border-line bg-white p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="font-bold">📍 Location</p>
+              <p className="text-sm text-inkSoft">
+                {profile.latitude != null
+                  ? 'Shared — lets matches see how far away you are.'
+                  : 'Off — matches won’t see a distance for you.'}
+              </p>
+            </div>
+            {profile.latitude != null ? (
+              <button
+                type="button"
+                onClick={clearLocation}
+                disabled={locationBusy}
+                className="shrink-0 rounded-full border border-line px-3 py-1.5 text-xs font-semibold disabled:opacity-60"
+              >
+                Turn off
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={shareLocation}
+                disabled={locationBusy}
+                className="gradient-btn shrink-0 rounded-full px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60"
+              >
+                {locationBusy ? 'Getting location…' : 'Share location'}
+              </button>
+            )}
+          </div>
+          {locationError && <p className="mt-2 text-xs text-magenta">{locationError}</p>}
+          <p className="mt-2 text-[11px] text-inkSoft/70">
+            Only a rounded distance (e.g. "3 km away") is ever shown to anyone else — never your exact location.
+          </p>
         </section>
 
         {profile.intent === 'RISHTA_READY' && (

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { rankCandidates, type MatchableProfile } from '@/lib/matching';
+import { distanceLabel } from '@/lib/geo';
 
 const FEED_SIZE = 15;
 
@@ -41,6 +42,10 @@ export async function GET() {
     where: { userId: session.userId },
     include: { interests: true, user: { select: { lastActiveAt: true } } },
   });
+  // Distance is purely a display signal, computed independently of the
+  // ranking/eligibility layer above (see lib/geo.ts) -- omitted from the
+  // feed entirely for any pair where either side hasn't opted into
+  // sharing location, rather than showing a placeholder.
   if (!viewerProfile) {
     return NextResponse.json({ error: 'Finish onboarding first' }, { status: 409 });
   }
@@ -60,6 +65,9 @@ export async function GET() {
         answers: { include: { prompt: true }, take: 3 },
         photos: { orderBy: { position: 'asc' }, take: 1 },
       },
+      // latitude/longitude/locationUpdatedAt come along for free (no
+      // `select` narrowing on this query) -- distanceLabel above reads
+      // them straight off each candidate row.
       take: 500,
     }),
   ]);
@@ -94,6 +102,7 @@ export async function GET() {
       prompts: p.answers.map((a) => ({ id: a.promptId, text: a.prompt.text, emoji: a.prompt.emoji, answer: a.answer })),
       matchScore: r.score,
       matchReasons: r.reasons,
+      distance: distanceLabel(viewerProfile, p),
     };
   });
 

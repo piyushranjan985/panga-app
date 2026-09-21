@@ -203,7 +203,18 @@ function OnboardingForm() {
           futureMoney: '',
           children: '',
         }));
-        const entryStep = stepsForIntent(target).indexOf('interests');
+        // Switching TO Rishta Ready must land on Basics, not Interests --
+        // Basics is where the "Where do you see yourself living?" question
+        // lives (see the RISHTA_READY-only block in the basics step JSX),
+        // and it's required to finish (see flowIncomplete below). Skipping
+        // straight to Interests meant livingPreference stayed empty with
+        // no way back (minStep clamps the Back button), which permanently
+        // disabled the final "ready" screen's Finish button -- the flow
+        // looked "stuck" with no way to complete it. Switching to the
+        // other two intents doesn't need this question, so they still
+        // jump straight to Interests as before.
+        const entryStepKey = target === 'RISHTA_READY' ? 'basics' : 'interests';
+        const entryStep = stepsForIntent(target).indexOf(entryStepKey);
         const start = entryStep >= 0 ? entryStep : 0;
         setStep(start);
         setMinStep(start);

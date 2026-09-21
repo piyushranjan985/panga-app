@@ -17,6 +17,7 @@ export interface FeedProfile {
   prompts: { id: string; text: string; emoji: string; answer: string }[];
   matchScore: number;
   matchReasons: string[];
+  distance: string | null;
 }
 
 const HUE_GRADIENTS: Record<number, string> = {
@@ -71,7 +72,10 @@ export default function VibeCard({
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4 text-white">
           <div className="flex items-center gap-2">
             <h3 className="font-display text-xl font-bold">{profile.displayName}</h3>
-            <span className="text-xs opacity-80">· {profile.city}</span>
+            <span className="text-xs opacity-80">
+              · {profile.city}
+              {profile.distance ? ` · ${profile.distance}` : ''}
+            </span>
             {profile.verification === 'VERIFIED' && (
               <span title="ID verified" className="text-sm">
                 ✅

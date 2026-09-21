@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { assertParticipant, otherUserId } from '@/lib/matchAuthz';
 import { VALUES_OPTIONS, FUTURE_VIBE_QUESTIONS, CHILDREN_OPTIONS } from '@/lib/constants';
+import { distanceLabel } from '@/lib/geo';
 
 function tagLabel(slug: string, catalog: { slug: string; label: string; emoji: string }[]) {
   return catalog.find((c) => c.slug === slug) ?? null;
@@ -29,15 +30,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ matchId
   const otherId = otherUserId(match, session.userId);
   const isUserA = match.userAId === session.userId;
 
-  const profile = await db.profile.findUnique({
-    where: { userId: otherId },
-    include: {
-      interests: true,
-      tribes: true,
-      relationshipStyles: true,
-      photos: { orderBy: { position: 'asc' }, take: 1 },
-    },
-  });
+  const [profile, myProfile] = await Promise.all([
+    db.profile.findUnique({
+      where: { userId: otherId },
+      include: {
+        interests: true,
+        tribes: true,
+        relationshipStyles: true,
+        photos: { orderBy: { position: 'asc' }, take: 1 },
+      },
+    }),
+    db.profile.findUnique({ where: { userId: session.userId }, select: { latitude: true, longitude: true } }),
+  ]);
   if (!profile) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
   const ageMs = Date.now() - profile.dateOfBirth.getTime();
@@ -70,6 +74,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ matchId
       valuesTags: profile.valuesTags.map((slug) => tagLabel(slug, VALUES_OPTIONS)).filter(Boolean),
       futureVibe,
       children: profile.children ? tagLabel(profile.children, CHILDREN_OPTIONS) : null,
+      // Rounded distance only -- see lib/geo.ts; null when either side
+      // hasn't shared a location, never a placeholder.
+      distance: distanceLabel(myProfile, profile),
     },
     matchMeta: {
       isMuted: isUserA ? Boolean(match.mutedAAt) : Boolean(match.mutedBAt),

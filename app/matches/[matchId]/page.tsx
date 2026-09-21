@@ -68,6 +68,7 @@ interface Partner {
   valuesTags: { slug: string; label: string; emoji: string }[];
   futureVibe: { question: string; slug: string; label: string; emoji: string }[];
   children: { slug: string; label: string; emoji: string } | null;
+  distance: string | null;
 }
 
 const REPORT_REASONS = ['Inappropriate messages', 'Fake profile', 'Harassment', 'Spam or scam', 'Other'] as const;
@@ -838,7 +839,10 @@ export default function ChatPage() {
               <p className="mt-2 font-display text-xl font-extrabold">
                 {partner.displayName}, {partner.age}
               </p>
-              <p className="text-sm text-inkSoft">{partner.city}</p>
+              <p className="text-sm text-inkSoft">
+                {partner.city}
+                {partner.distance ? ` · ${partner.distance}` : ''}
+              </p>
               <div className="mt-2">
                 <IntentBadge intent={partner.intent} />
               </div>
