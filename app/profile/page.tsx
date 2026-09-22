@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import IntentBadge from '@/components/IntentBadge';
 import { getCurrentPosition } from '@/lib/native';
@@ -1321,11 +1322,23 @@ export default function ProfilePage() {
           </>
         )}
 
+        {/* Help & Support: same reasoning as the Log out button just
+            below -- this needs to be reachable from a phone-width screen,
+            not just tucked into a desktop-only nav link. */}
+        <section className="mt-8">
+          <Link
+            href="/help"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-line bg-white py-3 text-sm font-bold text-inkSoft"
+          >
+            💬 Help &amp; Support
+          </Link>
+        </section>
+
         {/* Navbar's own "Log out" link is desktop-only (sm:block) -- on a
             phone-width screen (including the native iOS/Android app,
             which is always phone-width) there was no way to find it at
             all. This is the one that actually shows up everywhere. */}
-        <section className="mt-8 mb-4">
+        <section className="mt-4 mb-4">
           <button
             type="button"
             onClick={async () => {

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import VybeHelp from '@/components/VybeHelp';
 
 const TABS = [
   { href: '/discover', label: 'Discover', icon: '🌀' },
@@ -20,6 +21,11 @@ export default function Navbar() {
   }
 
   return (
+    <>
+    {/* VybeHelp renders alongside the nav (not inside <nav>) so its fixed
+        bubble/panel positioning is independent of the nav's own layout,
+        while still showing up on every screen that renders <Navbar />. */}
+    <VybeHelp />
     <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-white/95 backdrop-blur sm:sticky sm:top-0 sm:border-b sm:border-t-0">
       <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-2 sm:py-3">
         {/* Always visible (not just sm:+) -- the product name should be on
@@ -57,5 +63,6 @@ export default function Navbar() {
         </div>
       </div>
     </nav>
+    </>
   );
 }
