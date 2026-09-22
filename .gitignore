@@ -25,3 +25,16 @@ npm-debug.log*
 next-env.d.ts
 .vercel
 .env*
+
+# capacitor native build artifacts (machine-specific; android/ and ios/
+# source + config ARE committed, only generated build output is excluded)
+/android/build/
+/android/app/build/
+/android/capacitor-cordova-android-plugins/build/
+/android/.gradle/
+/android/local.properties
+/ios/App/Pods/
+/ios/App/build/
+/ios/App/output/
+/ios/DerivedData/
+/android/.idea/

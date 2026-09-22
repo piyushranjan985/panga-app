@@ -62,6 +62,8 @@ interface TestUser {
   city: string;
   bio: string;
   avatarHue: number;
+  latitude: number;
+  longitude: number;
   interests: string[];
   relationshipStyles: string[];
   photo: string;
@@ -75,6 +77,8 @@ const USER_A: TestUser = {
   lookingFor: ['MAN'],
   city: 'Mumbai',
   bio: 'Smoke-test account -- Coffee, Gaming, Travel person.',
+  latitude: 19.0596,
+  longitude: 72.8295,
   avatarHue: 2,
   interests: [...SHARED_INTERESTS, 'Foodie'],
   relationshipStyles: [...SHARED_RELATIONSHIP_STYLES, 'Adventure partners'],
@@ -89,6 +93,8 @@ const USER_B: TestUser = {
   lookingFor: ['WOMAN'],
   city: 'Mumbai',
   bio: 'Smoke-test account -- also Coffee, Gaming, Travel.',
+  latitude: 19.1197,
+  longitude: 72.8464,
   avatarHue: 5,
   interests: [...SHARED_INTERESTS, 'Books'],
   relationshipStyles: [...SHARED_RELATIONSHIP_STYLES, 'Career + relationship balance'],
@@ -186,6 +192,9 @@ async function upsertTestUser(
       lookingFor: u.lookingFor,
       city: u.city,
       bio: u.bio,
+      latitude: u.latitude,
+      longitude: u.longitude,
+      locationUpdatedAt: new Date(),
       intent: 'SOMETHING_REAL',
       avatarSeed: u.displayName.charAt(0),
       avatarHue: u.avatarHue,
@@ -204,6 +213,9 @@ async function upsertTestUser(
   await db.profile.update({
     where: { id: profile.id },
     data: {
+      latitude: u.latitude,
+      longitude: u.longitude,
+      locationUpdatedAt: new Date(),
       interests: { connect: interestRows.map((i) => ({ id: i.id })) },
       tribes: { connect: [{ id: tribeId }] },
       subCommunities: subCommunityId ? { connect: [{ id: subCommunityId }] } : undefined,
