@@ -89,7 +89,6 @@ const EMOJI_PICKER_SET = [
 // spec's "progressive feature unlocking" section). Documented here so a
 // future pass can swap these for something smarter without hunting.
 const PLAN_UNLOCK_AFTER_EXCHANGE = true; // both sides must have sent >=1 message
-const VIDEO_VYBE_UNLOCK_MESSAGE_COUNT = 10;
 const KEEP_VYBE_GOING_MESSAGE_COUNT = 8;
 const READY_TO_MEET_MESSAGE_COUNT = 16;
 
@@ -308,13 +307,6 @@ export default function ChatPage() {
     setBusy(false);
   }
 
-  async function sendVideoVybe() {
-    if (busy) return;
-    setBusy(true);
-    await postMessage({ kind: 'VIDEO_VYBE', meta: {} });
-    setBusy(false);
-  }
-
   async function toggleMute() {
     if (busy) return;
     setBusy(true);
@@ -384,7 +376,6 @@ export default function ChatPage() {
 
   const hasExchanged = messages.some((m) => m.senderId === myUserId) && messages.some((m) => m.senderId === partner?.userId);
   const planUnlocked = PLAN_UNLOCK_AFTER_EXCHANGE ? hasExchanged : true;
-  const videoVybeUnlocked = messages.length >= VIDEO_VYBE_UNLOCK_MESSAGE_COUNT;
   const hasPlanMessage = messages.some((m) => m.kind === 'PLAN');
   const unusedSignalForNudge = signals?.rankedSignals.find((s) => !usedVybeSources.includes(s.sourceKey));
   const showKeepGoingNudge =
@@ -739,16 +730,6 @@ export default function ChatPage() {
             className="shrink-0 rounded-full border border-line px-3 py-1.5 text-xs font-semibold"
           >
             ✨ Make a plan
-          </button>
-        )}
-        {videoVybeUnlocked && (
-          <button
-            type="button"
-            onClick={sendVideoVybe}
-            disabled={busy}
-            className="shrink-0 rounded-full border border-line px-3 py-1.5 text-xs font-semibold disabled:opacity-60"
-          >
-            📹 Video Vybe
           </button>
         )}
       </div>

@@ -1320,6 +1320,24 @@ export default function ProfilePage() {
             </section>
           </>
         )}
+
+        {/* Navbar's own "Log out" link is desktop-only (sm:block) -- on a
+            phone-width screen (including the native iOS/Android app,
+            which is always phone-width) there was no way to find it at
+            all. This is the one that actually shows up everywhere. */}
+        <section className="mt-8 mb-4">
+          <button
+            type="button"
+            onClick={async () => {
+              await fetch('/api/auth/logout', { method: 'POST' });
+              router.push('/');
+              router.refresh();
+            }}
+            className="w-full rounded-2xl border border-line bg-white py-3 text-sm font-bold text-inkSoft"
+          >
+            Log out
+          </button>
+        </section>
       </main>
     </div>
   );
