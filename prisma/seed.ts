@@ -27,6 +27,7 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import crypto from 'node:crypto';
+import { CITY_CENTROIDS } from '../lib/geo';
 import {
   INTERESTS,
   PROMPTS,
@@ -61,6 +62,8 @@ interface SeedUser {
   city: string;
   bio: string;
   intent: Intent;
+  latitude: number;
+  longitude: number;
   avatarHue: number;
   verification: Verification;
   interests: string[]; // labels (the short "What are you into?" set)
@@ -87,7 +90,7 @@ function pravatar(n: number): string {
   return `https://i.pravatar.cc/500?img=${((n - 1) % 70) + 1}`;
 }
 
-const DEMO_USERS: SeedUser[] = [
+const DEMO_USERS: SeedUser[] = ([
   {
     phone: '+919810000001',
     displayName: 'Aanya',
@@ -216,7 +219,7 @@ const DEMO_USERS: SeedUser[] = [
     ],
     photos: [pravatar(5), pravatar(6)],
   },
-];
+] as Omit<SeedUser, 'latitude' | 'longitude'>[]).map((u) => ({ ...u, ...jitterCoords(u.city, u.phone) }));
 
 // --- Bulk generator -------------------------------------------------------
 
@@ -265,6 +268,24 @@ function mulberry32(seed: number) {
     let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Deterministic per-user jitter seeded by phone number, NOT the shared
+// bulk-generation `rng` above -- adding location this way doesn't shift
+// that rng's sequence, so every other randomized field (names, interests,
+// tribes, ...) for existing seeded users stays exactly the same on a
+// reseed. +/- ~0.08 degrees (~9km) is a plausible spread across a city,
+// not precise enough to pinpoint anyone's real neighborhood.
+function jitterCoords(city: string, phone: string): { latitude: number; longitude: number } {
+  const centroid = CITY_CENTROIDS[city];
+  if (!centroid) return { latitude: 0, longitude: 0 }; // should never happen -- city is always one of CITIES
+  let seed = 0;
+  for (let i = 0; i < phone.length; i++) seed = (seed * 31 + phone.charCodeAt(i)) >>> 0;
+  const localRng = mulberry32(seed);
+  return {
+    latitude: centroid.lat + (localRng() - 0.5) * 0.16,
+    longitude: centroid.lng + (localRng() - 0.5) * 0.16,
   };
 }
 
@@ -380,8 +401,10 @@ function generateBulkUsers(count: number, phoneStart: number): SeedUser[] {
     const verificationRoll = rng();
     const verification: Verification = verificationRoll < 0.65 ? 'VERIFIED' : verificationRoll < 0.85 ? 'PENDING' : 'UNVERIFIED';
 
+    const phone = `+91${phoneStart + i}`;
+
     users.push({
-      phone: `+91${phoneStart + i}`,
+      phone,
       displayName: name,
       dob: isoDateForAge(age, rng),
       gender,
@@ -389,6 +412,7 @@ function generateBulkUsers(count: number, phoneStart: number): SeedUser[] {
       city,
       bio,
       intent,
+      ...jitterCoords(city, phone),
       avatarHue: randomInt(1, 6, rng),
       verification,
       interests,
@@ -557,6 +581,9 @@ async function main() {
         city: u.city,
         bio: u.bio,
         intent: u.intent,
+        latitude: u.latitude,
+        longitude: u.longitude,
+        locationUpdatedAt: new Date(),
         avatarSeed: u.displayName.charAt(0),
         avatarHue: u.avatarHue,
         verification: u.verification,
@@ -603,6 +630,12 @@ async function main() {
         tribes: { connect: tribeIds.map((id) => ({ id })) },
         subCommunities: { connect: subCommunityIds.map((id) => ({ id })) },
         relationshipStyles: { connect: relationshipStyleIds.map((id) => ({ id })) },
+        // Backfill for profiles seeded before the distance feature shipped
+        // -- same idempotency pattern as the connects above, safe to run
+        // on every re-seed.
+        latitude: u.latitude,
+        longitude: u.longitude,
+        locationUpdatedAt: new Date(),
       },
     });
 

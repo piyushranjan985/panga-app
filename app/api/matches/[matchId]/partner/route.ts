@@ -40,7 +40,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ matchId
         photos: { orderBy: { position: 'asc' }, take: 1 },
       },
     }),
-    db.profile.findUnique({ where: { userId: session.userId }, select: { latitude: true, longitude: true } }),
+    db.profile.findUnique({ where: { userId: session.userId }, select: { latitude: true, longitude: true, city: true } }),
   ]);
   if (!profile) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
