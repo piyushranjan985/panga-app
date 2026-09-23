@@ -72,7 +72,23 @@ export async function getSession(): Promise<SessionPayload | null> {
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, SECRET);
-    if (typeof payload.userId !== 'string') return null;
+    if (typeof payload.userId !== 'string' || typeof payload.iat !== 'number') return null;
+
+    // "Force logout" (admin User Action, see admin's users/[userId]/actions
+    // route) sets User.sessionsInvalidatedAt -- any cookie issued before
+    // that moment is rejected here even though the JWT itself still
+    // verifies fine. One extra indexed lookup per request; acceptable at
+    // this scale (every route already does several Prisma calls), and a
+    // clean place to add caching later if it ever isn't.
+    const user = await db.user.findUnique({
+      where: { id: payload.userId },
+      select: { sessionsInvalidatedAt: true },
+    });
+    if (!user) return null;
+    if (user.sessionsInvalidatedAt && payload.iat * 1000 < user.sessionsInvalidatedAt.getTime()) {
+      return null;
+    }
+
     return { userId: payload.userId };
   } catch {
     return null;

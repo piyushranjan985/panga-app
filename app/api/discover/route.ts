@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { rankCandidates, type MatchableProfile } from '@/lib/matching';
 import { distanceLabel } from '@/lib/geo';
+import { checkAccountActive } from '@/lib/accountEnforcement';
 
 const FEED_SIZE = 15;
 
@@ -38,6 +39,9 @@ export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
+  const enforcement = await checkAccountActive(session.userId);
+  if (enforcement.blocked) return NextResponse.json({ error: enforcement.reason }, { status: 403 });
+
   const viewerProfile = await db.profile.findUnique({
     where: { userId: session.userId },
     include: { interests: true, user: { select: { lastActiveAt: true } } },
@@ -58,12 +62,20 @@ export async function GET() {
     // this becomes a geo-indexed query — pulling "everyone" is fine below a
     // few thousand users, not beyond it.
     db.profile.findMany({
-      where: { userId: { not: session.userId } },
+      // Trust & Safety enforcement -- a discoveryRestricted or
+      // profileHidden profile, or a non-ACTIVE account, never appears in
+      // anyone else's feed (see lib/accountEnforcement.ts).
+      where: {
+        userId: { not: session.userId },
+        discoveryRestricted: false,
+        profileHidden: false,
+        user: { status: 'ACTIVE' },
+      },
       include: {
         interests: true,
         user: { select: { lastActiveAt: true } },
         answers: { include: { prompt: true }, take: 3 },
-        photos: { orderBy: { position: 'asc' }, take: 1 },
+        photos: { where: { removedAt: null }, orderBy: { position: 'asc' }, take: 1 },
       },
       // latitude/longitude/locationUpdatedAt come along for free (no
       // `select` narrowing on this query) -- distanceLabel above reads

@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import type { Prisma } from '@prisma/client';
 import { getSession } from '@/lib/session';
 import { assertParticipant } from '@/lib/matchAuthz';
+import { checkMessagingAllowed } from '@/lib/accountEnforcement';
 
 export async function GET(_req: Request, { params }: { params: Promise<{ matchId: string }> }) {
   const { matchId } = await params;
@@ -68,6 +69,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ matchId
   const { matchId } = await params;
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+
+  const enforcement = await checkMessagingAllowed(session.userId);
+  if (enforcement.blocked) return NextResponse.json({ error: enforcement.reason }, { status: 403 });
 
   const match = await assertParticipant(matchId, session.userId);
   if (!match) return NextResponse.json({ error: 'not found' }, { status: 404 });

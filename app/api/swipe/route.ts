@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { checkAccountActive } from '@/lib/accountEnforcement';
 
 const bodySchema = z.object({
   toUserId: z.string(),
@@ -17,6 +18,9 @@ function orderedPair(a: string, b: string): [string, string] {
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+
+  const enforcement = await checkAccountActive(session.userId);
+  if (enforcement.blocked) return NextResponse.json({ error: enforcement.reason }, { status: 403 });
 
   const json = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(json);
