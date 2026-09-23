@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { requirePermission } from '@/lib/apiGuard';
 import { getRequestContext } from '@/lib/requestContext';
 import { writeAudit } from '@/lib/audit';
+import { anonymizeUserAccount } from '@/lib/userLifecycle';
 import type { Permission } from '@/lib/rbac';
 
 const ACTIONS = [
@@ -159,34 +160,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ userId:
       break;
     }
     case 'deleteAccount': {
-      // Anonymize rather than hard-delete: FK cascades on User would take
-      // matches/messages/photos with it, destroying evidence a Trust &
-      // Safety case or a legal hold might still need. Contact fields and
-      // display identity are scrubbed; the row and its history remain.
-      await db.$transaction([
-        db.user.update({
-          where: { id: userId },
-          data: {
-            status: 'DELETED',
-            deletedAt: new Date(),
-            statusReason: reason,
-            statusChangedAt: new Date(),
-            sessionsInvalidatedAt: new Date(),
-            email: null,
-            phone: null,
-            googleId: null,
-            facebookId: null,
-          },
-        }),
-        ...(user.profile
-          ? [
-              db.profile.update({
-                where: { userId },
-                data: { displayName: 'Deleted user', bio: '', latitude: null, longitude: null },
-              }),
-            ]
-          : []),
-      ]);
+      await anonymizeUserAccount(userId, reason);
       newValue = { status: 'DELETED' };
       break;
     }

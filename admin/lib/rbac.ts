@@ -37,6 +37,7 @@ export type Permission =
   | 'privacy.legalHolds.manage'
   | 'privacy.processors.manage'
   | 'privacy.retention.manage'
+  | 'privacy.processingActivities.manage'
   | 'notifications.view'
   | 'notifications.acknowledge'
   | 'config.view'
@@ -83,6 +84,7 @@ const ALL: Permission[] = [
   'privacy.legalHolds.manage',
   'privacy.processors.manage',
   'privacy.retention.manage',
+  'privacy.processingActivities.manage',
   'notifications.view',
   'notifications.acknowledge',
   'config.view',
@@ -211,6 +213,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
     'privacy.legalHolds.manage',
     'privacy.processors.manage',
     'privacy.retention.manage',
+    'privacy.processingActivities.manage',
     'notifications.view',
     'notifications.acknowledge',
     'auditLogs.view',
