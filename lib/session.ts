@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
+import { db } from '@/lib/db';
 
 // MVP auth: a signed, httpOnly JWT cookie set after OTP verification.
 // This is intentionally minimal so it's easy to read end-to-end. Before a
@@ -20,7 +21,16 @@ export interface SessionPayload {
   userId: string;
 }
 
-export async function createSession(payload: SessionPayload) {
+// `method` distinguishes phone OTP / email OTP / Google / Facebook -- the
+// four call sites (app/api/auth/verify-otp, verify-email-otp,
+// mock-google, mock-facebook) each pass their own. This also writes a
+// LoginEvent row (admin portal's "Login/session history" on the User
+// detail page, and the Dashboard's platform breakdown) -- best-effort:
+// a logging failure never blocks the actual login.
+export async function createSession(
+  payload: SessionPayload,
+  meta: { method: 'phone_otp' | 'email_otp' | 'google' | 'facebook' },
+) {
   const token = await new SignJWT({ ...payload })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
@@ -35,6 +45,25 @@ export async function createSession(payload: SessionPayload) {
     path: '/',
     maxAge: SESSION_TTL_SECONDS,
   });
+
+  try {
+    const h = await headers();
+    const userAgent = h.get('user-agent') || undefined;
+    const ip = h.get('x-forwarded-for')?.split(',')[0]?.trim() || h.get('x-real-ip') || undefined;
+    // No dedicated native-platform header exists yet (capacitor.config.ts
+    // loads the site as a remote URL with no custom UA) -- this heuristic
+    // is good enough for a rough web/iOS/Android split on the dashboard.
+    // Swap for a real signal (e.g. a header Capacitor sets) if precision
+    // ever matters more than "roughly right".
+    const ua = (userAgent || '').toLowerCase();
+    const platform = /iphone|ipad|ipod/.test(ua) ? 'ios' : /android/.test(ua) ? 'android' : 'web';
+
+    await db.loginEvent.create({
+      data: { userId: payload.userId, method: meta.method, platform, ip, userAgent },
+    });
+  } catch {
+    // best-effort only
+  }
 }
 
 export async function getSession(): Promise<SessionPayload | null> {

@@ -69,6 +69,17 @@ enum MessageKind {
   VIDEO_VYBE
 }
 
+// --- Admin Portal: account status -----------------------------------------
+// Distinct from Report/Block (which are user-initiated signals) -- this is
+// the actual enforcement state Trust & Safety sets via the admin portal.
+enum AccountStatus {
+  ACTIVE
+  WARNED
+  SUSPENDED
+  BANNED
+  DELETED
+}
+
 model User {
   id            String   @id @default(cuid())
   // Every identity field below is optional and independently unique: a user
@@ -88,6 +99,18 @@ model User {
   updatedAt     DateTime @updatedAt
   lastActiveAt  DateTime @default(now())
 
+  // --- Admin Portal: Trust & Safety enforcement state ---------------------
+  // Set exclusively via admin portal user actions (never by the consumer
+  // app itself) -- see admin/lib/userActions.ts. Every change here is
+  // paired with an AuditLogEntry.
+  status               AccountStatus @default(ACTIVE)
+  statusReason         String?
+  statusChangedAt      DateTime?
+  messagingRestricted  Boolean       @default(false)
+  discoveryRestricted  Boolean       @default(false)
+  deletionRequestedAt  DateTime?
+  deletedAt            DateTime?
+
   profile Profile?
 
   otpCodes         OtpCode[]
@@ -103,7 +126,17 @@ model User {
   dateFeedback     DateFeedback[]
   messageLikes     MessageLike[]
 
+  // --- Admin Portal: relations from the admin-domain models below ---------
+  moderationCases     ModerationCase[]   @relation("ModerationCasesAboutUser")
+  moderationAppeals   ModerationAppeal[]
+  supportTickets      SupportTicket[]
+  consentRecords       ConsentRecord[]
+  privacyRequests      PrivacyRequest[]
+  legalHolds           LegalHold[]
+  loginEvents          LoginEvent[]
+
   @@index([lastActiveAt])
+  @@index([status])
 }
 
 model Profile {
@@ -379,6 +412,8 @@ model Report {
   details    String   @default("")
   createdAt  DateTime @default(now())
 
+  moderationCases ModerationCase[]
+
   @@index([aboutId])
 }
 
@@ -416,4 +451,696 @@ model DateFeedback {
   createdAt           DateTime @default(now())
 
   @@unique([matchId, userId])
+}
+
+// =============================================================================
+// ADMIN PORTAL DOMAIN
+// -----------------------------------------------------------------------------
+// Everything below backs the separate admin/ app (admin/README.md). It shares
+// this exact schema file (see admin/prisma.config.ts) and this database --
+// there is no duplicate schema to drift out of sync. Consumer-facing models
+// above are untouched except for the small, clearly-commented additions
+// (User.status/*, Report.moderationCases) needed so admin actions can attach
+// to real user/report rows.
+// =============================================================================
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  OPERATIONS
+  TRUST_AND_SAFETY
+  MODERATOR
+  CUSTOMER_SUPPORT
+  PRIVACY_OFFICER
+  COMPLIANCE_OFFICER
+  FINANCE
+  ANALYTICS
+  READ_ONLY
+}
+
+model AdminUser {
+  id       String    @id @default(cuid())
+  email    String    @unique
+  name     String
+  passwordHash String
+  role     AdminRole @default(READ_ONLY)
+  isActive Boolean   @default(true)
+
+  // TOTP-based MFA (see admin/lib/mfa.ts). Recovery codes are stored hashed,
+  // one-time-use (consumed codes are removed from the array).
+  mfaSecret        String?
+  mfaEnabled       Boolean  @default(false)
+  mfaRecoveryCodes String[] @default([])
+
+  lastLoginAt DateTime?
+  lastLoginIp String?
+
+  // Basic brute-force protection -- incremented on each failed password
+  // attempt in admin/app/api/auth/login/route.ts, reset on success.
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+
+  createdById String?
+  createdBy   AdminUser?  @relation("AdminCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAdmins AdminUser[] @relation("AdminCreatedBy")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions                AdminSession[]
+  auditLogs               AuditLogEntry[]        @relation("AuditActor")
+  moderationCasesAssigned ModerationCase[]        @relation("CaseAssignee")
+  moderationNotes         ModerationNote[]
+  appealsReviewed         ModerationAppeal[]      @relation("AppealReviewer")
+  supportTicketsAssigned  SupportTicket[]         @relation("TicketAssignee")
+  ticketMessages          TicketMessage[]
+  privacyRequestsHandled  PrivacyRequest[]        @relation("PrivacyRequestHandler")
+  legalHoldsRequested     LegalHold[]             @relation("LegalHoldRequestedBy")
+  privacyIncidentsOwned   PrivacyIncident[]
+  privacyIncidentEvents   PrivacyIncidentEvent[]
+  processingActivitiesOwned ProcessingActivity[]
+  featureFlagsUpdated     FeatureFlag[]
+  configChangesProposed   AppConfigChange[]       @relation("ConfigProposer")
+  configChangesReviewed   AppConfigChange[]       @relation("ConfigReviewer")
+  notificationTemplatesUpdated NotificationTemplate[]
+  opsAlertsAcknowledged   OpsAlert[]
+
+  @@index([role])
+}
+
+// DB-backed (not stateless JWT) so sessions can be listed and force-revoked
+// -- required for "Force logout" and session/IP controls on admins
+// themselves, not just on consumer users. `stepUpAt` tracks the last time
+// this session re-proved identity (password + MFA) for gating destructive
+// actions with step-up auth without demanding it on every click.
+model AdminSession {
+  id        String    @id @default(cuid())
+  adminId   String
+  admin     AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  ip        String?
+  userAgent String?
+  stepUpAt  DateTime?
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  @@index([adminId])
+  @@index([expiresAt])
+}
+
+// Tamper-resistant by convention: the admin API never exposes an update or
+// delete for this model (see admin/app/api/audit/route.ts -- GET only), and
+// the deployment notes (admin/README.md) call out revoking UPDATE/DELETE
+// grants on this table for the app's DB role as a production hardening step.
+// One row per sensitive action, everywhere in the portal.
+model AuditLogEntry {
+  id       String     @id @default(cuid())
+  actorId  String?
+  actor    AdminUser? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  // Denormalized so the log stays readable even after an AdminUser is
+  // removed (actorId goes null via onDelete: SetNull, actorEmail does not).
+  actorEmail String
+
+  action   String // dot-path, e.g. "user.suspend", "privacy_request.complete"
+  category String // "user" | "moderation" | "content" | "support" | "privacy" | "auth" | "config" | "payments" | "system"
+
+  targetType String? // "User" | "AdminUser" | "ModerationCase" | ...
+  targetId   String?
+
+  previousValue Json?
+  newValue      Json?
+  reason        String?
+
+  requestId String
+  ip        String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([targetType, targetId])
+  @@index([category, createdAt])
+  @@index([createdAt])
+}
+
+enum ModerationSourceType {
+  USER_REPORT
+  AUTOMATED_FLAG
+  CONTENT_REVIEW
+  ADMIN_INITIATED
+}
+
+enum ModerationSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ModerationCaseStatus {
+  OPEN
+  IN_REVIEW
+  ESCALATED
+  RESOLVED
+  DISMISSED
+}
+
+enum AppealStatus {
+  PENDING
+  UPHELD
+  OVERTURNED
+}
+
+// The one work-item type for all of Trust & Safety + Content Moderation --
+// a user report, an automated risk flag, a photo/bio review, or something
+// an admin opened by hand all become a ModerationCase, distinguished by
+// sourceType/category. This is deliberately one model rather than a
+// separate table per source, so there is one queue, one SLA clock, and one
+// history per subject user, matching how the spec describes a single
+// "Safety Centre".
+model ModerationCase {
+  id            String   @id @default(cuid())
+  subjectUserId String
+  subjectUser   User     @relation("ModerationCasesAboutUser", fields: [subjectUserId], references: [id], onDelete: Cascade)
+
+  sourceType ModerationSourceType
+  reportId   String?
+  report     Report?              @relation(fields: [reportId], references: [id], onDelete: SetNull)
+
+  // harassment | scam_fraud | fake_catfish | underage | sexual_content |
+  // threats_blackmail | spam | suspicious_behavior | photo_violation |
+  // bio_violation | message_violation | other
+  category String
+  severity ModerationSeverity   @default(MEDIUM)
+  status   ModerationCaseStatus @default(OPEN)
+
+  assigneeId String?
+  assignee   AdminUser? @relation("CaseAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  slaDueAt DateTime?
+
+  // Internal automated-risk score (0-1). Never returned by any API a
+  // non-Trust-and-Safety/Compliance role can call -- see admin/lib/rbac.ts
+  // PERMISSIONS.moderation.viewRiskScore. "Never expose internal
+  // risk/scoring algorithms to normal admins" from the spec.
+  riskScore Float?
+
+  // Structured references to the evidence: report ids, message ids, photo
+  // urls, automated-flag payload -- shape documented in admin/lib/types.ts.
+  evidence Json?
+
+  isRepeatOffender Boolean @default(false)
+
+  resolution   String?
+  resolvedAt   DateTime?
+  resolvedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  notes   ModerationNote[]
+  appeals ModerationAppeal[]
+
+  @@index([status, severity])
+  @@index([subjectUserId])
+  @@index([assigneeId])
+  @@index([sourceType])
+}
+
+model ModerationNote {
+  id       String         @id @default(cuid())
+  caseId   String
+  case     ModerationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  authorId String
+  author   AdminUser      @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  body     String
+
+  createdAt DateTime @default(now())
+
+  @@index([caseId, createdAt])
+}
+
+model ModerationAppeal {
+  id     String         @id @default(cuid())
+  caseId String
+  case   ModerationCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  userId String
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  message String
+  status  AppealStatus @default(PENDING)
+
+  reviewedById String?
+  reviewedBy   AdminUser? @relation("AppealReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewNote   String?
+  reviewedAt   DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([caseId])
+  @@index([status])
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_USER
+  ESCALATED
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum TicketChannel {
+  VYBEHELP_ESCALATION
+  EMAIL
+  IN_APP_FORM
+  ADMIN_CREATED
+}
+
+model SupportTicket {
+  id     String  @id @default(cuid())
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // A ticket can exist before/without a matched account (e.g. someone
+  // emailing in) -- userId is nullable for exactly that.
+  contactEmail String?
+  contactPhone String?
+
+  subject  String
+  // account | profile | matching | discover | chat | safety | verification
+  // | privacy | technical | other
+  category String
+  priority TicketPriority @default(NORMAL)
+  status   TicketStatus   @default(OPEN)
+  channel  TicketChannel  @default(IN_APP_FORM)
+
+  assigneeId String?
+  assignee   AdminUser? @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  slaDueAt    DateTime?
+  escalatedAt DateTime?
+  resolvedAt  DateTime?
+
+  // The VybeHelp 💬 transcript that led here, when escalated from
+  // self-service rather than opened directly -- see
+  // app/api/help/ask/route.ts (consumer app) and
+  // admin/app/api/support/escalate/route.ts.
+  vybeHelpTranscript Json?
+
+  messages TicketMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, priority])
+  @@index([userId])
+  @@index([assigneeId])
+}
+
+model TicketMessage {
+  id       String        @id @default(cuid())
+  ticketId String
+  ticket   SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  authorType    String // 'user' | 'admin' | 'system'
+  authorAdminId String?
+  authorAdmin   AdminUser? @relation(fields: [authorAdminId], references: [id], onDelete: SetNull)
+
+  body        String
+  // Internal-only note, never shown to the user -- distinct from a reply.
+  internal    Boolean  @default(false)
+  attachments String[] @default([])
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId, createdAt])
+}
+
+// =============================================================================
+// PRIVACY & DPDP COMPLIANCE
+// -----------------------------------------------------------------------------
+// Modeled around the Digital Personal Data Protection Act 2023 and the
+// notified DPDP Rules 2025: explicit purpose-tagged consent with a
+// versioned notice, a Data Principal's statutory rights (access,
+// correction, erasure, grievance redressal, and portability where
+// applicable), retention/deletion workflows, legal holds that can
+// override a deletion, and a breach/incident workflow with Data
+// Protection Board notification tracking. This is documentation +
+// workflow tooling for a compliance/privacy team to operate, not a legal
+// opinion -- see admin/docs/DPDP_COMPLIANCE.md for what still needs
+// counsel sign-off before go-live (the Board's rules commence in phases).
+// =============================================================================
+
+enum ConsentPurpose {
+  ACCOUNT_ESSENTIAL
+  PRECISE_LOCATION
+  MARKETING_COMMUNICATIONS
+  ANALYTICS
+  THIRD_PARTY_SHARING
+}
+
+enum ConsentStatus {
+  GRANTED
+  WITHDRAWN
+}
+
+// Append-only: withdrawing consent inserts a new WITHDRAWN row rather than
+// mutating the GRANTED one, so the full consent history for a purpose is
+// always reconstructable (DPDP requires being able to show what a Data
+// Principal actually agreed to, and when).
+model ConsentRecord {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  purpose       ConsentPurpose
+  status        ConsentStatus
+  noticeVersion String // which version of the privacy notice was shown
+  source        String // 'onboarding' | 'settings' | 'reconsent_prompt' | 'admin_backfill'
+  ip            String?
+  userAgent     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, purpose, createdAt])
+}
+
+enum PrivacyRequestType {
+  ACCESS
+  CORRECTION
+  DELETION
+  GRIEVANCE
+  PORTABILITY
+  CONSENT_WITHDRAWAL
+}
+
+enum PrivacyRequestStatus {
+  RECEIVED
+  VERIFYING_IDENTITY
+  IN_PROGRESS
+  ON_HOLD_LEGAL
+  COMPLETED
+  REJECTED
+}
+
+// One model for every Data Principal right in the Act (access, correction,
+// erasure, grievance, and portability where applicable) -- `type`
+// distinguishes them since the workflow shape (received -> verify identity
+// -> action -> respond) is the same for all five.
+model PrivacyRequest {
+  id           String  @id @default(cuid())
+  userId       String?
+  user         User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  contactEmail String? // for a request made before/without a matched account
+
+  type        PrivacyRequestType
+  status      PrivacyRequestStatus @default(RECEIVED)
+  description String               @default("")
+
+  // Target response date the compliance team commits to internally.
+  dueAt DateTime?
+
+  handledById    String?
+  handledBy      AdminUser? @relation("PrivacyRequestHandler", fields: [handledById], references: [id], onDelete: SetNull)
+  resolutionNote String?
+
+  // Time-limited signed download for ACCESS / PORTABILITY -- generated,
+  // never a permanent public link (see admin/lib/privacyExport.ts).
+  exportFileUrl String?
+  exportExpiresAt DateTime?
+
+  legalHoldId String?
+  legalHold   LegalHold? @relation(fields: [legalHoldId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  @@index([status, type])
+  @@index([userId])
+}
+
+// A DELETION request against a user who is under a legal hold is blocked
+// (status ON_HOLD_LEGAL) rather than silently actioned -- see
+// admin/lib/privacyWorkflow.ts.
+model LegalHold {
+  id     String  @id @default(cuid())
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  reason        String
+  requestedById String
+  requestedBy   AdminUser @relation("LegalHoldRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+
+  active     Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  releasedAt DateTime?
+
+  privacyRequests PrivacyRequest[]
+
+  @@index([userId, active])
+}
+
+enum PrivacyIncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum PrivacyIncidentStatus {
+  DETECTED
+  ASSESSING
+  CONTAINED
+  BOARD_NOTIFIED // Data Protection Board of India, per DPDP breach-notification rules
+  USERS_NOTIFIED
+  CLOSED
+}
+
+model PrivacyIncident {
+  id          String @id @default(cuid())
+  title       String
+  description String
+  severity    PrivacyIncidentSeverity
+  status      PrivacyIncidentStatus   @default(DETECTED)
+
+  affectedUserCount      Int?
+  affectedDataCategories String[] @default([])
+
+  detectedAt      DateTime
+  containedAt     DateTime?
+  boardNotifiedAt DateTime?
+  usersNotifiedAt DateTime?
+
+  rootCause   String?
+  remediation String?
+
+  ownerId String?
+  owner   AdminUser? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  timeline PrivacyIncidentEvent[]
+
+  @@index([status, severity])
+}
+
+model PrivacyIncidentEvent {
+  id         String          @id @default(cuid())
+  incidentId String
+  incident   PrivacyIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  note      String
+  authorId  String?
+  author    AdminUser? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt DateTime   @default(now())
+
+  @@index([incidentId, createdAt])
+}
+
+// Vendor/processor register -- who else touches user data and why (SMS/OTP
+// gateway, verification/KYC vendor, cloud hosting, blob storage, ...).
+model DataProcessor {
+  id             String    @id @default(cuid())
+  name           String
+  purpose        String
+  dataCategories String[]  @default([])
+  country        String    @default("India")
+  contractRef    String?
+  dpaSignedAt    DateTime? // Data Processing Agreement
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+// Configurable per data category so retention isn't hard-coded across the
+// app; `autoDeleteEnabled` gates whether admin/lib/retentionJob.ts actually
+// purges past-retention rows automatically or just flags them for review.
+model RetentionPolicy {
+  id                String    @id @default(cuid())
+  dataCategory      String    @unique // "OTP codes" | "Expired swipes" | "Deleted-account data" | ...
+  retentionDays     Int
+  autoDeleteEnabled Boolean   @default(false)
+  legalBasis        String    @default("")
+  lastReviewedAt    DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// The "record of processing activities" DPDP/most privacy regimes expect a
+// controller to maintain -- lightweight documentation rows, not a live
+// data-flow scanner.
+model ProcessingActivity {
+  id                  String   @id @default(cuid())
+  name                String
+  purpose             String
+  dataCategories      String[] @default([])
+  legalBasis          String
+  dataSubjects        String   @default("App users (Data Principals)")
+  recipients          String[] @default([])
+  retentionCategoryRef String? // free-text pointer to a RetentionPolicy.dataCategory
+  crossBorderTransfer Boolean  @default(false)
+  dpiaRequired        Boolean  @default(false)
+  dpiaDocUrl          String?
+
+  ownerId String?
+  owner   AdminUser? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// =============================================================================
+// CONFIGURATION, OPS & NOTIFICATIONS
+// =============================================================================
+
+model FeatureFlag {
+  id             String  @id @default(cuid())
+  key            String  @unique
+  label          String
+  description    String  @default("")
+  enabled        Boolean @default(false)
+  rolloutPercent Int     @default(100)
+
+  updatedById String?
+  updatedBy   AdminUser? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum ConfigChangeStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  APPLIED
+}
+
+// A generic, append-only proposal log for the handful of "important"
+// settings that need a second pair of eyes before taking effect (feature
+// flags, maintenance mode, global notification templates) -- see
+// admin/lib/configApproval.ts. Routine content edits (Interests, Tribes,
+// Prompts -- already their own tables above) go through normal
+// audit-logged CRUD instead of this approval queue.
+model AppConfigChange {
+  id            String @id @default(cuid())
+  configKey     String // e.g. "maintenanceMode", "featureFlag:new_discovery_algo"
+  previousValue Json?
+  proposedValue Json
+
+  status ConfigChangeStatus @default(PENDING_APPROVAL)
+
+  proposedById String
+  proposedBy   AdminUser @relation("ConfigProposer", fields: [proposedById], references: [id], onDelete: Restrict)
+
+  reviewedById String?
+  reviewedBy   AdminUser? @relation("ConfigReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewNote   String?
+
+  createdAt  DateTime  @default(now())
+  reviewedAt DateTime?
+  appliedAt  DateTime?
+
+  @@index([configKey, status])
+}
+
+model NotificationTemplate {
+  id      String  @id @default(cuid())
+  key     String  @unique // e.g. "account.suspended", "privacy.deletion.completed"
+  channel String // 'email' | 'sms' | 'in_app'
+  subject String?
+  body    String
+
+  updatedById String?
+  updatedBy   AdminUser? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum OpsAlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum OpsAlertCategory {
+  SECURITY
+  MODERATION
+  SLA_BREACH
+  SYSTEM
+  PAYMENT
+  VERIFICATION
+  PRIVACY
+  OUTAGE
+}
+
+model OpsAlert {
+  id       String           @id @default(cuid())
+  category OpsAlertCategory
+  severity OpsAlertSeverity @default(WARNING)
+  title    String
+  detail   String           @default("")
+
+  sourceType String? // 'ModerationCase' | 'SupportTicket' | 'PrivacyIncident' | 'system'
+  sourceId   String?
+
+  acknowledgedById String?
+  acknowledgedBy   AdminUser? @relation(fields: [acknowledgedById], references: [id], onDelete: SetNull)
+  acknowledgedAt   DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([category, severity, createdAt])
+  @@index([acknowledgedAt])
+}
+
+// Login/session history for the User Management detail page ("Login/session
+// history", "Account/device history" in the spec) -- the consumer app's
+// auth endpoints write one of these per successful login (see
+// app/api/auth/*/route.ts). Session itself stays the existing stateless
+// JWT cookie (lib/session.ts, unchanged) -- this is a read history, not a
+// second session store for the consumer app.
+model LoginEvent {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  method    String // 'phone_otp' | 'email_otp' | 'google' | 'facebook'
+  platform  String? // 'web' | 'ios' | 'android'
+  ip        String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }

@@ -38,3 +38,14 @@ next-env.d.ts
 /ios/App/output/
 /ios/DerivedData/
 /android/.idea/
+
+# admin/ is a separate Next.js app with its own install/build output
+admin/node_modules
+admin/.next/
+admin/out/
+admin/build/
+admin/*.tsbuildinfo
+admin/next-env.d.ts
+admin/.env
+admin/.env*.local
+admin/.vercel

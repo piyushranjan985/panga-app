@@ -36,7 +36,7 @@ export async function POST(req: Request) {
       include: { profile: true },
     });
 
-    await createSession({ userId: user.id });
+    await createSession({ userId: user.id }, { method: 'google' });
 
     return NextResponse.json({ ok: true, hasProfile: Boolean(user.profile) });
   } catch (err: unknown) {

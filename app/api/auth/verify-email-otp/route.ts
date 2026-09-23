@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   }
 
   await db.user.update({ where: { id: user.id }, data: { emailVerified: true, lastActiveAt: new Date() } });
-  await createSession({ userId: user.id });
+  await createSession({ userId: user.id }, { method: 'email_otp' });
 
   return NextResponse.json({ ok: true, hasProfile: Boolean(user.profile) });
 }
