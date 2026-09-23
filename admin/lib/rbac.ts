@@ -254,3 +254,11 @@ export const STEP_UP_REQUIRED: Permission[] = [
 export function requiresStepUp(permission: Permission): boolean {
   return STEP_UP_REQUIRED.includes(permission);
 }
+
+// Flat permission x step-up list for the Admin & Roles permission-matrix
+// table (app/(console)/admin-roles/page.tsx) -- avoids that page having
+// to import ALL and STEP_UP_REQUIRED separately and zip them itself.
+export const ALL_PERMISSIONS_FOR_DISPLAY: { permission: Permission; stepUp: boolean }[] = ALL.map((permission) => ({
+  permission,
+  stepUp: requiresStepUp(permission),
+}));
