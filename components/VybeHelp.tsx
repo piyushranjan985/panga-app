@@ -29,6 +29,10 @@ export default function VybeHelp() {
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showEscalate, setShowEscalate] = useState(false);
+  const [escalateNote, setEscalateNote] = useState('');
+  const [escalating, setEscalating] = useState(false);
+  const [escalated, setEscalated] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -65,6 +69,34 @@ export default function VybeHelp() {
       ]);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function escalate() {
+    const note = escalateNote.trim();
+    if (!note || escalating) return;
+    setEscalating(true);
+    try {
+      const transcript = messages.filter((m) => m.id !== 'welcome').map((m) => ({ role: m.role, text: m.text }));
+      const res = await fetch('/api/help/escalate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ note, transcript }),
+      });
+      if (res.ok) {
+        setEscalated(true);
+        setShowEscalate(false);
+        setMessages((m) => [
+          ...m,
+          {
+            id: `sys-${Date.now()}`,
+            role: 'assistant',
+            text: "Got it -- I've passed this to the VybeMatch support team along with our conversation. They'll follow up on the email or phone number on your account.",
+          },
+        ]);
+      }
+    } finally {
+      setEscalating(false);
     }
   }
 
@@ -135,6 +167,39 @@ export default function VybeHelp() {
               </div>
             )}
           </div>
+
+          {messages.length > 1 && !escalated && (
+            <div className="border-t border-line px-4 py-2">
+              {showEscalate ? (
+                <div className="space-y-2">
+                  <textarea
+                    value={escalateNote}
+                    onChange={(e) => setEscalateNote(e.target.value)}
+                    placeholder="What do you need help with? A real person will follow up."
+                    rows={2}
+                    className="w-full rounded-xl border border-line px-3 py-2 text-xs outline-none"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => setShowEscalate(false)} className="rounded-full px-3 py-1 text-xs text-inkSoft">
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={escalate}
+                      disabled={escalating || !escalateNote.trim()}
+                      className="rounded-full bg-magenta px-3 py-1 text-xs font-bold text-white disabled:opacity-40"
+                    >
+                      {escalating ? 'Sending…' : 'Send to support'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setShowEscalate(true)} className="text-xs font-semibold text-magenta underline">
+                  Still stuck? Talk to a human
+                </button>
+              )}
+            </div>
+          )}
 
           <form
             onSubmit={(e) => {
