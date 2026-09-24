@@ -6,7 +6,7 @@
   "scripts": {
     "predev": "prisma generate",
     "dev": "next dev -p 4000",
-    "prebuild": "prisma generate",
+    "prebuild": "node -e \"const fs=require('fs');console.log('--- cwd ---', process.cwd());console.log('--- node_modules/@prisma ---');try{console.log(fs.readdirSync('node_modules/@prisma'))}catch(e){console.log('ERR',e.message)};console.log('--- node_modules/.prisma ---');try{console.log(fs.readdirSync('node_modules/.prisma'))}catch(e){console.log('ERR',e.message)};console.log('--- require.resolve @prisma/client ---');try{console.log(require.resolve('@prisma/client'))}catch(e){console.log('ERR',e.message)};console.log('--- node_modules/@prisma/client/package.json version ---');try{console.log(JSON.parse(fs.readFileSync('node_modules/@prisma/client/package.json')).version)}catch(e){console.log('ERR',e.message)};\" && prisma generate",
     "build": "next build",
     "start": "next start -p 4000",
     "lint": "next lint",
