@@ -6,7 +6,7 @@ import Badge from '@/components/Badge';
 import EmptyState from '@/components/EmptyState';
 import type { Prisma } from '@prisma/client';
 
-const STATUS_TONE: Record<string, 'default' | 'success' | 'warning' | 'critical'> = {
+const STATUS_TONE: Record<string, 'default' | 'success' | 'warning' | 'critical' | 'info'> = {
   RECEIVED: 'warning',
   VERIFYING_IDENTITY: 'warning',
   IN_PROGRESS: 'info',

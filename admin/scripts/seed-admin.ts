@@ -68,7 +68,11 @@ main()
 async function seedSampleContent(ctx: Awaited<ReturnType<typeof main>>) {
   const { superAdmin, trustSafety, moderator, support, userIds } = ctx;
   if (userIds.length < 4) return;
-  const [u1, u2, u3, u4] = userIds;
+  // Safe: the length guard above establishes at least 4 elements, but
+  // destructuring a plain string[] (not a fixed-length tuple) still types
+  // each element as `string | undefined` under noUncheckedIndexedAccess --
+  // cast to a tuple to reflect what we just checked.
+  const [u1, u2, u3, u4] = userIds as [string, string, string, string];
 
   console.log('\nSeeding sample Moderation cases...');
   const existingCases = await db.moderationCase.count();

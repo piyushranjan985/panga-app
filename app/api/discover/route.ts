@@ -67,9 +67,11 @@ export async function GET() {
       // anyone else's feed (see lib/accountEnforcement.ts).
       where: {
         userId: { not: session.userId },
-        discoveryRestricted: false,
-        profileHidden: false,
-        user: { status: 'ACTIVE' },
+        // discoveryRestricted/profileHidden/status all live on User, not
+        // Profile -- nested under the `user` relation filter, not
+        // top-level (a prior version of this query put them at the top
+        // level by mistake, which Prisma's generated types reject).
+        user: { status: 'ACTIVE', discoveryRestricted: false, profileHidden: false },
       },
       include: {
         interests: true,
