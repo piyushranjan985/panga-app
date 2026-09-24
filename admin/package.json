@@ -6,7 +6,7 @@
   "scripts": {
     "predev": "mkdir -p node_modules/.prisma/client && [ -f node_modules/.prisma/client/default.js ] || printf 'module.exports = {};\\n' > node_modules/.prisma/client/default.js && prisma generate",
     "dev": "next dev -p 4000",
-    "prebuild": "mkdir -p node_modules/.prisma/client && [ -f node_modules/.prisma/client/default.js ] || printf 'module.exports = {};\\n' > node_modules/.prisma/client/default.js && prisma generate",
+    "prebuild": "mkdir -p node_modules/.prisma/client && [ -f node_modules/.prisma/client/default.js ] || printf 'module.exports = {};\\n' > node_modules/.prisma/client/default.js && node -e \"console.log('stub exists:', require('fs').existsSync('node_modules/.prisma/client/default.js'));try{require('@prisma/client');console.log('require @prisma/client: OK')}catch(e){console.log('require @prisma/client THREW:', e.message)};\" && DEBUG=prisma:* prisma generate 2>&1 | tail -150",
     "build": "next build",
     "start": "next start -p 4000",
     "lint": "next lint",
