@@ -21,6 +21,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/support', label: 'Support', icon: '🎧', permission: 'support.view' },
   { href: '/privacy', label: 'Privacy & Compliance', icon: '🔏', permission: 'privacy.view' },
   { href: '/analytics', label: 'Analytics', icon: '📈', permission: 'analytics.view' },
+  { href: '/trends', label: 'Trends', icon: '📉', permission: 'analytics.view' },
   { href: '/payments', label: 'Payments', icon: '💳', permission: 'payments.view' },
   { href: '/notifications', label: 'Notifications', icon: '🔔', permission: 'notifications.view' },
   { href: '/configuration', label: 'Configuration', icon: '⚙️', permission: 'config.view' },

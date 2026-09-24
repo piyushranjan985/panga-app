@@ -46,16 +46,26 @@ export default function Sidebar({ role, name, email }: { role: AdminRole; name: 
       </nav>
 
       <div className="border-t border-border px-4 py-4">
-        <p className="truncate text-sm font-semibold">{name}</p>
-        <p className="truncate text-xs text-inkFaint">{email}</p>
-        <p className="mt-0.5 text-xs text-inkFaint">{ROLE_LABEL[role]}</p>
-        <button
-          type="button"
-          onClick={logout}
-          className="mt-3 w-full rounded-lg border border-border py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas"
-        >
-          Log out
-        </button>
+        <Link href="/account" className="block rounded-lg -mx-1 px-1 py-0.5 hover:bg-canvas">
+          <p className="truncate text-sm font-semibold">{name}</p>
+          <p className="truncate text-xs text-inkFaint">{email}</p>
+          <p className="mt-0.5 text-xs text-inkFaint">{ROLE_LABEL[role]}</p>
+        </Link>
+        <div className="mt-3 flex gap-2">
+          <Link
+            href="/account"
+            className="flex-1 rounded-lg border border-border py-1.5 text-center text-xs font-semibold text-inkSoft hover:bg-canvas"
+          >
+            Account
+          </Link>
+          <button
+            type="button"
+            onClick={logout}
+            className="flex-1 rounded-lg border border-border py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas"
+          >
+            Log out
+          </button>
+        </div>
       </div>
     </aside>
   );
