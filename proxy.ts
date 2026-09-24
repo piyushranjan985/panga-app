@@ -4,7 +4,7 @@ import { verifySessionToken, COOKIE_NAME } from '@/lib/session';
 // Route protection at the edge, before any page or API handler runs.
 // Kept as an explicit allowlist of PUBLIC paths (rather than a blocklist of
 // protected ones) so a newly-added private route is safe-by-default.
-const PUBLIC_PATHS = ['/', '/login', '/verify', '/manifest.webmanifest'];
+const PUBLIC_PATHS = ['/', '/login', '/verify', '/manifest.webmanifest', '/hero-triptych.jpg'];
 const PUBLIC_PREFIXES = ['/_next', '/icons', '/api/auth'];
 
 export async function proxy(req: NextRequest) {
