@@ -4,8 +4,9 @@
   "private": true,
   "description": "VybeMatch Admin Portal -- Operations, Trust & Safety, Support, Privacy/DPDP Compliance and Analytics console. Separate Next.js app in the same repo, sharing the consumer app's database (see prisma.config.ts).",
   "scripts": {
-    "postinstall": "prisma generate",
+    "predev": "prisma generate",
     "dev": "next dev -p 4000",
+    "prebuild": "prisma generate",
     "build": "next build",
     "start": "next start -p 4000",
     "lint": "next lint",
