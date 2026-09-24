@@ -4,9 +4,9 @@
   "private": true,
   "description": "VybeMatch Admin Portal -- Operations, Trust & Safety, Support, Privacy/DPDP Compliance and Analytics console. Separate Next.js app in the same repo, sharing the consumer app's database (see prisma.config.ts).",
   "scripts": {
-    "predev": "prisma generate",
+    "predev": "mkdir -p node_modules/.prisma/client && [ -f node_modules/.prisma/client/default.js ] || printf 'module.exports = {};\\n' > node_modules/.prisma/client/default.js && prisma generate",
     "dev": "next dev -p 4000",
-    "prebuild": "node -e \"console.log('--- full require @prisma/client ---');try{const c=require('@prisma/client');console.log('OK, keys:', Object.keys(c))}catch(e){console.log('THREW:', e.message)};console.log('--- PRISMA_CLIENT env hints ---');console.log('PRISMA_GENERATE_SKIP_AUTOINSTALL', process.env.PRISMA_GENERATE_SKIP_AUTOINSTALL);console.log('PRISMA_CLI_QUERY_ENGINE_TYPE', process.env.PRISMA_CLI_QUERY_ENGINE_TYPE);\" && prisma generate --generator adminClient 2>&1 || (echo RETRY-WITHOUT-FILTER && prisma generate)",
+    "prebuild": "mkdir -p node_modules/.prisma/client && [ -f node_modules/.prisma/client/default.js ] || printf 'module.exports = {};\\n' > node_modules/.prisma/client/default.js && prisma generate",
     "build": "next build",
     "start": "next start -p 4000",
     "lint": "next lint",
