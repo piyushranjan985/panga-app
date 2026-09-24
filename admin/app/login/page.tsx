@@ -21,17 +21,29 @@ function LoginForm() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
+      let data: { error?: string; nextStep?: string } | null = null;
+      try {
+        data = await res.json();
+      } catch {
+        // Server returned something that isn't JSON (a crashed route's
+        // HTML error page, a proxy error page, etc.) -- surface that
+        // instead of silently doing nothing.
+        setError(`Unexpected server response (${res.status}). Please try again or contact an engineer.`);
+        return;
+      }
       if (!res.ok) {
-        setError(data.error || 'Something went wrong.');
+        setError(data?.error || 'Something went wrong.');
         return;
       }
       const next = params.get('next') || '/dashboard';
-      if (data.nextStep === 'mfa-setup') {
+      if (data?.nextStep === 'mfa-setup') {
         router.push(`/login/mfa-setup?next=${encodeURIComponent(next)}`);
       } else {
         router.push(`/login/mfa?next=${encodeURIComponent(next)}`);
       }
+    } catch {
+      // Network failure (offline, DNS, CORS, etc.) -- fetch() itself threw.
+      setError('Could not reach the server. Check your connection and try again.');
     } finally {
       setLoading(false);
     }
