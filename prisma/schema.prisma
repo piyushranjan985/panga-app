@@ -8,6 +8,26 @@
 
 generator client {
   provider = "prisma-client-js"
+  // Explicit output -- this is exactly where prisma-client-js already
+  // wrote by default (node_modules/.prisma/client, resolved relative to
+  // this schema file's own directory), just made explicit so nothing
+  // about it depends on ambiguous cwd-based resolution.
+  output   = "../node_modules/.prisma/client"
+}
+
+// The admin app (../admin) has its own separate node_modules (it is a
+// fully separate Next.js app in this repo, not an npm workspace member --
+// see admin/prisma.config.ts), so its `prisma generate` run needs its own
+// explicit output too. Without this, @prisma/client's own internal
+// `require('.prisma/client/default')` can only find the *consumer app's*
+// generated client by walking up the real filesystem to this repo's root
+// node_modules -- which works when both apps' node_modules happen to
+// exist side by side on one machine (e.g. local dev), but not on a CI/
+// build machine that only installs one app's dependencies at a time
+// (e.g. Vercel building the admin project alone).
+generator adminClient {
+  provider = "prisma-client-js"
+  output   = "../admin/node_modules/.prisma/client"
 }
 
 datasource db {
