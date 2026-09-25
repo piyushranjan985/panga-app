@@ -69,7 +69,7 @@ export default function DashboardClient({ role }: { role: AdminRole }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `vybematch-dashboard-${range}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `findmyvybe-dashboard-${range}-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -157,7 +157,7 @@ export default function DashboardClient({ role }: { role: AdminRole }) {
       </div>
 
       <p className="text-xs text-inkFaint">
-        VybeMatch has no subscription or billing system yet, so revenue metrics aren&apos;t shown here -- see
+        findmyVybe has no subscription or billing system yet, so revenue metrics aren&apos;t shown here -- see
         Payments for that section&apos;s current (not-yet-applicable) state. System health, API errors and failed
         jobs live on the System Health page.
       </p>

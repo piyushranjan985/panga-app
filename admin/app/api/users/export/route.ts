@@ -51,7 +51,7 @@ export async function GET(req: Request) {
   return new NextResponse(csv, {
     headers: {
       'content-type': 'text/csv',
-      'content-disposition': `attachment; filename="vybematch-users-${new Date().toISOString().slice(0, 10)}.csv"`,
+      'content-disposition': `attachment; filename="findmyvybe-users-${new Date().toISOString().slice(0, 10)}.csv"`,
     },
   });
 }

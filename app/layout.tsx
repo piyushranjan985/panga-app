@@ -2,11 +2,11 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'VybeMatch — say the quiet part first',
+  title: 'findmyVybe — say the quiet part first',
   description:
-    'VybeMatch is a vibe-based dating & matrimony-lite platform for Indian Gen Z: transparent intent and a trust layer that respects your pace.',
+    'findmyVybe is a vibe-based dating & matrimony-lite platform for Indian Gen Z: transparent intent and a trust layer that respects your pace.',
   manifest: '/manifest.webmanifest',
-  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'VybeMatch' },
+  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'findmyVybe' },
 };
 
 export const viewport: Viewport = {

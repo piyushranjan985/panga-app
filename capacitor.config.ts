@@ -1,6 +1,6 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
-// VybeMatch ships as a "remote URL" Capacitor app: the iOS/Android shells
+// findmyVybe ships as a "remote URL" Capacitor app: the iOS/Android shells
 // load the live Vercel deployment directly (same session cookies, same
 // API routes, same Prisma-backed backend -- nothing about the server side
 // changes), and just gain a real app icon, home-screen presence, and a
@@ -14,8 +14,8 @@ import type { CapacitorConfig } from '@capacitor/cli';
 // MOBILE_APP_SETUP.md for the full walkthrough). Until it's a real
 // https:// URL, the native shells have nothing to load.
 const config: CapacitorConfig = {
-  appId: 'app.vybematch.mobile', // reverse-DNS bundle id -- pick your own if you'd rather not use this one; it must be unique on both stores and, once submitted, is very painful to change
-  appName: 'VybeMatch',
+  appId: 'app.findmyvybe.mobile', // reverse-DNS bundle id -- pick your own if you'd rather not use this one; it must be unique on both stores and, once submitted, is very painful to change
+  appName: 'findmyVybe',
   webDir: 'public', // required by the CLI even though remote-URL mode doesn't serve local files as the app's content
   server: {
     url: 'https://vybematch-app-2.vercel.app',

@@ -16,7 +16,7 @@ interface Preview {
 // Public page behind a shared Family Preview link (see the Family Preview
 // onboarding step and app/api/preview/[userId]/route.ts). No sign-in, no
 // swipe deck, no bio or Vybe Check answers — just the handful of fields
-// someone explicitly chose to make shareable outside VybeMatch.
+// someone explicitly chose to make shareable outside findmyVybe.
 export default function FamilyPreviewPage() {
   const params = useParams<{ userId: string }>();
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -56,7 +56,7 @@ export default function FamilyPreviewPage() {
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 px-6 py-16">
       <div className="text-center">
         <p className="text-xs font-semibold uppercase tracking-wide text-inkSoft/60">Family Preview</p>
-        <p className="mt-1 text-xs text-inkSoft">A shared, read-only introduction — not the full VybeMatch profile.</p>
+        <p className="mt-1 text-xs text-inkSoft">A shared, read-only introduction — not the full findmyVybe profile.</p>
       </div>
 
       <div className="rounded-card border border-line bg-white p-6 text-center shadow-lg">
@@ -80,7 +80,7 @@ export default function FamilyPreviewPage() {
         </div>
       </div>
 
-      <p className="text-center text-xs text-inkSoft">Shared via VybeMatch&apos;s optional Family Preview.</p>
+      <p className="text-center text-xs text-inkSoft">Shared via findmyVybe&apos;s optional Family Preview.</p>
     </main>
   );
 }

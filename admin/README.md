@@ -1,7 +1,7 @@
-# VybeMatch Admin Portal
+# findmyVybe Admin Portal
 
 Operations + Trust & Safety + Support + Privacy/DPDP Compliance +
-Analytics, in one console, for the team running VybeMatch. A separate
+Analytics, in one console, for the team running findmyVybe. A separate
 Next.js 16 app in the same repository (`admin/`), with its own
 `package.json`, deployed as its own Vercel project -- but sharing the
 consumer app's Postgres database and its one `prisma/schema.prisma`
@@ -53,7 +53,7 @@ to get a typed client for the tables that migration created.
   generated and printed once, here only -- there's no email delivery in
   this build, so this is the only place it surfaces.
 - Creates eight demo accounts, one per non-Super-Admin role
-  (`demo.moderator@vybematch.internal`, etc.), each with its own random
+  (`demo.moderator@findmyvybe.internal`, etc.), each with its own random
   printed password, so you can sign in as each role to sanity-check what
   the permission matrix actually restricts.
 - Seeds sample Moderation cases, Support tickets, Consent records, Privacy
@@ -96,7 +96,7 @@ repo as the consumer app, not a second deployment of the existing one:
    Vercel project -- that's the whole point of sharing the schema.
 6. Deploy. The admin portal gets its own Vercel URL/domain, separate from
    the consumer app's -- put it behind your own DNS name (e.g.
-   `admin.vybematch.app`) rather than leaving it on the default
+   `admin.findmyvybe.app`) rather than leaving it on the default
    `*.vercel.app` subdomain, and consider Vercel's password/SSO
    protection or an IP allowlist on top of this app's own login+MFA, since
    this console can read PII and take enforcement action across your
@@ -126,7 +126,7 @@ Documented in-app rather than silently missing, so nobody mistakes an
 absence for a bug:
 
 - **Payments** (`/payments`) -- no `Subscription`/`Payment` model exists;
-  VybeMatch doesn't charge users yet. The page says so.
+  findmyVybe doesn't charge users yet. The page says so.
 - **Feature flags / maintenance mode are not read by the consumer app** --
   this portal manages `FeatureFlag` rows through a propose-then-approve
   workflow, but nothing in the consumer app's request path checks them

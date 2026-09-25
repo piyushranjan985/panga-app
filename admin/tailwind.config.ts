@@ -4,7 +4,7 @@ import type { Config } from 'tailwindcss';
 // app's warm/playful one (tailwind.config.ts one level up) -- this is an
 // internal ops console read by staff for hours at a time, not a dating
 // app screen. `brand` is the one accent shared with the consumer app
-// (VybeMatch magenta) used sparingly for primary actions and active nav;
+// (findmyVybe magenta) used sparingly for primary actions and active nav;
 // everything else is a quiet slate scale plus semantic status colors.
 const config: Config = {
   darkMode: 'class',

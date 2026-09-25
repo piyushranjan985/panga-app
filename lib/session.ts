@@ -8,7 +8,7 @@ import { db } from '@/lib/db';
 // least add refresh-token rotation and device/session revocation — see the
 // "Trust & Safety" section of the strategy doc.
 
-const COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'vybematch_session';
+const COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'findmyvybe_session';
 const SECRET = new TextEncoder().encode(
   process.env.SESSION_JWT_SECRET || 'dev-only-change-me-please-generate-a-real-secret',
 );

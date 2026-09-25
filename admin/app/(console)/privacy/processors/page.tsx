@@ -14,7 +14,7 @@ export default async function ProcessorsPage() {
 
   return (
     <div>
-      <PageHeader title="Data Processors" description="Vendor register -- who else touches user data on VybeMatch's behalf, and why." />
+      <PageHeader title="Data Processors" description="Vendor register -- who else touches user data on findmyVybe's behalf, and why." />
       <div className="space-y-6 p-8">
         {canManage && <NewProcessorForm />}
 

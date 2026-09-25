@@ -1,19 +1,19 @@
-name: vybematch
+name: findmyvybe
 
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: vybematch
-      POSTGRES_PASSWORD: vybematch
-      POSTGRES_DB: vybematch
+      POSTGRES_USER: findmyvybe
+      POSTGRES_PASSWORD: findmyvybe
+      POSTGRES_DB: findmyvybe
     ports:
       - '5432:5432'
     volumes:
-      - vybematch_db_data:/var/lib/postgresql/data
+      - findmyvybe_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U vybematch']
+      test: ['CMD-SHELL', 'pg_isready -U findmyvybe']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -25,14 +25,14 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://vybematch:vybematch@db:5432/vybematch?schema=public
+      DATABASE_URL: postgresql://findmyvybe:findmyvybe@db:5432/findmyvybe?schema=public
       SESSION_JWT_SECRET: dev-only-change-me-please-generate-a-real-secret
       OTP_PROVIDER: mock
       VERIFICATION_PROVIDER: mock
-      NEXT_PUBLIC_APP_NAME: VybeMatch
+      NEXT_PUBLIC_APP_NAME: findmyVybe
       NEXT_PUBLIC_APP_URL: http://localhost:3000
     ports:
       - '3000:3000'
 
 volumes:
-  vybematch_db_data:
+  findmyvybe_db_data:

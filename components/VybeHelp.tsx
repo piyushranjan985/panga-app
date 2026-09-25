@@ -14,7 +14,7 @@ const WELCOME: ChatMessage = {
   id: 'welcome',
   role: 'assistant',
   text:
-    "Hi, I'm VybeHelp 💬 Ask me anything about VybeMatch -- Vybes, Discover, chat, safety, your profile, the app, anything.",
+    "Hi, I'm VybeHelp 💬 Ask me anything about findmyVybe -- Vybes, Discover, chat, safety, your profile, the app, anything.",
 };
 
 const SUGGESTIONS = [
@@ -91,7 +91,7 @@ export default function VybeHelp() {
           {
             id: `sys-${Date.now()}`,
             role: 'assistant',
-            text: "Got it -- I've passed this to the VybeMatch support team along with our conversation. They'll follow up on the email or phone number on your account.",
+            text: "Got it -- I've passed this to the findmyVybe support team along with our conversation. They'll follow up on the email or phone number on your account.",
           },
         ]);
       }
@@ -119,7 +119,7 @@ export default function VybeHelp() {
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
             <div>
               <p className="font-display text-sm font-extrabold">VybeHelp 💬</p>
-              <p className="text-xs text-inkSoft">Ask me anything about VybeMatch</p>
+              <p className="text-xs text-inkSoft">Ask me anything about findmyVybe</p>
             </div>
             <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="text-inkSoft">
               ✕

@@ -1,6 +1,6 @@
 # DPDP Compliance -- Admin Portal Reference
 
-This document explains how the VybeMatch Admin Portal's Privacy & Compliance
+This document explains how the findmyVybe Admin Portal's Privacy & Compliance
 Centre maps to India's **Digital Personal Data Protection Act, 2023** (DPDP
 Act) and the **Digital Personal Data Protection Rules, 2025** (DPDP Rules),
 which commence in phases. It is **operational documentation for the team
@@ -10,7 +10,7 @@ notification, or a real regulatory inquiry.
 
 ## 1. Scope
 
-VybeMatch is a Data Fiduciary under the Act. Its users are Data Principals.
+findmyVybe is a Data Fiduciary under the Act. Its users are Data Principals.
 The admin portal is the tooling the Trust & Safety / Privacy / Compliance
 team uses to operate the obligations below. It does not replace legal
 review, a Consent Manager integration, or a DPIA where one is required --
@@ -34,7 +34,7 @@ happen.
   Consent Manager registration/interoperability) is out of scope for this
   build -- consent today is collected directly in the consumer app and
   logged here. Revisit if/when Consent Manager registration becomes a
-  practical requirement for VybeMatch's scale.
+  practical requirement for findmyVybe's scale.
 
 ## 3. Data Principal rights (Sections 11-14)
 
@@ -63,7 +63,7 @@ happen.
   relational history, since moderation/legal evidence and aggregate
   product analytics need the row to keep existing. This is a considered
   trade-off, not an oversight -- confirm with counsel whether pseudonymised
-  retention of this shape satisfies "erasure" for VybeMatch's specific
+  retention of this shape satisfies "erasure" for findmyVybe's specific
   data categories, or whether some fields need harder deletion.
 - **Data export (Access / Portability):** generated on demand as JSON via
   `GET /api/privacy/requests/:id/export` (`admin/lib/privacyExport.ts`)
@@ -139,7 +139,7 @@ happen.
   processed, why, on what legal basis, shared with whom, and whether a
   DPIA is required.
 - **Vendor / processor register:** `DataProcessor` / Privacy & Compliance
-  -> Data Processors -- every third party VybeMatch shares data with
+  -> Data Processors -- every third party findmyVybe shares data with
   (SMS/OTP gateway, hosting, blob storage, ...), per Section 8(2)'s
   requirement that a Fiduciary ensure its processors also protect the
   data.
@@ -157,11 +157,11 @@ happen.
 1. The Grievance Officer's name and published contact details (Section
    13(1)) -- a product/legal action, not a code change.
 2. Confirming `anonymizeUserAccount()`'s scrub-and-retain approach actually
-   satisfies "erasure" for every data category VybeMatch holds, or whether
+   satisfies "erasure" for every data category findmyVybe holds, or whether
    some fields need harder deletion once a request is `COMPLETED`.
 3. The concrete Board-notification timeline and format once the DPDP
    Rules' breach-notification provisions are in force for Fiduciaries at
-   VybeMatch's scale.
+   findmyVybe's scale.
 4. Whether a Consent Manager integration becomes necessary as the DPDP
    Rules' phased commencement continues.
 5. A DPIA for any processing activity flagged `dpiaRequired` in the

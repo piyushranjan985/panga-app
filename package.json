@@ -1,8 +1,8 @@
 {
-  "name": "vybematch-app",
+  "name": "findmyvybe-app",
   "version": "0.1.0",
   "private": true,
-  "description": "VybeMatch - vibe-first dating & matrimony-lite platform for Indian Gen Z (MVP starter)",
+  "description": "findmyVybe - vibe-first dating & matrimony-lite platform for Indian Gen Z (MVP starter)",
   "scripts": {
     "postinstall": "prisma generate",
     "dev": "next dev",

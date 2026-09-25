@@ -1,8 +1,8 @@
 {
-  "name": "vybematch-admin",
+  "name": "findmyvybe-admin",
   "version": "0.1.0",
   "private": true,
-  "description": "VybeMatch Admin Portal -- Operations, Trust & Safety, Support, Privacy/DPDP Compliance and Analytics console. Separate Next.js app in the same repo, sharing the consumer app's database (see prisma.config.ts).",
+  "description": "findmyVybe Admin Portal -- Operations, Trust & Safety, Support, Privacy/DPDP Compliance and Analytics console. Separate Next.js app in the same repo, sharing the consumer app's database (see prisma.config.ts).",
   "scripts": {
     "predev": "bash scripts/prebuild.sh",
     "dev": "next dev -p 4000",

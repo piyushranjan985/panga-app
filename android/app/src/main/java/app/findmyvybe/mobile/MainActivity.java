@@ -1,4 +1,4 @@
-package app.vybematch.mobile;
+package app.findmyvybe.mobile;
 
 import com.getcapacitor.BridgeActivity;
 

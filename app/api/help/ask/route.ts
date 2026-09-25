@@ -24,7 +24,7 @@ const bodySchema = z.object({
 });
 
 const NO_MATCH_ANSWER =
-  "I couldn't find anything in the VybeMatch Help Center that matches that -- could you try rephrasing, or browse a category below? If you still can't find it, use \"Still stuck? Contact us\" in the Help Center.";
+  "I couldn't find anything in the findmyVybe Help Center that matches that -- could you try rephrasing, or browse a category below? If you still can't find it, use \"Still stuck? Contact us\" in the Help Center.";
 
 function formatRetrievalAnswer(results: { entry: HelpEntry }[]): string {
   const [top, ...rest] = results;
@@ -46,7 +46,7 @@ async function tryLlmAnswer(query: string, results: { entry: HelpEntry }[]): Pro
     .join('\n\n');
 
   const system =
-    'You are VybeHelp, the in-app support assistant for the dating/matrimony app VybeMatch. ' +
+    'You are VybeHelp, the in-app support assistant for the dating/matrimony app findmyVybe. ' +
     'Answer the user\'s question using ONLY the numbered Help Center entries given as context. ' +
     'Do not invent features, prices, or behavior that is not stated in the context. ' +
     'If the context does not answer the question, say you\'re not sure and suggest they browse the Help Center or contact support. ' +

@@ -346,7 +346,7 @@ function OnboardingForm() {
 
   // Vybe Check: pick 2 prompts (2-3 for Rishta Ready) and pick a side on
   // each -- a forced choice between two fixed options, never a typed
-  // answer. Interests exist on every dating app -- this is VybeMatch's
+  // answer. Interests exist on every dating app -- this is findmyVybe's
   // own thing, and its tone (playful / relationship-facing /
   // future-facing) shifts hard by intent, so the prompt pool itself is
   // intent-scoped (see visiblePrompts above). The swipe card
@@ -576,7 +576,7 @@ function OnboardingForm() {
               className="rounded-2xl border border-line px-4 py-3"
             />
             {dobTooYoung && (
-              <p className="text-xs font-medium text-magenta">You must be 18 or older to use VybeMatch.</p>
+              <p className="text-xs font-medium text-magenta">You must be 18 or older to use findmyVybe.</p>
             )}
           </div>
           <select
@@ -1006,7 +1006,7 @@ function OnboardingForm() {
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">Family Preview</h1>
           <p className="text-sm text-inkSoft">
-            An optional, read-only introduction card you can share outside VybeMatch — with family, say. Far less
+            An optional, read-only introduction card you can share outside findmyVybe — with family, say. Far less
             than your real profile: just your name, age, city, and intent. No bio, no Vybe Check answers, nothing
             from the swipe deck. Off by default, and you can turn it off anytime from your profile.
           </p>

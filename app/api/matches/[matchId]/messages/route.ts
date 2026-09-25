@@ -27,7 +27,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ matchId
 }
 
 const NO_GHOST_CLOSE =
-  "Hey — I've enjoyed chatting, but I don't think we're the right match. Wishing you a good one. 💛 (sent via VybeMatch's No-Ghost close)";
+  "Hey — I've enjoyed chatting, but I don't think we're the right match. Wishing you a good one. 💛 (sent via findmyVybe's No-Ghost close)";
 
 // PROMPT and PLAN are the two structured message kinds (see
 // prisma/schema.prisma's MessageKind and lib/conversationStarters.ts).

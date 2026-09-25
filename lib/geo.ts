@@ -35,7 +35,7 @@ export function formatDistance(km: number): string {
 }
 
 /**
- * Approximate centroid for each of VybeMatch's supported cities (see
+ * Approximate centroid for each of findmyVybe's supported cities (see
  * CITIES in lib/constants.ts). Discover eligibility is already same-city
  * only (see lib/matching.ts), so this is a safe, non-deceptive fallback:
  * a profile that hasn't opted into sharing its precise device location

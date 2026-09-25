@@ -1,6 +1,6 @@
 import { db } from '@/lib/db';
 
-// Compiles everything VybeMatch holds about one Data Principal into a
+// Compiles everything findmyVybe holds about one Data Principal into a
 // single JSON-serializable object -- the substance of a DPDP ACCESS /
 // PORTABILITY response. Deliberately a plain function (not a stored file)
 // -- see app/api/privacy/requests/[requestId]/export/route.ts, which

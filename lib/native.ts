@@ -47,7 +47,7 @@ export async function getCurrentPosition(): Promise<NativeCoords> {
     if (permission.location !== 'granted') {
       const requested = await Geolocation.requestPermissions();
       if (requested.location !== 'granted') {
-        throw new Error('Location permission was denied — enable it in your phone’s Settings for VybeMatch.');
+        throw new Error('Location permission was denied — enable it in your phone’s Settings for findmyVybe.');
       }
     }
     const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: false, timeout: 10000 });

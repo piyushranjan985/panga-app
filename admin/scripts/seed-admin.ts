@@ -34,14 +34,14 @@ async function main() {
   const superAdmin = await upsertAdmin('piyushranjan985@gmail.com', 'Piyush Ranjan', 'SUPER_ADMIN', 'ADMIN_SEED_PASSWORD');
 
   const [demoOperations, trustSafety, moderator, support, demoPrivacy, demoCompliance, demoAnalytics, demoReadOnly] = await Promise.all([
-    upsertAdmin('demo.operations@vybematch.internal', 'Demo Operations', 'OPERATIONS'),
-    upsertAdmin('demo.trustsafety@vybematch.internal', 'Demo Trust & Safety', 'TRUST_AND_SAFETY'),
-    upsertAdmin('demo.moderator@vybematch.internal', 'Demo Moderator', 'MODERATOR'),
-    upsertAdmin('demo.support@vybematch.internal', 'Demo Customer Support', 'CUSTOMER_SUPPORT'),
-    upsertAdmin('demo.privacy@vybematch.internal', 'Demo Privacy Officer', 'PRIVACY_OFFICER'),
-    upsertAdmin('demo.compliance@vybematch.internal', 'Demo Compliance Officer', 'COMPLIANCE_OFFICER'),
-    upsertAdmin('demo.analytics@vybematch.internal', 'Demo Analytics', 'ANALYTICS'),
-    upsertAdmin('demo.readonly@vybematch.internal', 'Demo Read Only', 'READ_ONLY'),
+    upsertAdmin('demo.operations@findmyvybe.internal', 'Demo Operations', 'OPERATIONS'),
+    upsertAdmin('demo.trustsafety@findmyvybe.internal', 'Demo Trust & Safety', 'TRUST_AND_SAFETY'),
+    upsertAdmin('demo.moderator@findmyvybe.internal', 'Demo Moderator', 'MODERATOR'),
+    upsertAdmin('demo.support@findmyvybe.internal', 'Demo Customer Support', 'CUSTOMER_SUPPORT'),
+    upsertAdmin('demo.privacy@findmyvybe.internal', 'Demo Privacy Officer', 'PRIVACY_OFFICER'),
+    upsertAdmin('demo.compliance@findmyvybe.internal', 'Demo Compliance Officer', 'COMPLIANCE_OFFICER'),
+    upsertAdmin('demo.analytics@findmyvybe.internal', 'Demo Analytics', 'ANALYTICS'),
+    upsertAdmin('demo.readonly@findmyvybe.internal', 'Demo Read Only', 'READ_ONLY'),
   ]);
   void demoOperations; void demoPrivacy; void demoCompliance; void demoAnalytics; void demoReadOnly;
 
@@ -209,8 +209,8 @@ async function seedSampleContent(ctx: Awaited<ReturnType<typeof main>>) {
   if ((await db.notificationTemplate.count()) === 0) {
     await db.notificationTemplate.createMany({
       data: [
-        { key: 'account.suspended', channel: 'email', subject: 'Your VybeMatch account has been suspended', body: 'Hi {{name}}, your account was suspended for {{reason}}. Contact support if you think this is a mistake.' },
-        { key: 'account.banned', channel: 'email', subject: 'Your VybeMatch account has been banned', body: 'Hi {{name}}, your account has been permanently banned for violating our community guidelines: {{reason}}.' },
+        { key: 'account.suspended', channel: 'email', subject: 'Your findmyVybe account has been suspended', body: 'Hi {{name}}, your account was suspended for {{reason}}. Contact support if you think this is a mistake.' },
+        { key: 'account.banned', channel: 'email', subject: 'Your findmyVybe account has been banned', body: 'Hi {{name}}, your account has been permanently banned for violating our community guidelines: {{reason}}.' },
         { key: 'privacy.deletion.completed', channel: 'email', subject: 'Your data deletion request is complete', body: 'Hi, we\'ve completed your DPDP deletion request. Your account has been anonymized as described in our Privacy Policy.' },
         { key: 'privacy.request.received', channel: 'in_app', subject: null, body: 'We\'ve received your privacy request and will respond within the timeframe stated in our Privacy Policy.' },
       ],

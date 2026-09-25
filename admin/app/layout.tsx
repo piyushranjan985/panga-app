@@ -3,8 +3,8 @@ import ThemeScript from '@/components/ThemeScript';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'VybeMatch Admin',
-  description: 'Operations, Trust & Safety, Support, Privacy/Compliance and Analytics console for VybeMatch.',
+  title: 'findmyVybe Admin',
+  description: 'Operations, Trust & Safety, Support, Privacy/Compliance and Analytics console for findmyVybe.',
   robots: { index: false, follow: false },
 };
 

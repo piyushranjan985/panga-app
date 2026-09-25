@@ -13,7 +13,7 @@ export default async function ProcessingActivitiesPage() {
 
   return (
     <div>
-      <PageHeader title="Processing Activities" description="The record-of-processing inventory -- what VybeMatch does with personal data, on what legal basis, and who it's shared with." />
+      <PageHeader title="Processing Activities" description="The record-of-processing inventory -- what findmyVybe does with personal data, on what legal basis, and who it's shared with." />
       <div className="space-y-6 p-8">
         {canManage && <NewProcessingActivityForm />}
 

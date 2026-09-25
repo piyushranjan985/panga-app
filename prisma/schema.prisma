@@ -1,4 +1,4 @@
-// VybeMatch MVP data model.
+// findmyVybe MVP data model.
 // Design notes (see /docs strategy doc for the full rationale):
 // - Postgres via Prisma so the schema is portable across Neon / Supabase / RDS / Cloud SQL.
 // - Every table that will get hot at scale (Swipe, Message) is written so it can be
@@ -56,7 +56,7 @@ enum VerificationStatus {
 
 enum SwipeAction {
   PASS
-  VYBE // a "like" — renamed from PANGA to match the VybeMatch rebrand. Not
+  VYBE // a "like" — renamed from PANGA to match the findmyVybe rebrand. Not
        // shown anywhere in the UI (see app/discover/page.tsx for the copy).
        // Postgres enum-value renames relabel existing rows in place (no
        // backfill needed), but this still needs its own migration — see

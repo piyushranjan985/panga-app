@@ -41,7 +41,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ request
   return new NextResponse(body, {
     headers: {
       'content-type': 'application/json',
-      'content-disposition': `attachment; filename="vybematch-data-export-${request.userId}.json"`,
+      'content-disposition': `attachment; filename="findmyvybe-data-export-${request.userId}.json"`,
     },
   });
 }

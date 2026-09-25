@@ -1,6 +1,6 @@
-# VybeMatch -- Help Center FAQ
+# findmyVybe -- Help Center FAQ
 
-*Exhaustive FAQ / knowledge base for the VybeMatch web app and iOS/Android apps. Generated 2026-09-22 from the same content that powers the in-app Help Center (`/help`) and the VybeHelp 💬 chat agent, so this document and the app are always in sync.*
+*Exhaustive FAQ / knowledge base for the findmyVybe web app and iOS/Android apps. Generated 2026-09-22 from the same content that powers the in-app Help Center (`/help`) and the VybeHelp 💬 chat agent, so this document and the app are always in sync.*
 
 **76 questions across 13 topics.**
 
@@ -24,23 +24,23 @@
 
 ## 👋 Getting started
 
-### What is VybeMatch?
+### What is findmyVybe?
 
-VybeMatch is a dating and matchmaking app built for how people actually date today -- you tell it upfront whether you're Just Vibing, looking for Something Real, or Rishta Ready (open to family-involved, marriage-track matching), and it uses that -- plus a few quick "Vybe Check" prompts -- to explain *why* you matched with someone, not just that you did. No endless swiping through strangers with zero context.
+findmyVybe is a dating and matchmaking app built for how people actually date today -- you tell it upfront whether you're Just Vibing, looking for Something Real, or Rishta Ready (open to family-involved, marriage-track matching), and it uses that -- plus a few quick "Vybe Check" prompts -- to explain *why* you matched with someone, not just that you did. No endless swiping through strangers with zero context.
 
-### Which cities is VybeMatch available in?
+### Which cities is findmyVybe available in?
 
-VybeMatch currently matches people within the same city, across Bengaluru, Mumbai, Delhi NCR, Pune, Hyderabad, and Chennai. Set your city during onboarding -- Discover only shows people in the same city as you.
+findmyVybe currently matches people within the same city, across Bengaluru, Mumbai, Delhi NCR, Pune, Hyderabad, and Chennai. Set your city during onboarding -- Discover only shows people in the same city as you.
 
-### Is VybeMatch free to use?
+### Is findmyVybe free to use?
 
 Yes -- there's no paid tier or subscription right now. Every feature described in this Help Center (matching, chat, Vybe Check, verification, location distance) is available to everyone at no cost.
 
-### What is the minimum age to use VybeMatch?
+### What is the minimum age to use findmyVybe?
 
-You must be 18 or older to create a VybeMatch account. Your date of birth is collected during onboarding and is not editable afterward, so double-check it when you enter it.
+You must be 18 or older to create a findmyVybe account. Your date of birth is collected during onboarding and is not editable afterward, so double-check it when you enter it.
 
-### How is VybeMatch different from other dating apps?
+### How is findmyVybe different from other dating apps?
 
 Two things: (1) intent is explicit and visible from the start -- you and everyone you see has already said whether they're Just Vibing, want Something Real, or are Rishta Ready, so there's no guessing games; (2) every match comes with a plain-language explanation of what you actually have in common -- shared interests, a shared "tribe," matching Vybe Check answers -- shown right on the match screen, not buried or absent entirely.
 
@@ -196,7 +196,7 @@ Yes -- open the "..." menu in a chat and choose "🔕 Mute." It stops new-messag
 
 Deleting a conversation (from the "..." menu) hides it from your view -- it is a tidying-up action, more final-feeling than mute, but it does not end the match itself the way unmatching does. Unmatching (also in the "..." menu) ends the connection entirely for both of you.
 
-### Does VybeMatch have video calling?
+### Does findmyVybe have video calling?
 
 Not currently -- video calling isn't available as a chat option right now. Plans and in-app messaging are the way to coordinate meeting up.
 
@@ -232,7 +232,7 @@ Unmatching ends the connection but is the lightest of the three. Blocking does e
 
 Open the "..." menu in your conversation with them and choose "Unmatch." This is final and cannot be undone from either side.
 
-### What safety tips does VybeMatch give before meeting someone in person?
+### What safety tips does findmyVybe give before meeting someone in person?
 
 When you use "Make a plan," you'll see a short reminder before it sends: meet in a public place, tell a friend where you're going, and arrange your own transport. These are shown every time you plan a meetup, not just the first.
 
@@ -288,9 +288,9 @@ Yes -- go back to Profile → Trust layer and start verification again. Make sur
 
 ## 📱 iOS & Android app
 
-### Where do I download the VybeMatch app?
+### Where do I download the findmyVybe app?
 
-The iOS app is available on the App Store and the Android app on the Play Store -- search "VybeMatch." The mobile app uses the exact same account and data as the website, so there's nothing separate to set up.
+The iOS app is available on the App Store and the Android app on the Play Store -- search "findmyVybe." The mobile app uses the exact same account and data as the website, so there's nothing separate to set up.
 
 ### The app is asking for location permission -- do I have to allow it?
 
@@ -310,11 +310,11 @@ Usually not -- try a firm swipe (touch and drag) rather than a light flick, espe
 
 ### Does the mobile app have all the same features as the website?
 
-Yes -- the iOS and Android apps and the website all run the same VybeMatch experience with the same features. The mobile apps additionally offer real device integrations like location sharing through your phone's own permission system.
+Yes -- the iOS and Android apps and the website all run the same findmyVybe experience with the same features. The mobile apps additionally offer real device integrations like location sharing through your phone's own permission system.
 
 ### If I uninstall and reinstall the app, will I lose anything?
 
-No -- your profile, matches, and chats live on VybeMatch's servers under your account, not on your device. Reinstalling and logging back in brings everything back exactly as it was.
+No -- your profile, matches, and chats live on findmyVybe's servers under your account, not on your device. Reinstalling and logging back in brings everything back exactly as it was.
 
 ---
 

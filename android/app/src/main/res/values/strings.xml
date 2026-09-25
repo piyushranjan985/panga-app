@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">VybeMatch</string>
-    <string name="title_activity_main">VybeMatch</string>
-    <string name="package_name">app.vybematch.mobile</string>
-    <string name="custom_url_scheme">app.vybematch.mobile</string>
+    <string name="app_name">findmyVybe</string>
+    <string name="title_activity_main">findmyVybe</string>
+    <string name="package_name">app.findmyvybe.mobile</string>
+    <string name="custom_url_scheme">app.findmyvybe.mobile</string>
 </resources>

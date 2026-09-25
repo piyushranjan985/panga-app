@@ -1,6 +1,6 @@
-# VybeMatch on iOS & Android
+# findmyVybe on iOS & Android
 
-VybeMatch ships to the App Store and Play Store as a **Capacitor "remote
+findmyVybe ships to the App Store and Play Store as a **Capacitor "remote
 URL" app**: the native iOS/Android shells load your live Vercel deployment
 directly (same login, same chat, same database) and layer on native device
 APIs where it matters -- starting with location for the distance feature
@@ -39,7 +39,7 @@ Run this from the project folder in your own Terminal:
 ```bash
 npm install                       # pulls in the @capacitor/* packages just added to package.json
 
-npx cap init                      # if it asks, appId: app.vybematch.mobile, appName: VybeMatch
+npx cap init                      # if it asks, appId: app.findmyvybe.mobile, appName: findmyVybe
                                    # (already set in capacitor.config.ts -- this just confirms)
 ```
 
@@ -99,7 +99,7 @@ Two things worth knowing going in:
   Report, Unmatch, the Safety panel from the post-match rebuild), which
   is a real plus for review, not something to build from scratch.
 - Dating apps also typically need an **age rating of 17+/Mature** and
-  **age verification at signup** (VybeMatch's 18+ date-of-birth check in
+  **age verification at signup** (findmyVybe's 18+ date-of-birth check in
   onboarding already covers the basic requirement).
 
 ## Recommended next step: push notifications

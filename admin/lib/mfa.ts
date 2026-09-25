@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 
-const ISSUER = process.env.ADMIN_MFA_ISSUER || 'VybeMatch Admin';
+const ISSUER = process.env.ADMIN_MFA_ISSUER || 'findmyVybe Admin';
 
 export function generateMfaSecret(): string {
   return authenticator.generateSecret();
