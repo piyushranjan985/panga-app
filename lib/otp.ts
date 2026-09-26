@@ -44,15 +44,41 @@ export async function issueOtp(userId: string) {
   };
 }
 
-/** Returns true and consumes the code if it's valid; false otherwise. */
-export async function consumeOtp(userId: string, code: string) {
-  const codeHash = hashOtp(code);
-  const otp = await db.otpCode.findFirst({
-    where: { userId, codeHash, consumedAt: null, expiresAt: { gt: new Date() } },
+export type OtpConsumeFailureReason = 'not_found' | 'already_used' | 'expired' | 'mismatch';
+
+export type OtpConsumeResult = { ok: true } | { ok: false; reason: OtpConsumeFailureReason };
+
+/**
+ * Consumes the code if it's valid; otherwise says specifically why not,
+ * instead of a single opaque `false` that collapses "never requested a
+ * code", "code already used", "code expired", and "typed the wrong
+ * digits" into the same generic "wrong or expired" message every caller
+ * shows. That message is deliberately vague for a real end user (no
+ * reason to help someone brute-forcing OTPs tell which guess got close),
+ * but it's genuinely unhelpful for local development, where the code is
+ * always the constant MOCK_OTP and any failure at all means something
+ * about the *setup* is wrong, not a mistyped digit -- see
+ * app/api/auth/verify-otp/route.ts and verify-email-otp/route.ts, which
+ * both surface `reason` in the response, but ONLY when
+ * NODE_ENV==='development' (never in production).
+ *
+ * Looks up the single latest OtpCode row for this user, unconditionally
+ * (not filtered by codeHash), so "wrong code" is distinguished from
+ * "right code, but it's not the current one" -- the previous version
+ * filtered by codeHash *and* ordered by recency, which meant an older,
+ * still-unexpired code could be accepted even after a newer one was
+ * issued, and gave no way to tell that apart from a genuine typo.
+ */
+export async function consumeOtp(userId: string, code: string): Promise<OtpConsumeResult> {
+  const latest = await db.otpCode.findFirst({
+    where: { userId },
     orderBy: { createdAt: 'desc' },
   });
-  if (!otp) return false;
+  if (!latest) return { ok: false, reason: 'not_found' };
+  if (latest.consumedAt) return { ok: false, reason: 'already_used' };
+  if (latest.expiresAt.getTime() <= Date.now()) return { ok: false, reason: 'expired' };
+  if (latest.codeHash !== hashOtp(code)) return { ok: false, reason: 'mismatch' };
 
-  await db.otpCode.update({ where: { id: otp.id }, data: { consumedAt: new Date() } });
-  return true;
+  await db.otpCode.update({ where: { id: latest.id }, data: { consumedAt: new Date() } });
+  return { ok: true };
 }

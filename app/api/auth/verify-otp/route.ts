@@ -22,9 +22,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Request an OTP first.' }, { status: 404 });
   }
 
-  const valid = await consumeOtp(user.id, code);
-  if (!valid) {
-    return NextResponse.json({ error: 'That code is wrong or expired.' }, { status: 401 });
+  const result = await consumeOtp(user.id, code);
+  if (!result.ok) {
+    // Dev-only: says exactly which of the four ways this failed, instead
+    // of the deliberately-vague message every real user gets -- see
+    // consumeOtp's doc comment in lib/otp.ts for why. Never runs in
+    // production (NODE_ENV is always 'production' there, Vercel or
+    // otherwise), so this can't be used to enumerate valid/expired codes
+    // against a real account.
+    const detail =
+      process.env.NODE_ENV === 'development'
+        ? ` (dev detail: ${result.reason} -- see lib/otp.ts's consumeOtp doc comment)`
+        : '';
+    return NextResponse.json({ error: `That code is wrong or expired.${detail}` }, { status: 401 });
   }
 
   await db.user.update({ where: { id: user.id }, data: { phoneVerified: true, lastActiveAt: new Date() } });
