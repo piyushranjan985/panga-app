@@ -1,0 +1,540 @@
+# Identity Verification & Content Safety — Architecture
+
+Status: **Design — approved for phased build**
+Owner: Trust & Safety / Platform
+Related: `admin/docs/DPDP_COMPLIANCE.md`, `MOBILE_APP_SETUP.md`
+
+This document designs the mandatory identity-verification and photo-safety
+system requested for findmyVybe, built as an extension of the Trust & Safety
+infrastructure that already exists in this codebase (`ModerationCase`,
+`Report`, `AdminUser`/RBAC, `AuditLogEntry`, `RetentionPolicy`) rather than a
+parallel system. Anywhere this doc says "already exists," see the file
+referenced — the goal is one moderation queue, one audit trail, one set of
+admin permissions, not a second one bolted on for photos/identity.
+
+Provider choices locked in for this design (confirmed with product owner):
+
+| Concern | Provider | Why |
+|---|---|---|
+| Government ID verification | **DigiLocker** (Government of India) | Free, no UIDAI AUA/KUA licensing needed — user consents via OTP and shares a document DigiLocker already holds; we never receive or store a raw Aadhaar/PAN number. |
+| Face match (selfie vs ID photo) | **Self-hosted, open-source** (see §3) | $0 cost requirement. Only Aadhaar and Driving Licence documents carry a photo in their DigiLocker record — PAN does not, so PAN-only verification cannot support face-match (see §2). |
+| Nudity / explicit-content detection | **Self-hosted, open-source** (nsfwjs) | $0 cost requirement. |
+| Face detection / face count | **Self-hosted, open-source** (face-api.js / BlazeFace) | $0 cost requirement. |
+| AI-generated / deepfake detection | **No reliable free option exists.** Routed to manual review instead of automated rejection (see §3, §13). Documented as a known gap with a paid-vendor upgrade path (Sightengine/Hive), not silently skipped. |
+
+---
+
+## 1. Architecture
+
+New module: `lib/safety/` — a single place all moderation/verification logic
+lives, matching the request's "dedicated moderation service/module, not
+scattered logic":
+
+```
+lib/safety/
+  identityVerification.ts   # provider-agnostic interface + DigiLocker + mock
+  imageModeration.ts        # provider-agnostic interface + self-hosted models + mock
+  policyEngine.ts           # combines moderation signals -> APPROVED/REJECTED/MANUAL_REVIEW
+  quarantineStorage.ts      # upload-to-private-path -> moderate -> promote-or-delete
+  guards.ts                 # requireVerifiedAndActive() etc. — used by every gated API route
+  duplicateIdentity.ts      # HMAC document-hash check
+```
+
+Upload flow (every image, every path — onboarding, profile photos, any
+future chat/story attachment):
+
+```
+client uploads file
+  -> POST /api/upload or /api/profile/photos  (auth required, unchanged)
+  -> assertValidImage()                        (existing type/size check)
+  -> quarantineStorage.put()                    (Vercel Blob, "pending/" prefix,
+                                                  NOT linked into any Photo row yet)
+  -> policyEngine.evaluate(buffer)
+       - imageModeration.detectFace()
+       - imageModeration.detectNudity()
+       - (if this is the verification selfie) identityVerification.matchFace()
+  -> decision:
+       APPROVED       -> quarantineStorage.promote() -> Photo row created,
+                          moderationStatus=APPROVED
+       MANUAL_REVIEW   -> Photo row created, moderationStatus=MANUAL_REVIEW
+                          (NOT shown to other users — see §4/§6),
+                          ModerationCase(sourceType=AUTOMATED_FLAG) opened
+       REJECTED        -> blob deleted immediately, no Photo row, no public
+                          URL ever existed
+  -> response to client includes moderationStatus so the UI can show
+     "under review" / "not allowed" instead of assuming success
+```
+
+Enforcement flow (every gated action — discover, swipe, match, message):
+
+```
+API route handler
+  -> getSession()                    (existing)
+  -> guards.requireVerifiedAndActive(session)   (NEW — single call, see §7)
+     - checks Profile.verification === 'VERIFIED'
+     - checks User.status === 'ACTIVE' (existing enum, reused not duplicated)
+     - checks User.discoveryRestricted / messagingRestricted (existing fields,
+       reused for the relevant routes)
+  -> existing route logic, unchanged
+```
+
+Native (iOS/Android): findmyVybe ships as a Capacitor **remote-URL** app
+(`capacitor.config.ts` — the native shells load the live web app, they are
+not a separate codebase). This means almost none of this feature is
+"native-specific" — the enforcement above covers web, iOS and Android
+identically because it's the same server. The only native-specific pieces
+are: (a) the selfie-capture step should use the device camera directly
+(`@capacitor/camera`, new dependency) rather than a file picker, so a user
+can't submit a gallery photo as their "live" selfie, and (b) an old app
+version pointed at an old deployment is still hitting the *current* backend
+(remote-URL apps always load the latest deployment), so there is no
+"old client" enforcement gap to design around — §13's "old mobile client"
+test is really testing "a client that sends a crafted request," not a stale
+build.
+
+## 2. Identity-verification provider integration (DigiLocker)
+
+DigiLocker is a Government of India OAuth2-based document-sharing API. The
+user authorizes a document pull via an OTP-based consent screen on
+DigiLocker's own site — findmyVybe never sees their DigiLocker password, and
+critically, DigiLocker returns the *document*, not raw credentials we'd have
+to protect ourselves.
+
+Flow:
+
+1. `POST /api/verification/start` — creates a DigiLocker OAuth authorization
+   URL (`response_type=code`, our `client_id`, a signed+expiring `state`
+   token binding this flow to the logged-in `session.userId`), sets
+   `Profile.verification = PENDING`, returns the URL for the client to
+   redirect to.
+2. User completes consent on DigiLocker, selects **Aadhaar or Driving
+   Licence** (not PAN alone — see the provider table above; the UI should
+   only offer these two, with copy explaining why PAN isn't sufficient on
+   its own if a user asks).
+3. `GET /api/verification/callback?code=...&state=...` — verify `state`,
+   exchange `code` for an access token, fetch the issued document (XML/PDF
+   with embedded photo + name + DOB + a masked ID reference).
+4. Extract, **in memory only, never written to disk or DB**:
+   - document type (`AADHAAR` | `DRIVING_LICENCE`)
+   - the embedded photo (base64) — used immediately for face-match, then
+     discarded
+   - masked ID reference (DigiLocker already masks Aadhaar to last 4 digits
+     in its standard response; we do not request or store more)
+   - DOB, for a onetime cross-check against `Profile.dateOfBirth` (flags a
+     mismatch into `MANUAL_REVIEW` rather than auto-rejecting — people
+     genuinely mistype onboarding DOB)
+5. Client is prompted to capture a live selfie (device camera only, via
+   `@capacitor/camera`'s `CameraSource.Camera`, never `CameraSource.Photos`)
+   — submitted to `POST /api/verification/selfie`.
+6. `identityVerification.matchFace(documentPhoto, selfieImage)` runs the
+   self-hosted face-match model (§3) and returns a similarity score.
+7. `duplicateIdentity.check(documentReference)` — see below.
+8. Policy engine decides `VERIFIED` / `MANUAL_REVIEW` / `REJECTED`; only the
+   **result** is persisted (see §8) — the document photo and full document
+   payload are discarded when the request completes, by never assigning
+   them to anything beyond a local variable in the handler.
+
+**Duplicate-identity prevention** (from §1 requirements: "one verified
+identity cannot be used to create unlimited accounts"): compute
+`HMAC-SHA256(documentReference, DUPLICATE_CHECK_PEPPER)` where the pepper is
+a server-only secret (env var, never logged). Store only this hash in a new
+`@unique` column. A second account attempting to verify with a document that
+hashes to the same value is routed to `MANUAL_REVIEW` with
+`category: "duplicate_identity"` rather than silently blocked (genuine cases
+exist — e.g. a lost-and-regained-access account — and should reach a human).
+We never store or can reverse-engineer the real document number from the
+hash.
+
+## 3. Image-moderation provider/model (self-hosted, $0)
+
+Two self-hosted, open-source models run in-process inside the Next.js API
+route (Node runtime, not Edge — these need `@tensorflow/tfjs-node`, which
+Edge functions can't run):
+
+- **nsfwjs** (MIT license, TensorFlow.js) — classifies an image across
+  `Drawing / Hentai / Neutral / Porn / Sexy` categories with confidence
+  scores. `policyEngine` treats `Porn + Hentai above threshold` as an
+  automatic `REJECTED`, `Sexy` above a lower threshold as `MANUAL_REVIEW`
+  (this catches "content designed to circumvent moderation" — borderline
+  cases go to a human instead of a coin-flip auto-decision).
+- **face-api.js** (MIT license, TensorFlow.js, built on the same BlazeFace/
+  SSD MobileNet models used broadly for browser-side face detection) —
+  returns face count and bounding boxes. Policy: 0 faces → `REJECTED`
+  ("no detectable human face"); 1 face clearly identifiable → proceeds;
+  2+ faces → `MANUAL_REVIEW` if the box sizes are too similar to tell which
+  is the account holder (a group photo is allowed per the spec, but the
+  model can't itself know *which* face is the account owner — that's what
+  the verification selfie's face-match embedding is for: compare each
+  detected face's embedding against the verified selfie embedding stored at
+  verification time, and if one is a clear match, approve automatically;
+  otherwise fall to `MANUAL_REVIEW`).
+
+Known, honestly-documented gap: **there is no reliable free/open-source
+AI-generated-person or deepfake detector** comparable to what a paid vendor
+(Sightengine, Hive) offers. Rather than claim detection we don't have,
+`policyEngine` does not attempt to auto-reject AI-generated images; it
+relies on (a) the face-match-against-verified-selfie check above, which an
+AI-generated photo will typically fail anyway since it won't match the
+real person's verified face, and (b) user reporting (§7) as the backstop.
+This is called out explicitly rather than silently claimed as "done" — see
+§13's test matrix, which marks this case `flag/manual-review`, not
+`auto-reject`, and see the Definition of Done note at the end of this
+document.
+
+Deployment note: bundling `@tensorflow/tfjs-node` into a Vercel serverless
+function increases cold-start time and function size. This is expected to
+fit within Vercel's Node function limits for this model size, but should be
+load-tested before launch; if it doesn't fit, the fallback is a small
+always-on Node service (e.g. a single Fly.io/Render instance) that the
+Next.js API route calls over HTTP instead of running in-process — the
+`imageModeration.ts` interface is written so that swap doesn't touch any
+caller.
+
+Optional, off-by-default secondary signal: Google Cloud Vision's SafeSearch
++ Face Detection has a genuinely perpetual free tier (1,000 units/month per
+feature, not a 12-month trial) and can be wired in later as a confidence
+booster for borderline cases without changing the provider interface.
+
+## 4. Database schema (Prisma)
+
+Extends the existing schema; nothing below duplicates an existing concept
+(verification status stays about identity, not account standing — account
+standing is `User.status`, already modeled).
+
+```prisma
+enum VerificationStatus {
+  UNVERIFIED      // no attempt yet — existing
+  PENDING         // DigiLocker flow started, awaiting callback/selfie — existing
+  MANUAL_REVIEW   // NEW — automated checks inconclusive, human decision needed
+  VERIFIED        // existing
+  REJECTED        // existing — user may retry, goes back to PENDING
+}
+
+model IdentityVerification {
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  provider            String   // "digilocker" | "mock"
+  documentType         String  // "AADHAAR" | "DRIVING_LICENCE"
+  documentHash         String  @unique  // HMAC(documentReference, pepper) — see §2
+  providerReference    String  // DigiLocker's own transaction id, for support/audit — not the ID number
+
+  faceMatchScore       Float?
+  dobMatchedProfile    Boolean @default(true) // false -> routed to MANUAL_REVIEW
+
+  status               VerificationStatus @default(PENDING)
+  failureReason         String?
+  reviewedByAdminId    String?
+  reviewedAt            DateTime?
+
+  submittedAt          DateTime @default(now())
+  decidedAt            DateTime?
+  expiresAt             DateTime? // re-verification cadence, e.g. +18 months
+
+  moderationCaseId     String?
+  moderationCase       ModerationCase? @relation(fields: [moderationCaseId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+}
+
+model PhotoModerationResult {
+  id               String   @id @default(cuid())
+  photoId          String
+  photo            Photo    @relation(fields: [photoId], references: [id], onDelete: Cascade)
+
+  decision         PhotoModerationDecision
+  faceDetected     Boolean
+  faceCount        Int
+  matchedVerifiedFace Boolean?   // did a detected face match the account's verified selfie embedding
+  nudityScore      Float
+  provider         String       // "self-hosted-nsfwjs+faceapi" | "mock"
+  modelVersion     String       // pin the model version for re-moderation/audit (see §6)
+
+  moderationCaseId String?
+  moderationCase   ModerationCase? @relation(fields: [moderationCaseId], references: [id], onDelete: SetNull)
+
+  createdAt        DateTime @default(now())
+
+  @@index([photoId, createdAt])
+}
+
+enum PhotoModerationDecision {
+  APPROVED
+  REJECTED
+  MANUAL_REVIEW
+}
+```
+
+Extend the existing `Photo` model:
+
+```prisma
+model Photo {
+  // ...existing fields unchanged...
+  moderationStatus PhotoModerationDecision @default(MANUAL_REVIEW)
+  moderatedAt      DateTime?
+  results          PhotoModerationResult[]
+
+  @@index([profileId, moderationStatus])
+}
+```
+
+Extend `ModerationCase`'s relations (it already supports this shape — only
+the inverse relations are new):
+
+```prisma
+model ModerationCase {
+  // ...existing fields unchanged...
+  identityVerifications IdentityVerification[]
+  photoModerationResults PhotoModerationResult[]
+}
+```
+
+`ModerationCase.category` (already a free-text string) gains two new
+conventional values, consistent with the existing `photo_violation` /
+`sexual_content` already listed in its comment: `"identity_verification"`
+and `"duplicate_identity"`.
+
+No new `RetentionPolicy`/`ProcessingActivity` *models* needed — both already
+exist for DPDP compliance. Two new **rows** are added (data, not schema —
+see `admin/scripts/seed-admin.ts`'s existing seeding pattern):
+
+- `RetentionPolicy`: `dataCategory: "Identity verification raw documents"`,
+  `retentionDays: 0`, `autoDeleteEnabled: true`, `legalBasis: "Never
+  persisted — processed in-memory only per data-minimization design (see
+  docs/IDENTITY_VERIFICATION_AND_SAFETY.md §2, §8)"`.
+- `ProcessingActivity`: `name: "Identity verification (DigiLocker)"`,
+  `purpose: "Age and identity verification, duplicate-account prevention"`,
+  `dataCategories: ["verification result", "document type", "document hash"]`,
+  `legalBasis: "Consent"`, `crossBorderTransfer: false`.
+
+## 5. API endpoints
+
+New:
+
+| Method & path | Purpose |
+|---|---|
+| `POST /api/verification/start` | Begin DigiLocker consent flow (replaces the mock `POST /api/verification`) |
+| `GET /api/verification/callback` | DigiLocker OAuth callback |
+| `POST /api/verification/selfie` | Submit live selfie, triggers face-match + final decision |
+| `GET /api/verification/status` | Current user's verification status |
+| `POST /api/photos/[photoId]/report` | User-facing "Report Photo" (§7) |
+| `POST /api/profiles/[profileId]/report` | User-facing "Report Profile" (§7) — distinct from existing `Report`'s reason-string shape only by which UI surfaces it; same underlying model |
+
+Changed (enforcement added, request/response shape mostly unchanged):
+
+| Method & path | Change |
+|---|---|
+| `POST /api/upload` | Routed through `quarantineStorage` + `policyEngine` before returning a URL; response gains `moderationStatus` |
+| `POST /api/profile/photos` | Same; `Photo` row created with real `moderationStatus`, not assumed-approved |
+| `POST /api/profile/photos/[photoId]` (replace, if/when added) | Re-moderated exactly like a new upload |
+| `GET /api/discover` | `guards.requireVerifiedAndActive()` added |
+| Swipe-creation route (`app/api/swipes` or wherever `Swipe` rows are created) | Same guard |
+| `GET/POST /api/matches`, `POST /api/matches/[matchId]/messages` | Same guard |
+
+Admin (`admin/app/api/...`, all gated by existing RBAC in
+`admin/lib/rbac.ts`):
+
+| Method & path | Permission | Purpose |
+|---|---|---|
+| `GET /api/moderation/photos` | `content.moderate` | Queue of `MANUAL_REVIEW` photos |
+| `POST /api/moderation/photos/[photoId]/decide` | `content.moderate` | Approve/reject override — writes `AuditLogEntry` |
+| `GET /api/verification/[userId]` | new `users.viewIdentityVerification` (stricter than `users.viewSensitivePII` — see §9) | Verification detail for one user |
+| `POST /api/users/[userId]/actions` | `users.action.resetVerification` (already exists in `rbac.ts`) | Force a user back to `UNVERIFIED` |
+
+## 6. Moderation state machine
+
+`Profile.verification`:
+
+```
+UNVERIFIED --(start)--> PENDING --(DigiLocker + selfie complete)--> {
+    automated checks all pass, face-match high confidence -> VERIFIED
+    automated checks inconclusive (DOB mismatch, low-confidence
+      face-match, duplicate document hash) -> MANUAL_REVIEW
+    document invalid/expired, face-match clearly fails -> REJECTED
+}
+MANUAL_REVIEW --(admin decision)--> VERIFIED | REJECTED
+REJECTED --(user retries)--> PENDING
+```
+
+`Photo.moderationStatus` (per photo, independent of the profile's
+verification status):
+
+```
+(upload) --(policyEngine.evaluate)--> {
+    clean -> APPROVED               (Photo row visible to other users)
+    borderline -> MANUAL_REVIEW     (Photo row exists, owner sees "under
+                                      review", NOT shown to other users)
+    clear violation -> REJECTED     (no Photo row is ever created; blob
+                                      deleted; uploader sees rejection reason)
+}
+MANUAL_REVIEW --(admin decision)--> APPROVED | REJECTED
+APPROVED --(re-moderation trigger)--> PENDING re-evaluation, using the same
+    three-way outcome above. Triggers: photo reported (§7, immediate),
+    model/policy version bump (batch job over all APPROVED photos, §6.1),
+    account flagged by an unrelated moderation case (re-check that
+    account's photos as part of the case).
+```
+
+Re-moderation implementation note (§6.1): `PhotoModerationResult.modelVersion`
+lets a batch job find every `APPROVED` photo whose latest result predates
+the current model version and re-run `policyEngine.evaluate()` against the
+stored (still-quarantined-format) image, without needing a separate
+"needs re-review" queue table.
+
+## 7. Security model
+
+"Never trust the client" is enforced by having exactly **one** code path for
+each concern, always called server-side, never assumed from a client flag:
+
+- `guards.requireVerifiedAndActive()` — called at the top of every gated
+  route (§1). A request that skips the UI entirely (curl, an old/modified
+  client, a scripted bot) hits the same check, because the check lives in
+  the route handler, not a page-level redirect.
+- `lib/safety/policyEngine.ts` — called from the upload route handlers
+  themselves, not trusted from any client-supplied "this image is fine"
+  field. There is no endpoint that creates a visible `Photo` row without
+  going through it — including the onboarding-photos path (`/api/upload`)
+  and the profile-photos path (`/api/profile/photos`), which are the *only*
+  two image-accepting endpoints in the app today (confirmed by inspecting
+  `app/api/`); any future endpoint (chat attachments, stories) must call
+  the same `policyEngine.evaluate()` rather than reimplement checks.
+- Quarantine storage: an uploaded image never gets a public-facing URL
+  until `policyEngine` approves it. Today's `lib/upload.ts` uses
+  `@vercel/blob`'s `access: 'public'` for every upload immediately — this
+  changes to a two-step `put()` (private "pending/" key, not referenced by
+  any `Photo` row) → `promote()` (copy to the public key only on
+  `APPROVED`). Vercel Blob URLs are already non-enumerable (random UUID
+  keys), but they are not access-controlled while sitting in the "pending"
+  prefix, since nothing in the app ever hands that URL to a client until
+  promotion — so it is unreachable in practice even though technically
+  public. **Known limitation vs. the letter of "signed/private URLs":**
+  `@vercel/blob` does not currently support a private-with-signed-access
+  mode the way S3 + CloudFront signed URLs do. If that's required at launch
+  rather than as a fast-follow, the upgrade path is switching photo storage
+  to S3 + CloudFront signed cookies/URLs — `quarantineStorage.ts`'s
+  interface is written so only that one file changes.
+- Rate limiting / upload quotas / abuse detection: not present anywhere in
+  the codebase today (checked `proxy.ts` and `lib/`) — net new work, not an
+  extension. Proposed: a small `lib/rateLimit.ts` backed by Postgres (an
+  `UploadEvent`-style rolling count, consistent with this codebase's
+  "no extra infra" bias — see `lib/upload.ts`'s own rationale for choosing
+  Vercel Blob over S3) rather than introducing Redis just for this.
+- Malware/file-type validation: `assertValidImage()` already checks MIME
+  type and size; extend it to also validate actual file *content* (magic
+  bytes) rather than trusting the declared `Content-Type`, since that's
+  exactly the "renaming files / changing MIME types" bypass named in the
+  request.
+
+## 8. Privacy & data-retention model
+
+Persisted, forever (needed for duplicate-account prevention and
+legal/compliance — this is the "verification result" the request asks us to
+keep instead of the document):
+
+- `IdentityVerification.status`, `provider`, `documentType`, `documentHash`,
+  `providerReference`, `faceMatchScore`, timestamps.
+
+Never persisted, anywhere, at any point:
+
+- Aadhaar number, PAN number, passport number (full or partial beyond the
+  DigiLocker-masked last-4 that arrives in the response we already don't
+  request more of)
+- The ID document image or PDF
+- The DigiLocker access token (used once, in-memory, for the single
+  document fetch, then discarded — not cached, not logged)
+
+Face-match: the selfie's face *embedding* (a numeric vector, not the image)
+is kept only to support the "does a later-uploaded photo match the verified
+person" check in §3 — the embedding is not a photo and cannot be used to
+reconstruct one; the *image* of both the selfie and the document photo are
+discarded once the embedding is computed within that same request.
+
+This mirrors the existing DPDP posture in `admin/docs/DPDP_COMPLIANCE.md`:
+identity-verification data is included in that same `PrivacyRequest`
+export/erasure flow (already a generic per-user data walk) with no special
+casing needed, since nothing sensitive is stored outside the
+`IdentityVerification` row described above.
+
+## 9. Admin workflow
+
+Extends the existing Trust & Safety console (`admin/app/(console)/...`)
+rather than a new surface:
+
+- **Photo Moderation Queue** (new page, under the existing moderation
+  section) — lists `Photo` rows with `moderationStatus = MANUAL_REVIEW`,
+  joined to their latest `PhotoModerationResult` (scores, reasons) and the
+  linked `ModerationCase`. Approve/reject buttons call
+  `POST /api/moderation/photos/[photoId]/decide`, gated by the existing
+  `content.moderate` permission.
+- **Identity Verification panel** (new section on the existing per-user
+  admin page) — shows `IdentityVerification` status, provider, timestamps,
+  face-match score, and duplicate-hash flag if any. Gated by a new,
+  stricter permission `users.viewIdentityVerification` — deliberately
+  separate from the existing `users.viewSensitivePII` (which unmasks
+  email/phone/DOB/location) because identity-verification data touches
+  government ID and should have a smaller admin population able to see it,
+  per the request's "stricter access controls than ordinary moderation
+  data." Every view is logged via the existing `AuditLogEntry` pattern
+  (`action: "verification.view"`, `category: "moderation"`).
+- `users.action.resetVerification` (already exists in `admin/lib/rbac.ts` —
+  currently unused since there's no real verification flow to reset) is
+  wired up to actually set `Profile.verification = UNVERIFIED` and log the
+  action, same pattern as every other action in
+  `admin/lib/userActions.ts`.
+- Configurable thresholds (nudity score cutoffs, face-match confidence
+  cutoffs) live in the existing `FeatureFlag`/config model rather than
+  hardcoded constants, so Trust & Safety can tune false-positive/negative
+  rates without a deploy — matches the existing `config.propose` /
+  `config.approve` two-person pattern already in `rbac.ts`.
+
+## 10. Automated test strategy
+
+Three layers, matching the existing test setup (`scripts/verify-matching.ts`
+shows the codebase's existing pattern of direct-DB integration scripts
+alongside any framework tests):
+
+**Unit — `lib/safety/policyEngine.test.ts`**: feeds the policy engine
+*mocked* moderation-provider outputs (`{ nudityScore: 0.97 }`,
+`{ faceCount: 0 }`, `{ faceCount: 2, matchedVerifiedFace: false }`, etc.) and
+asserts the resulting decision. **Explicitly does not use real explicit
+images as test fixtures** — the whole point of mocking the provider layer is
+that the decision logic is tested independently of any actual image,
+so no nudity/CSAM-risk content is ever needed in the repo or CI. This
+directly covers the request's "Explicit/nude image → rejected", "No face →
+rejected", "Multiple faces → appropriate handling", "Cartoon → rejected"
+(mocked as a high nsfwjs `Drawing` score) cases.
+
+**Integration — API route tests**: a test user in each `VerificationStatus`
+/ `User.status` combination, asserting `guards.requireVerifiedAndActive()`
+blocks the unverified/suspended cases on `/api/discover`, swipe creation,
+matches, and messages — covers "Unverified user attempting upload →
+blocked", "Direct API bypass → blocked", "Suspended user → uploads
+blocked".
+
+**Integration — upload pipeline**: a real (non-explicit, checked-in) test
+photo of a face runs through the actual quarantine → policyEngine →
+promote path against the mocked provider, asserting a `Photo` row only
+appears once `APPROVED`, and that `REJECTED` leaves no blob and no row —
+covers "Image replacement → re-moderated", "Reported image → re-reviewed"
+(by directly invoking the re-moderation trigger).
+
+**Duplicate identity**: two mock verification attempts with the same
+`documentHash` assert the second lands in `MANUAL_REVIEW` with
+`category: "duplicate_identity"`, not silently blocked and not silently
+allowed.
+
+---
+
+### Definition of done, honestly assessed against this design
+
+Per the request's own standard — enforced identically regardless of web,
+iOS, Android, direct API, or scripted request — this design achieves that
+for every check except one, which is called out rather than glossed over:
+**AI-generated/deepfake-person detection has no free automated backstop**
+(§3). Everything else (identity verification, face presence, nudity/explicit
+content, duplicate-account prevention, and — as a side effect of requiring
+a real verified face — a strong practical deterrent against AI-generated
+profile photos, since they won't face-match) is enforced server-side, in
+one code path, regardless of client.
