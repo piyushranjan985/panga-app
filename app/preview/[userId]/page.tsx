@@ -10,6 +10,7 @@ interface Preview {
   city: string;
   intent: string;
   verification: string;
+  verificationIsMock: boolean;
   photoUrl: string | null;
 }
 
@@ -73,7 +74,9 @@ export default function FamilyPreviewPage() {
         </h1>
         <p className="mt-1 text-sm text-inkSoft">{preview.city}</p>
         {preview.verification === 'VERIFIED' && (
-          <p className="mt-2 text-xs font-semibold text-mint">✅ ID + liveness verified</p>
+          <p className="mt-2 text-xs font-semibold text-mint">
+            {preview.verificationIsMock ? '✅ Basic account check' : '✅ ID verified'}
+          </p>
         )}
         <div className="mt-4">
           <IntentBadge intent={preview.intent} />

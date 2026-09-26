@@ -143,6 +143,8 @@ function OnboardingForm() {
 
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [photoNotice, setPhotoNotice] = useState<string | null>(null);
+  const [finishNotice, setFinishNotice] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/onboarding-options')
@@ -412,6 +414,7 @@ function OnboardingForm() {
     e.target.value = ''; // lets the same file be picked again later
     if (!file) return;
     setPhotoError(null);
+    setPhotoNotice(null);
     setUploadingPhoto(true);
     try {
       const body = new FormData();
@@ -420,6 +423,10 @@ function OnboardingForm() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Upload failed');
       setForm((f) => ({ ...f, photoUrls: [...f.photoUrls, data.url].slice(0, 5) }));
+      // MANUAL_REVIEW isn't an error -- the photo was accepted -- but the
+      // uploader should know now that it's pending a quick human look,
+      // not find out later from an unexplained badge on their own profile.
+      if (data.notice) setPhotoNotice(data.notice);
     } catch (err) {
       setPhotoError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
@@ -462,7 +469,14 @@ function OnboardingForm() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Could not save profile');
-      router.push(editMode ? '/profile' : '/discover');
+      if (data.notice) {
+        // Give them a moment to actually read it (a dropped photo, or one
+        // pending manual review) before navigating away from it.
+        setFinishNotice(data.notice);
+        setTimeout(() => router.push(editMode ? '/profile' : '/discover'), 3500);
+      } else {
+        router.push(editMode ? '/profile' : '/discover');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save profile');
     } finally {
@@ -679,6 +693,7 @@ function OnboardingForm() {
             )}
           </div>
           {photoError && <p className="text-xs text-magenta">{photoError}</p>}
+          {photoNotice && <p className="text-xs text-inkSoft">{photoNotice}</p>}
         </div>
       )}
 
@@ -1103,6 +1118,7 @@ function OnboardingForm() {
       )}
 
       {error && <p className="text-sm text-magenta">{error}</p>}
+      {finishNotice && <p className="text-sm text-inkSoft">{finishNotice}</p>}
 
       <div className="mt-auto flex justify-between pt-4">
         <button

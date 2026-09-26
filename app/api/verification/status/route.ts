@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { isRealIdentityCheck } from '@/lib/safety/identityVerification';
 
 /**
  * Lets the client poll for the outcome of an in-flight verification --
@@ -28,5 +29,6 @@ export async function GET() {
   return NextResponse.json({
     verification: profile.verification,
     latestAttempt: latestAttempt ?? null,
+    verificationIsMock: !isRealIdentityCheck(),
   });
 }

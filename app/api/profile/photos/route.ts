@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { assertValidImage, normalizeImageForStorage, uploadImageBuffer } from '@/lib/upload';
-import { moderateImageBuffer, recordPhotoModeration, photoRejectionMessage } from '@/lib/safety/moderateAndUpload';
+import { moderateImageBuffer, recordPhotoModeration, photoRejectionMessage, manualReviewMessage } from '@/lib/safety/moderateAndUpload';
 
 // Self-hosted image moderation (IMAGE_MODERATION_PROVIDER=self-hosted)
 // runs two small CNNs on pure-JS tfjs (no native/WASM acceleration, see
@@ -62,7 +62,11 @@ export async function POST(req: Request) {
     });
     await recordPhotoModeration({ photoId: photo.id, subjectUserId: session.userId, outcome });
 
-    return NextResponse.json({ ok: true, photo });
+    return NextResponse.json({
+      ok: true,
+      photo,
+      notice: outcome.decision === 'MANUAL_REVIEW' ? manualReviewMessage(outcome) : null,
+    });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Upload failed' }, { status: 400 });
   }

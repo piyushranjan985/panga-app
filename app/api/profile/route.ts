@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
-import { moderateImageUrl, recordPhotoModeration, photoRejectionMessage, type ModerationOutcome } from '@/lib/safety/moderateAndUpload';
+import { moderateImageUrl, recordPhotoModeration, photoRejectionMessage, manualReviewMessage, type ModerationOutcome } from '@/lib/safety/moderateAndUpload';
+import { isRealIdentityCheck } from '@/lib/safety/identityVerification';
 import { DATE_VIBES, TONIGHT_OPTIONS, VALUES_OPTIONS, LIVING_PREFERENCES, FUTURE_VIBE_QUESTIONS, CHILDREN_OPTIONS } from '@/lib/constants';
 
 // This route's PUT handler moderates every onboarding photo sequentially
@@ -149,7 +150,7 @@ export async function GET() {
     },
   });
 
-  return NextResponse.json({ profile });
+  return NextResponse.json({ profile, verificationIsMock: !isRealIdentityCheck() });
 }
 
 export async function PUT(req: Request) {
@@ -173,11 +174,13 @@ export async function PUT(req: Request) {
   // why this re-checks rather than trusting app/api/upload's earlier pass.
   const isNewProfile = !(await db.profile.findUnique({ where: { userId: session.userId }, select: { id: true } }));
   let moderatedPhotos: { url: string; position: number; outcome: ModerationOutcome }[] = [];
+  let rejectedCount = 0;
   if (isNewProfile) {
     const results = await Promise.all(
       data.photoUrls.map(async (url, position) => ({ url, position, outcome: await moderateImageUrl(url) })),
     );
     moderatedPhotos = results.filter((p) => p.outcome.decision !== 'REJECTED');
+    rejectedCount = results.length - moderatedPhotos.length;
     if (moderatedPhotos.length === 0) {
       // All rejected -- surface the first one's specific reason (no face,
       // explicit content, unreadable file, ...) rather than one generic
@@ -273,7 +276,25 @@ export async function PUT(req: Request) {
     );
   }
 
-  return NextResponse.json({ ok: true, profile });
+  // Two separate things worth telling a first-time submitter, neither of
+  // which used to be surfaced at all: some photos were silently dropped
+  // (rejected -- e.g. no face, unreadable file), or some were accepted but
+  // are pending a human's quick look (MANUAL_REVIEW -- visible only to the
+  // owner until then, see manualReviewMessage). Both can be true at once.
+  const manualReviewPhotos = isNewProfile ? moderatedPhotos.filter((p) => p.outcome.decision === 'MANUAL_REVIEW') : [];
+  const notices: string[] = [];
+  if (rejectedCount > 0) {
+    notices.push(
+      rejectedCount === 1
+        ? "1 photo didn't meet our photo guidelines and wasn't added."
+        : `${rejectedCount} photos didn't meet our photo guidelines and weren't added.`,
+    );
+  }
+  if (manualReviewPhotos.length > 0) {
+    notices.push(manualReviewMessage(manualReviewPhotos[0]!.outcome));
+  }
+
+  return NextResponse.json({ ok: true, profile, notice: notices.length > 0 ? notices.join(' ') : null });
 }
 
 // Partial-update schema for everything editable straight from the profile

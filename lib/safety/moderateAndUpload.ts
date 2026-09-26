@@ -11,6 +11,11 @@ export interface ModerationOutcome {
   faceCount: number;
   nudityScore: number; // max(porn, hentai, sexy) -- single number for the Photo-list admin view; full breakdown lives in `raw`
   raw: { porn: number; hentai: number; sexy: number };
+  // Only set for reasons: ['moderation_provider_error'] -- the actual
+  // thrown error's message, so an admin looking at the ModerationCase this
+  // opens (see recordPhotoModeration) can tell what actually broke instead
+  // of guessing from a generic code. Never shown to the uploader.
+  errorDetail?: string;
 }
 
 /**
@@ -65,6 +70,7 @@ export async function moderateImageBuffer(imageBuffer: Buffer): Promise<Moderati
       faceCount: 0,
       nudityScore: 0,
       raw: { porn: 0, hentai: 0, sexy: 0 },
+      errorDetail: err instanceof Error ? err.message : String(err),
     };
   }
 
@@ -101,6 +107,26 @@ export function photoRejectionMessage(outcome: ModerationOutcome): string {
     return "We couldn't find a clear human face in that photo — please upload a photo that clearly shows your face.";
   }
   return "This photo doesn't meet findmyVybe's photo guidelines — try a clear photo of your face instead.";
+}
+
+/**
+ * The upload-time counterpart to photoRejectionMessage: a photo that
+ * wasn't rejected but also isn't auto-approved (MANUAL_REVIEW) used to be
+ * accepted with zero feedback at all -- the uploader would find out only
+ * later, from the "Under review" badge on their own profile grid, which
+ * read as a silent bug rather than an explained pending state. Every
+ * upload route now surfaces this string alongside a successful response
+ * whenever outcome.decision === 'MANUAL_REVIEW', so the person sees it
+ * the moment they upload, not minutes later.
+ */
+export function manualReviewMessage(outcome: ModerationOutcome): string {
+  if (outcome.reasons.includes('moderation_provider_error')) {
+    return "Your photo was uploaded, but our automatic photo check couldn't run just now, so a person on our team will take a quick look. It's visible only to you until then.";
+  }
+  if (outcome.reasons.includes('multiple_faces_unresolved')) {
+    return 'Your photo was uploaded. Since it shows more than one face, a person on our team will take a quick look before it\'s shown to others.';
+  }
+  return "Your photo was uploaded and a person on our team will take a quick look before it's shown to others.";
 }
 
 const SEVERITY_FOR_DECISION = (decision: PhotoModerationDecision): 'LOW' | 'MEDIUM' | 'HIGH' =>
@@ -143,6 +169,7 @@ export async function recordPhotoModeration(params: {
           modelVersion: outcome.modelVersion,
           faceCount: outcome.faceCount,
           nudityScore: outcome.nudityScore,
+          ...(outcome.errorDetail ? { errorDetail: outcome.errorDetail } : {}),
         },
       },
     });

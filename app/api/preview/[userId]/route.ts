@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { isRealIdentityCheck } from '@/lib/safety/identityVerification';
 
 /**
  * Public, unauthenticated endpoint behind the Family Preview feature: a
@@ -34,6 +35,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ userId:
       city: profile.city,
       intent: profile.intent,
       verification: profile.verification,
+      verificationIsMock: !isRealIdentityCheck(),
       photoUrl: profile.photos[0]?.url ?? null,
     },
   });

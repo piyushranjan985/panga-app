@@ -55,6 +55,28 @@ export function isDigilockerConfigured(): boolean {
   return Boolean(process.env.DIGILOCKER_CLIENT_ID && process.env.DIGILOCKER_CLIENT_SECRET);
 }
 
+/**
+ * Whether Profile.verification === 'VERIFIED' reflects a real,
+ * independently-checked government document (DigiLocker today; a future
+ * paid KYC vendor would extend this) rather than the always-on mock
+ * provider, which auto-approves every request after a few seconds with
+ * no document ever actually checked (see mockFetchIdentityDocument below
+ * and .env.example -- VERIFICATION_PROVIDER defaults to "mock" because
+ * real DigiLocker credentials require a manual government approval
+ * process that can't be done from code).
+ *
+ * Product decision (2026-09-26): rather than hide this gap, every
+ * user-facing verification label in the app calls this and shows an
+ * honest "basic check" label while it's false, instead of claiming "ID
+ * verified" for a check that never happened. See app/profile/page.tsx,
+ * app/api/preview/[userId]/route.ts, and app/preview/[userId]/page.tsx --
+ * the moment a real provider is configured, this flips to true and every
+ * one of those labels upgrades itself with no further code changes.
+ */
+export function isRealIdentityCheck(): boolean {
+  return getVerificationProviderName() === 'digilocker';
+}
+
 // --- OAuth state token -------------------------------------------------
 // A short-lived, signed JWT carried through the DigiLocker redirect round
 // trip as the OAuth2 `state` parameter -- standard CSRF protection so the

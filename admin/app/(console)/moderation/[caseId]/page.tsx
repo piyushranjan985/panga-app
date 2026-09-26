@@ -7,6 +7,7 @@ import PageHeader from '@/components/PageHeader';
 import Badge from '@/components/Badge';
 import ModerationCaseActions from '@/components/ModerationCaseActions';
 import ModerationNoteForm from '@/components/ModerationNoteForm';
+import { asPhotoEvidence, asIdentityEvidence, humanizePhotoReason, humanizeIdentityFailure } from '@/lib/moderationEvidence';
 
 export default async function ModerationCaseDetailPage({ params }: { params: Promise<{ caseId: string }> }) {
   const admin = await requirePageAccess('moderation.view');
@@ -23,6 +24,12 @@ export default async function ModerationCaseDetailPage({ params }: { params: Pro
     },
   });
   if (!c) notFound();
+
+  const photoEvidence = asPhotoEvidence(c.evidence);
+  const identityEvidence = photoEvidence ? null : asIdentityEvidence(c.evidence);
+  const flaggedPhoto = photoEvidence
+    ? await db.photo.findUnique({ where: { id: photoEvidence.photoId }, select: { url: true, moderationStatus: true } })
+    : null;
 
   const admins = await db.adminUser.findMany({
     where: { isActive: true, role: { in: ['SUPER_ADMIN', 'ADMIN', 'TRUST_AND_SAFETY', 'MODERATOR'] } },
@@ -61,8 +68,74 @@ export default async function ModerationCaseDetailPage({ params }: { params: Pro
                 {c.report.details && <> -- {c.report.details}</>}
               </p>
             )}
+            {photoEvidence && (
+              <div className="mt-3 rounded-lg border border-border bg-canvas p-3">
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  {flaggedPhoto?.url ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- external Blob URL
+                    <img
+                      src={flaggedPhoto.url}
+                      alt="Flagged photo"
+                      className="h-40 w-40 flex-shrink-0 rounded-lg border border-border object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-40 w-40 flex-shrink-0 items-center justify-center rounded-lg border border-dashed border-border text-xs text-inkFaint">
+                      Photo not found (deleted?)
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1 text-sm">
+                    <p className="font-semibold">
+                      Decision: {photoEvidence.decision ?? '—'}
+                      {flaggedPhoto?.moderationStatus && flaggedPhoto.moderationStatus !== photoEvidence.decision && (
+                        <span className="ml-1 font-normal text-inkFaint">(currently {flaggedPhoto.moderationStatus})</span>
+                      )}
+                    </p>
+                    <ul className="mt-2 list-disc space-y-1 pl-4 text-inkSoft">
+                      {photoEvidence.reasons.length === 0 && <li>No specific reason recorded.</li>}
+                      {photoEvidence.reasons.map((r) => (
+                        <li key={r}>{humanizePhotoReason(r)}</li>
+                      ))}
+                    </ul>
+                    <p className="mt-2 text-xs text-inkFaint">
+                      {photoEvidence.faceCount != null && <>Faces detected: {photoEvidence.faceCount} · </>}
+                      {photoEvidence.nudityScore != null && <>Nudity score: {(photoEvidence.nudityScore * 100).toFixed(0)}% · </>}
+                      {photoEvidence.provider && <>Provider: {photoEvidence.provider}</>}
+                    </p>
+                    {photoEvidence.errorDetail && (
+                      <p className="mt-2 rounded-lg bg-warningSoft p-2 text-xs text-warning">
+                        System error detail: {photoEvidence.errorDetail}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            {identityEvidence && (
+              <div className="mt-3 rounded-lg border border-border bg-canvas p-3 text-sm">
+                <p className="font-semibold">{humanizeIdentityFailure(identityEvidence.failureReason)}</p>
+                <p className="mt-2 text-xs text-inkFaint">
+                  {identityEvidence.documentType && <>Document: {identityEvidence.documentType} · </>}
+                  {identityEvidence.referenceMasked && <>Reference: {identityEvidence.referenceMasked} · </>}
+                  {identityEvidence.ageStatus && <>Age check: {identityEvidence.ageStatus} · </>}
+                  {identityEvidence.nameMatchesProfile != null && (
+                    <>Name match: {identityEvidence.nameMatchesProfile ? 'yes' : 'no'}</>
+                  )}
+                </p>
+                {identityEvidence.duplicateOfUserId && (
+                  <p className="mt-2 text-xs text-inkFaint">
+                    Duplicate of user:{' '}
+                    <Link href={`/users/${identityEvidence.duplicateOfUserId}`} className="text-brand hover:underline">
+                      {identityEvidence.duplicateOfUserId}
+                    </Link>
+                  </p>
+                )}
+              </div>
+            )}
             {c.evidence != null && (
-              <pre className="mt-3 overflow-x-auto rounded-lg bg-canvas p-3 text-xs text-inkSoft">{JSON.stringify(c.evidence, null, 2)}</pre>
+              <details className="mt-3">
+                <summary className="cursor-pointer text-xs text-inkFaint">Raw evidence data</summary>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-canvas p-3 text-xs text-inkSoft">{JSON.stringify(c.evidence, null, 2)}</pre>
+              </details>
             )}
             {c.resolution && (
               <p className="mt-3 rounded-lg bg-successSoft p-3 text-sm text-success">

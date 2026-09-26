@@ -137,7 +137,28 @@ export const selfHostedImageModerationProvider: ImageModerationProvider = {
     const { data: rgb, width, height } = await decodeToRgb(imageBuffer, sharp, heicConvert);
 
     const modelPath = process.env.FACE_API_MODEL_PATH || './public/models/face-api';
-    await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath);
+    // Guarded, not reloaded every call: loadFromDisk re-reads the ~6MB
+    // model weight files from disk every time it's called, and a
+    // serverless function reuses its module scope (and this loaded state)
+    // across warm invocations, so this both saves real I/O per request and
+    // reduces exposure to the exact failure mode this try/catch exists
+    // for. Wrapped separately from the dynamic-import try/catch above
+    // because this failure means something different: the packages ARE
+    // installed, but the model weight files aren't reachable at this path
+    // in THIS deployment -- see next.config.mjs's outputFileTracingIncludes
+    // comment for the specific Vercel gotcha that causes exactly this.
+    if (!faceapi.nets.ssdMobilenetv1.isLoaded) {
+      try {
+        await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath);
+      } catch (err) {
+        throw new Error(
+          `[imageModeration] face-api model files not found at "${modelPath}" -- either ` +
+            `scripts/download-face-api-models.mjs didn't run before this deploy, or (on Vercel) ` +
+            `they were traced out of this function's bundle (see next.config.mjs's ` +
+            `outputFileTracingIncludes). Original error: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
 
     const imageTensor = tf.tensor3d(rgb, [height, width, 3], 'int32');
     try {

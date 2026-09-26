@@ -218,9 +218,13 @@ export default function ProfilePage() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [verificationError, setVerificationError] = useState<string | null>(null);
+  // Defaults to true (the honest/unclaiming state) until the server says
+  // otherwise -- see lib/safety/identityVerification.ts's isRealIdentityCheck.
+  const [verificationIsMock, setVerificationIsMock] = useState(true);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [photoNotice, setPhotoNotice] = useState<string | null>(null);
 
   // Inline "edit here" state -- one section open at a time, so a handful
   // of generic draft slots (reset whenever a section opens) is simpler
@@ -240,7 +244,10 @@ export default function ProfilePage() {
   function load() {
     fetch('/api/profile')
       .then((r) => r.json())
-      .then((d) => setProfile(d.profile));
+      .then((d) => {
+        setProfile(d.profile);
+        if (typeof d.verificationIsMock === 'boolean') setVerificationIsMock(d.verificationIsMock);
+      });
   }
 
   useEffect(() => {
@@ -405,6 +412,7 @@ export default function ProfilePage() {
         if (data?.verification) {
           setProfile((p) => (p ? { ...p, verification: data.verification } : p));
         }
+        if (typeof data?.verificationIsMock === 'boolean') setVerificationIsMock(data.verificationIsMock);
         if (data?.verification === 'PENDING' && attempt < 12) {
           setTimeout(() => pollVerificationStatus(attempt + 1), 1500);
         } else {
@@ -419,6 +427,7 @@ export default function ProfilePage() {
     e.target.value = ''; // lets the same file be picked again later
     if (!file) return;
     setPhotoError(null);
+    setPhotoNotice(null);
     setUploadingPhoto(true);
     try {
       const body = new FormData();
@@ -427,6 +436,10 @@ export default function ProfilePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Upload failed');
       setProfile((p) => (p ? { ...p, photos: [...p.photos, data.photo] } : p));
+      // The "Under review" badge on the grid below already shows this
+      // ongoing, but a one-time explanation right after upload is worth
+      // more than making the person notice a badge on their own.
+      if (data.notice) setPhotoNotice(data.notice);
     } catch (err) {
       setPhotoError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
@@ -573,6 +586,7 @@ export default function ProfilePage() {
             )}
           </div>
           {photoError && <p className="mt-2 text-xs text-magenta">{photoError}</p>}
+          {photoNotice && <p className="mt-2 text-xs text-inkSoft">{photoNotice}</p>}
         </section>
 
         <section className="mt-8">
@@ -692,12 +706,18 @@ export default function ProfilePage() {
             <div>
               <p className="font-bold">Trust layer</p>
               <p className="text-sm text-inkSoft">
-                {profile.verification === 'VERIFIED' && 'ID verified ✅'}
+                {profile.verification === 'VERIFIED' &&
+                  (verificationIsMock ? 'Basic account check ✅' : 'ID verified ✅')}
                 {profile.verification === 'PENDING' && 'Verification in progress…'}
                 {profile.verification === 'UNVERIFIED' && 'Not verified yet'}
                 {profile.verification === 'MANUAL_REVIEW' && "We're reviewing your verification — check back shortly"}
                 {profile.verification === 'REJECTED' && 'Verification failed — try again'}
               </p>
+              {profile.verification === 'VERIFIED' && verificationIsMock && (
+                <p className="mt-0.5 text-xs text-inkSoft/60">
+                  Confirms basic account activity only — full government ID verification is coming soon.
+                </p>
+              )}
             </div>
             {profile.verification !== 'VERIFIED' && (
               <button

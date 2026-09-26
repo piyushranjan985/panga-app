@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { assertValidImage, normalizeImageForStorage, uploadImageBuffer } from '@/lib/upload';
-import { moderateImageBuffer, photoRejectionMessage } from '@/lib/safety/moderateAndUpload';
+import { moderateImageBuffer, photoRejectionMessage, manualReviewMessage } from '@/lib/safety/moderateAndUpload';
 
 // Self-hosted image moderation (IMAGE_MODERATION_PROVIDER=self-hosted)
 // runs two small CNNs on pure-JS tfjs (no native/WASM acceleration, see
@@ -52,7 +52,14 @@ export async function POST(req: Request) {
 
     const normalized = await normalizeImageForStorage(buffer, file.type);
     const url = await uploadImageBuffer(normalized, `onboarding/${session.userId}`);
-    return NextResponse.json({ url });
+    return NextResponse.json({
+      url,
+      // MANUAL_REVIEW is still a successful upload (never rejected outright)
+      // but the uploader should know now, not discover it later as an
+      // unexplained "Under review" badge -- see manualReviewMessage's doc
+      // comment.
+      notice: outcome.decision === 'MANUAL_REVIEW' ? manualReviewMessage(outcome) : null,
+    });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Upload failed' }, { status: 400 });
   }
