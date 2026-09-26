@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { moderateImageUrl, recordPhotoModeration, type ModerationOutcome } from '@/lib/safety/moderateAndUpload';
 import { DATE_VIBES, TONIGHT_OPTIONS, VALUES_OPTIONS, LIVING_PREFERENCES, FUTURE_VIBE_QUESTIONS, CHILDREN_OPTIONS } from '@/lib/constants';
 
 // Intent-scoped pick-lists (see lib/constants.ts) validated as fixed
@@ -154,8 +155,31 @@ export async function PUT(req: Request) {
   const data = parsed.data;
   const avatarSeed = data.displayName.trim().charAt(0).toUpperCase() || 'P';
 
+  // Photos are only ever set in the `create` branch below (see the comment
+  // by `photos:` in `update` -- editing the rest of the profile later must
+  // never silently touch photos added since via app/api/profile/photos).
+  // So this is the one place onboarding's collected photoUrls actually
+  // become Photo rows, and the one place they need (re-)moderating --
+  // see lib/safety/moderateAndUpload.ts's moderateImageUrl doc comment for
+  // why this re-checks rather than trusting app/api/upload's earlier pass.
+  const isNewProfile = !(await db.profile.findUnique({ where: { userId: session.userId }, select: { id: true } }));
+  let moderatedPhotos: { url: string; position: number; outcome: ModerationOutcome }[] = [];
+  if (isNewProfile) {
+    const results = await Promise.all(
+      data.photoUrls.map(async (url, position) => ({ url, position, outcome: await moderateImageUrl(url) })),
+    );
+    moderatedPhotos = results.filter((p) => p.outcome.decision !== 'REJECTED');
+    if (moderatedPhotos.length === 0) {
+      return NextResponse.json(
+        { error: "None of your photos passed our photo guidelines — try a clear photo of your face instead." },
+        { status: 400 },
+      );
+    }
+  }
+
   const profile = await db.profile.upsert({
     where: { userId: session.userId },
+    include: { photos: true },
     create: {
       userId: session.userId,
       displayName: data.displayName,
@@ -173,7 +197,14 @@ export async function PUT(req: Request) {
       subCommunities: { connect: data.subCommunityIds.map((id) => ({ id })) },
       relationshipStyles: { connect: data.relationshipStyleIds.map((id) => ({ id })) },
       answers: { create: data.promptAnswers.map((pa) => ({ promptId: pa.promptId, answer: pa.answer })) },
-      photos: { create: data.photoUrls.map((url, i) => ({ url, position: i })) },
+      photos: {
+        create: moderatedPhotos.map((p) => ({
+          url: p.url,
+          position: p.position,
+          moderationStatus: p.outcome.decision,
+          moderatedAt: new Date(),
+        })),
+      },
       dateVibeTags: data.dateVibeTags,
       tonightTags: data.tonightTags,
       livingPreference: data.livingPreference ?? null,
@@ -218,6 +249,16 @@ export async function PUT(req: Request) {
       // app/api/profile/photos. Photos only get set here on first create.
     },
   });
+
+  if (isNewProfile) {
+    await Promise.all(
+      profile.photos.map((photo) => {
+        const match = moderatedPhotos.find((p) => p.url === photo.url);
+        if (!match) return Promise.resolve();
+        return recordPhotoModeration({ photoId: photo.id, subjectUserId: session.userId, outcome: match.outcome });
+      }),
+    );
+  }
 
   return NextResponse.json({ ok: true, profile });
 }

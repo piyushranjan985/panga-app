@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { assertValidImage, uploadImage } from '@/lib/upload';
+import { moderateImageBuffer } from '@/lib/safety/moderateAndUpload';
 
 /**
  * Generic authenticated image upload — returns a URL, writes nothing to the
@@ -10,6 +11,15 @@ import { assertValidImage, uploadImage } from '@/lib/upload';
  * when app/api/profile/route.ts's PUT handler saves the finished profile.
  * Once a profile exists, app/api/profile/photos/route.ts is used instead
  * (uploads AND creates the Photo row in one step).
+ *
+ * Moderation happens twice for an onboarding photo, deliberately: once
+ * here (REJECTED content is refused a URL at all -- "never trust the
+ * client" means we don't trust that a URL collected here and handed back
+ * to us later in the PUT body is still the same, unmodified image), and
+ * again in app/api/profile/route.ts when the Photo rows are actually
+ * created, which is what persists the real PhotoModerationResult/
+ * moderationStatus. See docs/IDENTITY_VERIFICATION_AND_SAFETY.md
+ * sections 1, 4, 7.
  */
 export async function POST(req: Request) {
   const session = await getSession();
@@ -23,6 +33,16 @@ export async function POST(req: Request) {
 
   try {
     assertValidImage(file);
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const outcome = await moderateImageBuffer(buffer);
+
+    if (outcome.decision === 'REJECTED') {
+      return NextResponse.json(
+        { error: "This photo doesn't meet findmyVybe's photo guidelines — try a clear photo of your face instead." },
+        { status: 400 },
+      );
+    }
+
     const url = await uploadImage(file, `onboarding/${session.userId}`);
     return NextResponse.json({ url });
   } catch (err) {
