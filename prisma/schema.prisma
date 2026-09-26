@@ -50,8 +50,15 @@ enum Gender {
 enum VerificationStatus {
   UNVERIFIED
   PENDING
+  MANUAL_REVIEW // automated identity checks inconclusive -- human decision needed
   VERIFIED
   REJECTED
+}
+
+enum PhotoModerationDecision {
+  APPROVED
+  REJECTED
+  MANUAL_REVIEW
 }
 
 enum SwipeAction {
@@ -159,6 +166,7 @@ model User {
   // --- Admin Portal: relations from the admin-domain models below ---------
   moderationCases     ModerationCase[]   @relation("ModerationCasesAboutUser")
   moderationAppeals   ModerationAppeal[]
+  identityVerifications IdentityVerification[]
   supportTickets      SupportTicket[]
   consentRecords       ConsentRecord[]
   privacyRequests      PrivacyRequest[]
@@ -246,7 +254,78 @@ model Photo {
   removedAt     DateTime?
   removedReason String?
 
+  // See docs/IDENTITY_VERIFICATION_AND_SAFETY.md -- every photo starts as
+  // MANUAL_REVIEW until the moderation pipeline (or an admin) decides;
+  // nothing becomes visible to other users before that.
+  moderationStatus PhotoModerationDecision @default(MANUAL_REVIEW)
+  moderatedAt      DateTime?
+  results          PhotoModerationResult[]
+
   @@index([profileId, position])
+  @@index([profileId, moderationStatus])
+}
+
+// Identity verification (DigiLocker) result -- see
+// docs/IDENTITY_VERIFICATION_AND_SAFETY.md sections 2, 4, 8. Only the
+// verification RESULT is stored here; the ID document image/PDF and the
+// DigiLocker access token are never persisted (processed in-memory for the
+// single request that handles the callback, per data-minimization design).
+model IdentityVerification {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  provider          String // "digilocker" | "mock"
+  documentType      String // "AADHAAR" | "DRIVING_LICENCE"
+  // HMAC(documentReference, DUPLICATE_CHECK_PEPPER) -- lets us detect one
+  // identity behind multiple accounts without ever storing the real
+  // document number. @unique is intentional: a second verification with
+  // the same hash is caught at the DB layer, not just in application code.
+  documentHash      String @unique
+  providerReference String // DigiLocker's own transaction id (support/audit only)
+
+  faceMatchScore    Float?
+  dobMatchedProfile Boolean @default(true) // false -> routed to MANUAL_REVIEW
+
+  status           VerificationStatus @default(PENDING)
+  failureReason    String?
+  reviewedByAdminId String?
+  reviewedAt        DateTime?
+
+  submittedAt DateTime  @default(now())
+  decidedAt   DateTime?
+  expiresAt   DateTime? // re-verification cadence
+
+  moderationCaseId String?
+  moderationCase   ModerationCase? @relation(fields: [moderationCaseId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+}
+
+// One row per moderation pass over a Photo -- kept as history (not
+// overwritten) so re-moderation (model/policy updates, reports) has an
+// audit trail of every decision, not just the latest. See
+// docs/IDENTITY_VERIFICATION_AND_SAFETY.md section 6.
+model PhotoModerationResult {
+  id      String @id @default(cuid())
+  photoId String
+  photo   Photo  @relation(fields: [photoId], references: [id], onDelete: Cascade)
+
+  decision            PhotoModerationDecision
+  faceDetected        Boolean
+  faceCount           Int
+  matchedVerifiedFace Boolean? // did a detected face match the account's verified-selfie embedding
+  nudityScore         Float
+  provider            String // "self-hosted-nsfwjs+faceapi" | "mock"
+  modelVersion        String // pinned so a re-moderation batch job can find stale results
+
+  moderationCaseId String?
+  moderationCase   ModerationCase? @relation(fields: [moderationCaseId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([photoId, createdAt])
 }
 
 model Interest {
@@ -697,6 +776,8 @@ model ModerationCase {
 
   notes   ModerationNote[]
   appeals ModerationAppeal[]
+  identityVerifications  IdentityVerification[]
+  photoModerationResults PhotoModerationResult[]
 
   @@index([status, severity])
   @@index([subjectUserId])
