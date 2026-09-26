@@ -38,7 +38,11 @@
     "@capacitor/core": "^8.0.0",
     "@capacitor/ios": "^8.0.0",
     "@capacitor/android": "^8.0.0",
-    "@capacitor/geolocation": "^8.0.0"
+    "@capacitor/geolocation": "^8.0.0",
+    "nsfwjs": "^4.2.1",
+    "@vladmandic/face-api": "^1.7.15",
+    "@tensorflow/tfjs": "^4.22.0",
+    "canvas": "^2.11.2"
   },
   "devDependencies": {
     "@types/node": "^20.16.10",

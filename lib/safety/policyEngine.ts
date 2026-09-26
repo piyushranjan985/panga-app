@@ -8,16 +8,26 @@
  * imageModeration.ts calls this after running the actual analysis; nothing
  * else in the app should hand-roll an APPROVED/REJECTED/MANUAL_REVIEW
  * decision -- this is the one place that logic lives.
+ *
+ * SCOPE NOTE (2026-09-26): selfie-vs-ID-document face matching was
+ * explicitly descoped by product decision -- there is no verified-selfie
+ * embedding anywhere in this app, and there never will be unless that
+ * decision is revisited. This engine no longer reasons about a "matched
+ * verified face" signal at all. The direct consequence, stated plainly:
+ * a clean single-face photo is auto-approved on face presence and nudity
+ * scores alone -- nothing here confirms the face belongs to the account's
+ * verified identity. That means someone could pass identity verification
+ * with their own ID and then upload a photo of a different person's face.
+ * DigiLocker verification and photo moderation are therefore two
+ * independent checks (both mandatory), not a linked "is this really you"
+ * guarantee. See docs/IDENTITY_VERIFICATION_AND_SAFETY.md section 3 for
+ * the full writeup of this trade-off.
  */
 
 export type PhotoModerationDecision = 'APPROVED' | 'REJECTED' | 'MANUAL_REVIEW';
 
 export interface ModerationSignals {
   faceCount: number;
-  // Did a detected face match the account's verified-selfie embedding?
-  // `null` when the account has no verified selfie yet (e.g. verification
-  // hasn't happened), which is a normal state, not a failure.
-  matchedVerifiedFace: boolean | null;
   // nsfwjs-style category scores, each 0..1. Only the categories the
   // policy actually reasons about are required; a provider can return more.
   nudityScores: {
@@ -83,34 +93,16 @@ export function evaluatePhoto(
     return { decision: 'REJECTED', reasons: ['no_face_detected'] };
   }
 
-  // A face is present and matches the account's verified selfie -- the
-  // strongest possible signal, approve outright regardless of face count
-  // (covers the "group photo, account owner identifiable" case explicitly
-  // allowed by the spec).
-  if (signals.matchedVerifiedFace === true) {
-    return reasons.length > 0
-      ? { decision: 'MANUAL_REVIEW', reasons }
-      : { decision: 'APPROVED', reasons: [] };
-  }
-
-  // A face is present but didn't match (or verification hasn't happened
-  // yet to compare against) -- proceed only for the simple single-face
-  // case; multiple unmatched faces can't be resolved automatically (which
-  // one is the account owner?) so it goes to a human. This is also the
-  // practical backstop against AI-generated/deepfake photos noted as a
-  // known gap in docs/IDENTITY_VERIFICATION_AND_SAFETY.md section 3: a
-  // synthetic face won't match the real verified person either.
+  // More than one face -- ambiguous which one is the account owner with
+  // no face-match signal to resolve it (see the scope note above), so a
+  // human decides rather than auto-approving a group photo.
   if (signals.faceCount > 1) {
-    reasons.push('multiple_faces_unmatched');
+    reasons.push('multiple_faces_unresolved');
     return { decision: 'MANUAL_REVIEW', reasons };
   }
 
-  if (signals.matchedVerifiedFace === null) {
-    reasons.push('no_verified_face_to_compare');
-    return { decision: 'MANUAL_REVIEW', reasons };
-  }
-
-  // Exactly one face, didn't match a verified selfie that does exist.
-  reasons.push('face_did_not_match_verification');
-  return { decision: 'MANUAL_REVIEW', reasons };
+  // Exactly one clean human face, nudity scores under the reject
+  // threshold. This is the auto-approve path -- see the scope note at the
+  // top of this file for exactly what this does and doesn't guarantee.
+  return reasons.length > 0 ? { decision: 'MANUAL_REVIEW', reasons } : { decision: 'APPROVED', reasons: [] };
 }

@@ -9,7 +9,6 @@ export interface ModerationOutcome {
   modelVersion: string;
   faceDetected: boolean;
   faceCount: number;
-  matchedVerifiedFace: boolean | null;
   nudityScore: number; // max(porn, hentai, sexy) -- single number for the Photo-list admin view; full breakdown lives in `raw`
   raw: { porn: number; hentai: number; sexy: number };
 }
@@ -21,23 +20,17 @@ export interface ModerationOutcome {
  * PhotoModerationResult against an existing Photo row). See
  * docs/IDENTITY_VERIFICATION_AND_SAFETY.md sections 1, 4, 6.
  *
- * `verifiedFaceEmbedding` is optional and, for now, always omitted by
- * every call site -- it starts being populated once
- * lib/safety/identityVerification.ts (Phase 2B, not yet built) exists and
- * stores a verified selfie embedding per user. Until then every photo with
- * a detected face lands in MANUAL_REVIEW rather than auto-APPROVED, which
- * is the correct, conservative default for a feature that isn't fully
- * wired up yet -- not a bug to "fix" by faking a match.
+ * No `verifiedFaceEmbedding` option -- selfie-vs-ID face matching was
+ * descoped, see the note at the top of policyEngine.ts. A clean
+ * single-face photo with acceptable nudity scores is auto-approved on
+ * that basis alone.
  */
-export async function moderateImageBuffer(
-  imageBuffer: Buffer,
-  opts?: { verifiedFaceEmbedding?: number[] | null },
-): Promise<ModerationOutcome> {
+export async function moderateImageBuffer(imageBuffer: Buffer): Promise<ModerationOutcome> {
   const provider = getImageModerationProvider();
 
   let signals;
   try {
-    signals = await provider.analyze(imageBuffer, opts);
+    signals = await provider.analyze(imageBuffer);
   } catch (err) {
     // Fail safe, loudly: a provider error (e.g. self-hosted models
     // misconfigured -- see imageModeration.ts's setup steps) never means
@@ -50,7 +43,6 @@ export async function moderateImageBuffer(
       modelVersion: provider.modelVersion,
       faceDetected: false,
       faceCount: 0,
-      matchedVerifiedFace: null,
       nudityScore: 0,
       raw: { porn: 0, hentai: 0, sexy: 0 },
     };
@@ -64,7 +56,6 @@ export async function moderateImageBuffer(
     modelVersion: provider.modelVersion,
     faceDetected: signals.faceCount > 0,
     faceCount: signals.faceCount,
-    matchedVerifiedFace: signals.matchedVerifiedFace,
     nudityScore: Math.max(signals.nudityScores.porn, signals.nudityScores.hentai, signals.nudityScores.sexy),
     raw: signals.nudityScores,
   };
@@ -81,9 +72,9 @@ const SEVERITY_FOR_DECISION = (decision: PhotoModerationDecision): 'LOW' | 'MEDI
  * writes the PhotoModerationResult history row, updates
  * Photo.moderationStatus/moderatedAt, and -- for anything other than a
  * clean APPROVED -- opens a ModerationCase so it shows up in the admin
- * Photo Moderation Queue (see docs/IDENTITY_VERIFICATION_AND_SAFETY.md
- * section 9; that queue UI itself is Phase 2C, not yet built, but cases
- * opened now will already be waiting in it once it exists).
+ * moderation queue (admin/app/(console)/moderation/page.tsx already
+ * surfaces these with no changes needed -- its default view shows all
+ * OPEN/IN_REVIEW/ESCALATED cases regardless of category).
  */
 export async function recordPhotoModeration(params: {
   photoId: string;
@@ -126,7 +117,7 @@ export async function recordPhotoModeration(params: {
         decision: outcome.decision,
         faceDetected: outcome.faceDetected,
         faceCount: outcome.faceCount,
-        matchedVerifiedFace: outcome.matchedVerifiedFace,
+        matchedVerifiedFace: null,
         nudityScore: outcome.nudityScore,
         provider: outcome.provider,
         modelVersion: outcome.modelVersion,

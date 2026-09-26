@@ -243,6 +243,18 @@ export default function ProfilePage() {
 
   useEffect(() => {
     load();
+
+    // Picks up the ?verification=done|failed|invalid redirect from a real
+    // DigiLocker round trip (app/api/verification/callback/route.ts) --
+    // mock mode never navigates away, so this is a no-op for it.
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('verification')) {
+      load();
+      params.delete('verification');
+      const rest = params.toString();
+      router.replace(rest ? `/profile?${rest}` : '/profile');
+    }
+
     // Same reference data onboarding uses -- fetched once up front so
     // every "Edit" button below can open straight into a picker instead
     // of showing a spinner.
@@ -356,12 +368,38 @@ export default function ProfilePage() {
 
   async function requestVerification() {
     setVerifying(true);
-    await fetch('/api/verification', { method: 'POST' });
-    setProfile((p) => (p ? { ...p, verification: 'PENDING' } : p));
-    setTimeout(() => {
-      load();
+    try {
+      const res = await fetch('/api/verification', { method: 'POST' });
+      const data = await res.json().catch(() => null);
+      if (data?.authorizationUrl) {
+        // Real DigiLocker mode: full-page redirect to DigiLocker's
+        // consent screen. The user lands back on this page via
+        // /api/verification/callback, which is what the ?verification=
+        // query-param effect below picks up.
+        window.location.href = data.authorizationUrl;
+        return;
+      }
+      setProfile((p) => (p ? { ...p, verification: 'PENDING' } : p));
+      pollVerificationStatus(0);
+    } catch {
       setVerifying(false);
-    }, 4500);
+    }
+  }
+
+  function pollVerificationStatus(attempt: number) {
+    fetch('/api/verification/status')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.verification) {
+          setProfile((p) => (p ? { ...p, verification: data.verification } : p));
+        }
+        if (data?.verification === 'PENDING' && attempt < 12) {
+          setTimeout(() => pollVerificationStatus(attempt + 1), 1500);
+        } else {
+          setVerifying(false);
+        }
+      })
+      .catch(() => setVerifying(false));
   }
 
   async function addPhoto(e: React.ChangeEvent<HTMLInputElement>) {
@@ -632,9 +670,10 @@ export default function ProfilePage() {
             <div>
               <p className="font-bold">Trust layer</p>
               <p className="text-sm text-inkSoft">
-                {profile.verification === 'VERIFIED' && 'ID + liveness verified ✅'}
+                {profile.verification === 'VERIFIED' && 'ID verified ✅'}
                 {profile.verification === 'PENDING' && 'Verification in progress…'}
                 {profile.verification === 'UNVERIFIED' && 'Not verified yet'}
+                {profile.verification === 'MANUAL_REVIEW' && "We're reviewing your verification — check back shortly"}
                 {profile.verification === 'REJECTED' && 'Verification failed — try again'}
               </p>
             </div>
@@ -642,7 +681,7 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={requestVerification}
-                disabled={verifying || profile.verification === 'PENDING'}
+                disabled={verifying || profile.verification === 'PENDING' || profile.verification === 'MANUAL_REVIEW'}
                 className="gradient-btn rounded-full px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
               >
                 {verifying || profile.verification === 'PENDING' ? 'Verifying…' : 'Get verified'}

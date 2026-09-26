@@ -284,7 +284,7 @@ model IdentityVerification {
   documentHash      String @unique
   providerReference String // DigiLocker's own transaction id (support/audit only)
 
-  faceMatchScore    Float?
+  faceMatchScore    Float? // reserved, always null -- selfie-vs-ID face matching is descoped, see docs/IDENTITY_VERIFICATION_AND_SAFETY.md §2/§3
   dobMatchedProfile Boolean @default(true) // false -> routed to MANUAL_REVIEW
 
   status            VerificationStatus @default(PENDING)
@@ -315,7 +315,7 @@ model PhotoModerationResult {
   decision            PhotoModerationDecision
   faceDetected        Boolean
   faceCount           Int
-  matchedVerifiedFace Boolean? // did a detected face match the account's verified-selfie embedding
+  matchedVerifiedFace Boolean? // reserved, always null -- no verified-selfie embedding exists, see docs/IDENTITY_VERIFICATION_AND_SAFETY.md §3
   nudityScore         Float
   provider            String // "self-hosted-nsfwjs+faceapi" | "mock"
   modelVersion        String // pinned so a re-moderation batch job can find stale results
