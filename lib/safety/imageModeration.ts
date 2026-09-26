@@ -162,16 +162,35 @@ export const selfHostedImageModerationProvider: ImageModerationProvider = {
 };
 
 /**
- * Sniffs the format from magic bytes (Vercel Blob uploads can be either,
- * whatever the client's <input type=file accept> allowed) and decodes to
- * a flat RGBA pixel buffer, entirely in pure JS.
+ * Sniffs the format from magic bytes and decodes to a flat RGBA pixel
+ * buffer, entirely in pure JS. Only JPEG and PNG are supported -- those
+ * are the only two formats lib/upload.ts's assertValidImage() accepts,
+ * specifically BECAUSE this function can only decode those two.
+ *
+ * IMPORTANT: this throws a clearly-labeled error for anything else
+ * (WebP, HEIC, GIF, ...) rather than guessing "must be JPEG" the way an
+ * earlier version of this file did. That earlier version's silent
+ * fallback was a real bypass: an unrecognized format would fail
+ * jpeg.decode() with an opaque error, which moderateAndUpload.ts's
+ * fail-safe turns into MANUAL_REVIEW -- and a MANUAL_REVIEW photo still
+ * gets created and still shows up in the uploader's own profile (it's
+ * only hidden from *other* users), so from the person testing it, an
+ * unsupported-format photo looked identical to an approved one. A car
+ * photo saved as WebP (common from a quick reverse-image-search save) or
+ * HEIC (default on iPhone) would have silently passed straight through
+ * exactly like that -- see decode() below and assertValidImage() for the
+ * two-sided fix: the client is told plainly to use JPG/PNG instead of
+ * being waved through to a review queue nobody is watching yet.
  */
 function decodeToRgba(
   buffer: Buffer,
   jpeg: { decode: (b: Buffer, opts?: { useTArray?: boolean }) => { width: number; height: number; data: Uint8Array } },
   PNG: new () => { parse: (b: Buffer, cb: (err: Error | null, data: { width: number; height: number; data: Uint8Array }) => void) => void },
 ): { data: Uint8Array; width: number; height: number } {
-  const isPng = buffer.length > 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+  const isPng =
+    buffer.length > 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+  const isJpeg = buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+
   if (isPng) {
     // pngjs's callback-style parse is synchronous under the hood for an
     // in-memory buffer; wrap it so this function stays a plain sync call.
@@ -185,11 +204,13 @@ function decodeToRgba(
     if (!result) throw new Error('[imageModeration] PNG decode produced no data');
     return result;
   }
-  // Fall back to JPEG for anything else -- assertValidImage() upstream
-  // (app/api/upload/route.ts) already restricts uploads to image MIME
-  // types, and JPEG/PNG cover the two Vercel Blob actually stores here.
-  const decoded = jpeg.decode(buffer, { useTArray: true });
-  return decoded;
+  if (isJpeg) {
+    return jpeg.decode(buffer, { useTArray: true });
+  }
+  throw new Error(
+    '[imageModeration] unsupported image format for decoding (only JPEG/PNG magic bytes recognized) -- ' +
+      'this should have been caught by assertValidImage() before reaching here',
+  );
 }
 
 export function getImageModerationProvider(): ImageModerationProvider {

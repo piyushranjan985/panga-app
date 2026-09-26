@@ -674,7 +674,7 @@ function OnboardingForm() {
             {form.photoUrls.length < 5 && (
               <label className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-line text-xs font-semibold text-inkSoft">
                 {uploadingPhoto ? 'Uploading...' : '+ Add'}
-                <input type="file" accept="image/*" className="hidden" disabled={uploadingPhoto} onChange={addPhoto} />
+                <input type="file" accept="image/jpeg,image/png" className="hidden" disabled={uploadingPhoto} onChange={addPhoto} />
               </label>
             )}
           </div>

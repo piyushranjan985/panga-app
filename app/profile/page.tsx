@@ -19,6 +19,7 @@ interface Photo {
   id: string;
   url: string;
   position: number;
+  moderationStatus: string;
 }
 
 interface ProfileData {
@@ -530,6 +531,16 @@ export default function ProfilePage() {
                     Primary
                   </span>
                 )}
+                {photo.moderationStatus === 'MANUAL_REVIEW' && (
+                  <span className="absolute inset-x-1 bottom-1 rounded-full bg-amber-500/90 px-2 py-0.5 text-center text-[10px] font-semibold text-white">
+                    Under review — only visible to you
+                  </span>
+                )}
+                {photo.moderationStatus === 'REJECTED' && (
+                  <span className="absolute inset-x-1 bottom-1 rounded-full bg-magenta/90 px-2 py-0.5 text-center text-[10px] font-semibold text-white">
+                    Rejected — not shown to others
+                  </span>
+                )}
                 {profile.photos.length > 1 && (
                   <button
                     type="button"
@@ -546,7 +557,7 @@ export default function ProfilePage() {
             {profile.photos.length < MAX_PHOTOS && (
               <label className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-line text-xs font-semibold text-inkSoft">
                 {uploadingPhoto ? 'Uploading...' : '+ Add'}
-                <input type="file" accept="image/*" className="hidden" disabled={uploadingPhoto} onChange={addPhoto} />
+                <input type="file" accept="image/jpeg,image/png" className="hidden" disabled={uploadingPhoto} onChange={addPhoto} />
               </label>
             )}
           </div>

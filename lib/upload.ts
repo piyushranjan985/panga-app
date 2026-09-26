@@ -17,9 +17,21 @@ import { put, del } from '@vercel/blob';
  */
 export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024; // 4MB
 
+// Restricted to what lib/safety/imageModeration.ts's self-hosted provider
+// can actually decode (jpeg-js + pngjs, both pure JS, no native deps --
+// see that file). This used to accept any `image/*` MIME type, which was
+// a real moderation bypass: a WebP or HEIC photo (HEIC being the iPhone
+// camera default) would fail to decode, and moderateAndUpload.ts's
+// fail-safe turns a decode error into MANUAL_REVIEW rather than a hard
+// block -- and a MANUAL_REVIEW photo still gets created and still shows
+// up in the uploader's own profile, so it looked identical to an
+// approved photo. Rejecting the format up front, with a clear message,
+// closes that instead of relying on the review queue to catch it.
+const ACCEPTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png']);
+
 export function assertValidImage(file: File) {
-  if (!file.type.startsWith('image/')) {
-    throw new Error('Only image files are allowed');
+  if (!ACCEPTED_IMAGE_TYPES.has(file.type)) {
+    throw new Error('Please upload a JPG or PNG photo (other formats like HEIC/WebP/GIF aren\'t supported yet).');
   }
   if (file.size > MAX_UPLOAD_BYTES) {
     throw new Error('Image must be under 4MB');
