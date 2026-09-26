@@ -5,7 +5,33 @@ const nextConfig = {
   // Vercel does its own build packaging and the two conflict (it breaks
   // Vercel's file-tracing step) — leave this off while deploying on Vercel.
   // If you later self-host with Docker, add `output: 'standalone'` back.
-  serverExternalPackages: ['@prisma/client', '@prisma/adapter-pg', 'pg'],
+  // The Prisma packages were here already (native bindings breaking
+  // otherwise). Added for the same underlying reason: these all do
+  // their own low-level Node platform detection at import time, and
+  // Next's bundler (Turbopack here) rewrites Node built-ins like `util`
+  // when it processes a package's source instead of leaving it alone --
+  // @tensorflow/tfjs's environment detection calls `new util.TextEncoder()`
+  // expecting the REAL Node `util` module, and gets a bundler-provided
+  // stand-in without a working TextEncoder constructor instead, throwing
+  // "this.util.TextEncoder is not a constructor" the moment
+  // lib/safety/imageModeration.ts dynamically imports it (nsfwjs and
+  // @vladmandic/face-api both pull in tfjs themselves, so they hit the
+  // same problem). Listing a package here tells Next to `require()` it
+  // unmodified at runtime instead of bundling its source -- sharp and
+  // heic-convert don't strictly need this (sharp especially is usually
+  // auto-externalized already, being a native-binary package), but are
+  // included for the same class of problem, since both also touch
+  // low-level Node internals (native addon loading; WASM instantiation).
+  serverExternalPackages: [
+    '@prisma/client',
+    '@prisma/adapter-pg',
+    'pg',
+    '@tensorflow/tfjs',
+    'nsfwjs',
+    '@vladmandic/face-api',
+    'sharp',
+    'heic-convert',
+  ],
   experimental: {
     // Server actions are used for the onboarding + chat forms.
     serverActions: { bodySizeLimit: '2mb' },
