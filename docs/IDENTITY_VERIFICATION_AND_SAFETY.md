@@ -199,22 +199,21 @@ route (Node runtime, not Edge):
 > accidental — revisit §2's flow (adding a selfie + face-match step back
 > in) if that assurance is ever needed.
 
-**Deployment note, revised**: the original plan used
+**Deployment note, twice-revised**: the original plan used
 `@tensorflow/tfjs-node`, whose native binary (100MB+) risks exceeding a
-Vercel serverless function's size/memory limits — on the free Hobby plan
-that could mean a failed deploy or a forced upgrade, which is exactly the
-kind of cost this design exists to avoid paying. Implemented instead with
-plain `@tensorflow/tfjs` (pure JavaScript, no native bindings — slower per
-photo, but $0 and safe to deploy on any Vercel plan) plus the `canvas`
-package purely for decoding images (the standard, documented way to run
-face-api in Node without a GPU backend). `canvas` does have its own small
-native build step, but it's a fraction of tfjs-node's size and is commonly
-already deployed on Vercel (it backs most "generate an OG image" routes).
-If `canvas` itself ever proves too large for a given plan, the fallback is
-to run this analysis step outside Vercel serverless (a small always-on
-Node process the API route calls over HTTP) rather than paying for a
-bigger plan — `imageModeration.ts`'s provider interface is written so
-that swap doesn't touch any caller.
+Vercel serverless function's size/memory limits. The first replacement —
+plain `@tensorflow/tfjs` plus the `canvas` package for image decoding —
+was implemented, then broke a real Vercel deploy outright: `canvas`'s
+native addon failed to build in Vercel's build image (`Package pixman-1
+was not found`, and no prebuilt binary exists for that Node ABI). That
+was a hard failure, not a soft "might exceed a limit" risk, so it wasn't
+patched around — `canvas` was removed entirely. The implementation now
+decodes JPEG/PNG buffers with pure-JS libraries (`jpeg-js`, `pngjs` —
+neither has a native build step) into a raw pixel array, builds a
+`tf.Tensor3D` directly, and hands that tensor straight to both nsfwjs and
+face-api, which both accept a tensor as input without any Canvas/Image/DOM
+shim. Nothing in this path has a native build step any more, so `npm
+install` can't fail this way again on any platform or plan.
 
 Known, honestly-documented gap: **there is no reliable free/open-source
 AI-generated-person or deepfake detector** comparable to what a paid vendor

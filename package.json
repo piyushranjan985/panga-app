@@ -42,7 +42,8 @@
     "nsfwjs": "^4.2.1",
     "@vladmandic/face-api": "^1.7.15",
     "@tensorflow/tfjs": "^4.22.0",
-    "canvas": "^2.11.2"
+    "jpeg-js": "^0.4.4",
+    "pngjs": "^7.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.16.10",
