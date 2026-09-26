@@ -118,8 +118,24 @@ export const selfHostedImageModerationProvider: ImageModerationProvider = {
     try {
       // @ts-ignore
       nsfwjs = await import('nsfwjs');
+      // @vladmandic/face-api's package.json `main` field points at
+      // dist/face-api.node.js unconditionally -- that build hard-requires
+      // @tensorflow/tfjs-node (a 100MB+ native binary this project
+      // deliberately never installs, for the exact Vercel function-size
+      // reason documented in this provider's DECODE HISTORY note above).
+      // dist/face-api.node-wasm.js is the package's own purpose-built
+      // alternative: Node + the pure-npm @tensorflow/tfjs-backend-wasm
+      // package instead, no native binary at all. Importing that file
+      // directly, bypassing `main` entirely, is what actually avoids it.
       // @ts-ignore
-      faceapi = await import('@vladmandic/face-api');
+      const faceapiModule = await import('@vladmandic/face-api/dist/face-api.node-wasm.js');
+      // That file is CommonJS (`module.exports = ...`), and this package
+      // has no "exports" map for cjs-module-lexer to synthesize named
+      // ESM exports from reliably for a minified bundle like this one --
+      // so `.default` (Node's ESM/CJS interop) is the one path guaranteed
+      // to hold the real module.exports object; unwrap defensively in
+      // case a future version of the package changes this.
+      faceapi = (faceapiModule as any).default ?? faceapiModule;
       // @ts-ignore
       tf = await import('@tensorflow/tfjs');
       // @ts-ignore
@@ -129,8 +145,9 @@ export const selfHostedImageModerationProvider: ImageModerationProvider = {
     } catch (err) {
       throw new Error(
         `[imageModeration] self-hosted provider selected but its dependencies ` +
-          `aren't installed (npm install nsfwjs @vladmandic/face-api @tensorflow/tfjs sharp heic-convert) ` +
-          `or face-api's model files are missing. Original error: ${err instanceof Error ? err.message : err}`,
+          `aren't installed (npm install nsfwjs @vladmandic/face-api @tensorflow/tfjs ` +
+          `@tensorflow/tfjs-backend-wasm sharp heic-convert) or face-api's model files ` +
+          `are missing. Original error: ${err instanceof Error ? err.message : err}`,
       );
     }
 

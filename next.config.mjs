@@ -27,6 +27,7 @@ const nextConfig = {
     '@prisma/adapter-pg',
     'pg',
     '@tensorflow/tfjs',
+    '@tensorflow/tfjs-backend-wasm',
     'nsfwjs',
     '@vladmandic/face-api',
     'sharp',
