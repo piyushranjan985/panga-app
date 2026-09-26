@@ -18,7 +18,7 @@ const config: CapacitorConfig = {
   appName: 'findmyVybe',
   webDir: 'public', // required by the CLI even though remote-URL mode doesn't serve local files as the app's content
   server: {
-    url: 'https://vybematch-app-2.vercel.app',
+    url: 'https://findmyvybe-app.vercel.app',
     cleartext: false,
   },
   ios: {
