@@ -34,8 +34,8 @@ export default function LandingPage() {
             <span>No guessing games</span>
           </div>
           <h1 className="font-display leading-none tracking-tight" style={{ textShadow: '0 2px 18px rgba(0,0,0,0.55)' }}>
-            <span className="block text-6xl font-semibold text-white sm:text-7xl">Match your</span>
-            <span className="gradient-text block text-7xl font-extrabold sm:text-8xl">vybe</span>
+            <span className="block text-6xl font-semibold text-white sm:text-7xl">find my</span>
+            <span className="gradient-text block text-7xl font-extrabold sm:text-8xl">Vybe</span>
           </h1>
           <p className="max-w-md text-lg leading-relaxed text-white/85" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.5)' }}>
             Just Vibing, Something Real, or Rishta Ready — pick your lane before you match.
