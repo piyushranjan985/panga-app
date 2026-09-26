@@ -64,10 +64,10 @@ enum PhotoModerationDecision {
 enum SwipeAction {
   PASS
   VYBE // a "like" — renamed from PANGA to match the findmyVybe rebrand. Not
-       // shown anywhere in the UI (see app/discover/page.tsx for the copy).
-       // Postgres enum-value renames relabel existing rows in place (no
-       // backfill needed), but this still needs its own migration — see
-       // the apply instructions.
+  // shown anywhere in the UI (see app/discover/page.tsx for the copy).
+  // Postgres enum-value renames relabel existing rows in place (no
+  // backfill needed), but this still needs its own migration — see
+  // the apply instructions.
 }
 
 enum MessageStatus {
@@ -130,17 +130,17 @@ model User {
   // Set exclusively via admin portal user actions (never by the consumer
   // app itself) -- see admin/lib/userActions.ts. Every change here is
   // paired with an AuditLogEntry.
-  status               AccountStatus @default(ACTIVE)
-  statusReason         String?
-  statusChangedAt      DateTime?
-  messagingRestricted  Boolean       @default(false)
-  discoveryRestricted  Boolean       @default(false)
+  status                AccountStatus @default(ACTIVE)
+  statusReason          String?
+  statusChangedAt       DateTime?
+  messagingRestricted   Boolean       @default(false)
+  discoveryRestricted   Boolean       @default(false)
   // Stronger than discoveryRestricted: also hidden from existing matches,
   // not just excluded from new Discovery results -- see
   // admin/app/api/users/[userId]/actions/route.ts's 'hideProfile' action.
-  profileHidden        Boolean       @default(false)
-  deletionRequestedAt  DateTime?
-  deletedAt            DateTime?
+  profileHidden         Boolean       @default(false)
+  deletionRequestedAt   DateTime?
+  deletedAt             DateTime?
   // "Force logout" (admin User Action) -- any session JWT issued before
   // this timestamp is rejected by lib/session.ts's getSession(), even
   // though the JWT itself is still cryptographically valid. This is what
@@ -150,37 +150,37 @@ model User {
 
   profile Profile?
 
-  otpCodes         OtpCode[]
-  swipesSent       Swipe[]        @relation("SwipesBySender")
-  swipesReceived   Swipe[]        @relation("SwipesByTarget")
-  matchesAsUserA   Match[]        @relation("MatchUserA")
-  matchesAsUserB   Match[]        @relation("MatchUserB")
-  messagesSent     Message[]      @relation("MessagesBySender")
-  reportsFiled     Report[]       @relation("ReportsByReporter")
-  reportsReceived  Report[]       @relation("ReportsAboutUser")
-  blocksMade       Block[]        @relation("BlocksByBlocker")
-  blocksReceived   Block[]        @relation("BlocksByBlocked")
-  dateFeedback     DateFeedback[]
-  messageLikes     MessageLike[]
+  otpCodes        OtpCode[]
+  swipesSent      Swipe[]        @relation("SwipesBySender")
+  swipesReceived  Swipe[]        @relation("SwipesByTarget")
+  matchesAsUserA  Match[]        @relation("MatchUserA")
+  matchesAsUserB  Match[]        @relation("MatchUserB")
+  messagesSent    Message[]      @relation("MessagesBySender")
+  reportsFiled    Report[]       @relation("ReportsByReporter")
+  reportsReceived Report[]       @relation("ReportsAboutUser")
+  blocksMade      Block[]        @relation("BlocksByBlocker")
+  blocksReceived  Block[]        @relation("BlocksByBlocked")
+  dateFeedback    DateFeedback[]
+  messageLikes    MessageLike[]
 
   // --- Admin Portal: relations from the admin-domain models below ---------
-  moderationCases     ModerationCase[]   @relation("ModerationCasesAboutUser")
-  moderationAppeals   ModerationAppeal[]
+  moderationCases       ModerationCase[]       @relation("ModerationCasesAboutUser")
+  moderationAppeals     ModerationAppeal[]
   identityVerifications IdentityVerification[]
-  supportTickets      SupportTicket[]
-  consentRecords       ConsentRecord[]
-  privacyRequests      PrivacyRequest[]
-  legalHolds           LegalHold[]
-  loginEvents          LoginEvent[]
+  supportTickets        SupportTicket[]
+  consentRecords        ConsentRecord[]
+  privacyRequests       PrivacyRequest[]
+  legalHolds            LegalHold[]
+  loginEvents           LoginEvent[]
 
   @@index([lastActiveAt])
   @@index([status])
 }
 
 model Profile {
-  id       String @id @default(cuid())
-  userId   String @unique
-  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   displayName String
   dateOfBirth DateTime
@@ -189,29 +189,29 @@ model Profile {
   city        String
   bio         String   @default("")
 
-  intent           IntentType @default(SOMETHING_REAL)
-  quietMode        Boolean    @default(false) // paused from discovery, profile kept
-  verification     VerificationStatus @default(UNVERIFIED)
-  familyPreviewOn  Boolean    @default(false) // Rishta Ready: optional shareable preview
+  intent          IntentType         @default(SOMETHING_REAL)
+  quietMode       Boolean            @default(false) // paused from discovery, profile kept
+  verification    VerificationStatus @default(UNVERIFIED)
+  familyPreviewOn Boolean            @default(false) // Rishta Ready: optional shareable preview
 
-  avatarSeed  String  @default("A") // fallback glyph shown only if a profile somehow has no photos
-  avatarHue   Int     @default(1)   // 1..6, picks the fallback gradient behind that glyph
+  avatarSeed String @default("A") // fallback glyph shown only if a profile somehow has no photos
+  avatarHue  Int    @default(1) // 1..6, picks the fallback gradient behind that glyph
 
   // Optional, opt-in precise location (browser Geolocation API, set from
   // the Profile screen's "Location" section -- never collected silently).
   // Only ever used to compute a rounded *distance* shown to someone else
   // (see lib/geo.ts) -- raw latitude/longitude for another person's
   // profile is never sent to the client, only back to its own owner.
-  latitude         Float?
-  longitude        Float?
+  latitude          Float?
+  longitude         Float?
   locationUpdatedAt DateTime?
 
   interests          Interest[]          @relation("ProfileInterests")
-  tribes              Tribe[]             @relation("ProfileTribes")
-  subCommunities      SubCommunity[]      @relation("ProfileSubCommunities")
-  relationshipStyles  RelationshipStyle[] @relation("ProfileRelationshipStyles")
-  answers   PromptAnswer[]
-  photos    Photo[]
+  tribes             Tribe[]             @relation("ProfileTribes")
+  subCommunities     SubCommunity[]      @relation("ProfileSubCommunities")
+  relationshipStyles RelationshipStyle[] @relation("ProfileRelationshipStyles")
+  answers            PromptAnswer[]
+  photos             Photo[]
 
   // --- Just Vibing only (see lib/constants.ts DATE_VIBES / TONIGHT_OPTIONS) ---
   // Plain string tags, not relations: single-intent, no drill-down, no
@@ -220,13 +220,13 @@ model Profile {
   tonightTags  String[] @default([]) // "What are you looking for tonight?" — up to 2
 
   // --- Rishta Ready only (see lib/constants.ts LIVING_PREFERENCES / VALUES_OPTIONS / FUTURE_VIBE_QUESTIONS / CHILDREN_OPTIONS) ---
-  livingPreference String?  // Basics step's extra question — one of 4 fixed slugs
+  livingPreference String? // Basics step's extra question — one of 4 fixed slugs
   valuesTags       String[] @default([]) // "What matters most?" — exactly 4
-  futureHome       String?  // one of FUTURE_VIBE_QUESTIONS('home').optionA/B slugs
+  futureHome       String? // one of FUTURE_VIBE_QUESTIONS('home').optionA/B slugs
   futureFamily     String?
   futureCareer     String?
   futureMoney      String?
-  children         String?  // one of CHILDREN_OPTIONS slugs — deliberately 3-way, not binary
+  children         String? // one of CHILDREN_OPTIONS slugs — deliberately 3-way, not binary
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -287,8 +287,8 @@ model IdentityVerification {
   faceMatchScore    Float?
   dobMatchedProfile Boolean @default(true) // false -> routed to MANUAL_REVIEW
 
-  status           VerificationStatus @default(PENDING)
-  failureReason    String?
+  status            VerificationStatus @default(PENDING)
+  failureReason     String?
   reviewedByAdminId String?
   reviewedAt        DateTime?
 
@@ -420,13 +420,13 @@ model PromptAnswer {
 }
 
 model OtpCode {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  codeHash  String
-  expiresAt DateTime
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash   String
+  expiresAt  DateTime
   consumedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   @@index([userId, expiresAt])
 }
@@ -448,28 +448,28 @@ model Swipe {
 }
 
 model Match {
-  id        String   @id @default(cuid())
-  userAId   String
-  userBId   String
-  userA     User     @relation("MatchUserA", fields: [userAId], references: [id], onDelete: Cascade)
-  userB     User     @relation("MatchUserB", fields: [userBId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  id          String    @id @default(cuid())
+  userAId     String
+  userBId     String
+  userA       User      @relation("MatchUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB       User      @relation("MatchUserB", fields: [userBId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
   unmatchedAt DateTime?
   // "Hide conversation" (see the chat screen's ... menu) removes a match
   // from just one person's list without unmatching or notifying the other
   // side -- one nullable timestamp per side, since Match doesn't have a
   // per-viewer row to hang a single flag off of.
-  hiddenAAt DateTime?
-  hiddenBAt DateTime?
+  hiddenAAt   DateTime?
+  hiddenBAt   DateTime?
   // "Mute" (see the ... safety menu) -- per side, suppresses nothing more
   // than a "new message" affordance client-side; this MVP has no push
   // notifications yet, so today this only silences the in-app unread
   // treatment, not a real notification.
-  mutedAAt  DateTime?
-  mutedBAt  DateTime?
+  mutedAAt    DateTime?
+  mutedBAt    DateTime?
 
-  messages      Message[]
-  dateFeedback  DateFeedback[]
+  messages     Message[]
+  dateFeedback DateFeedback[]
 
   @@unique([userAId, userBId])
   @@index([userBId])
@@ -494,8 +494,8 @@ model Message {
   // onDelete: SetNull so a reply survives its original being (hypothetically)
   // removed later, rather than cascading a delete through the whole thread.
   replyToId String?
-  replyTo   Message?      @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
-  replies   Message[]     @relation("MessageReplies")
+  replyTo   Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   Message[] @relation("MessageReplies")
 
   likes MessageLike[]
 
@@ -562,7 +562,7 @@ model DateFeedback {
   userId              String
   match               Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
   user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  rating              String   // 'MEET_AGAIN' | 'MAYBE' | 'NOT_FOR_ME'
+  rating              String // 'MEET_AGAIN' | 'MAYBE' | 'NOT_FOR_ME'
   wantsToKeepChatting Boolean?
   createdAt           DateTime @default(now())
 
@@ -595,12 +595,12 @@ enum AdminRole {
 }
 
 model AdminUser {
-  id       String    @id @default(cuid())
-  email    String    @unique
-  name     String
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
   passwordHash String
-  role     AdminRole @default(READ_ONLY)
-  isActive Boolean   @default(true)
+  role         AdminRole @default(READ_ONLY)
+  isActive     Boolean   @default(true)
 
   // TOTP-based MFA (see admin/lib/mfa.ts). Recovery codes are stored hashed,
   // one-time-use (consumed codes are removed from the array).
@@ -616,30 +616,30 @@ model AdminUser {
   failedLoginAttempts Int       @default(0)
   lockedUntil         DateTime?
 
-  createdById String?
-  createdBy   AdminUser?  @relation("AdminCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdById   String?
+  createdBy     AdminUser?  @relation("AdminCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdAdmins AdminUser[] @relation("AdminCreatedBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sessions                AdminSession[]
-  auditLogs               AuditLogEntry[]        @relation("AuditActor")
-  moderationCasesAssigned ModerationCase[]        @relation("CaseAssignee")
-  moderationNotes         ModerationNote[]
-  appealsReviewed         ModerationAppeal[]      @relation("AppealReviewer")
-  supportTicketsAssigned  SupportTicket[]         @relation("TicketAssignee")
-  ticketMessages          TicketMessage[]
-  privacyRequestsHandled  PrivacyRequest[]        @relation("PrivacyRequestHandler")
-  legalHoldsRequested     LegalHold[]             @relation("LegalHoldRequestedBy")
-  privacyIncidentsOwned   PrivacyIncident[]
-  privacyIncidentEvents   PrivacyIncidentEvent[]
-  processingActivitiesOwned ProcessingActivity[]
-  featureFlagsUpdated     FeatureFlag[]
-  configChangesProposed   AppConfigChange[]       @relation("ConfigProposer")
-  configChangesReviewed   AppConfigChange[]       @relation("ConfigReviewer")
+  sessions                     AdminSession[]
+  auditLogs                    AuditLogEntry[]        @relation("AuditActor")
+  moderationCasesAssigned      ModerationCase[]       @relation("CaseAssignee")
+  moderationNotes              ModerationNote[]
+  appealsReviewed              ModerationAppeal[]     @relation("AppealReviewer")
+  supportTicketsAssigned       SupportTicket[]        @relation("TicketAssignee")
+  ticketMessages               TicketMessage[]
+  privacyRequestsHandled       PrivacyRequest[]       @relation("PrivacyRequestHandler")
+  legalHoldsRequested          LegalHold[]            @relation("LegalHoldRequestedBy")
+  privacyIncidentsOwned        PrivacyIncident[]
+  privacyIncidentEvents        PrivacyIncidentEvent[]
+  processingActivitiesOwned    ProcessingActivity[]
+  featureFlagsUpdated          FeatureFlag[]
+  configChangesProposed        AppConfigChange[]      @relation("ConfigProposer")
+  configChangesReviewed        AppConfigChange[]      @relation("ConfigReviewer")
   notificationTemplatesUpdated NotificationTemplate[]
-  opsAlertsAcknowledged   OpsAlert[]
+  opsAlertsAcknowledged        OpsAlert[]
 
   @@index([role])
 }
@@ -670,9 +670,9 @@ model AdminSession {
 // grants on this table for the app's DB role as a production hardening step.
 // One row per sensitive action, everywhere in the portal.
 model AuditLogEntry {
-  id       String     @id @default(cuid())
-  actorId  String?
-  actor    AdminUser? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  id         String     @id @default(cuid())
+  actorId    String?
+  actor      AdminUser? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
   // Denormalized so the log stays readable even after an AdminUser is
   // removed (actorId goes null via onDelete: SetNull, actorEmail does not).
   actorEmail String
@@ -735,9 +735,9 @@ enum AppealStatus {
 // history per subject user, matching how the spec describes a single
 // "Safety Centre".
 model ModerationCase {
-  id            String   @id @default(cuid())
+  id            String @id @default(cuid())
   subjectUserId String
-  subjectUser   User     @relation("ModerationCasesAboutUser", fields: [subjectUserId], references: [id], onDelete: Cascade)
+  subjectUser   User   @relation("ModerationCasesAboutUser", fields: [subjectUserId], references: [id], onDelete: Cascade)
 
   sourceType ModerationSourceType
   reportId   String?
@@ -774,8 +774,8 @@ model ModerationCase {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  notes   ModerationNote[]
-  appeals ModerationAppeal[]
+  notes                  ModerationNote[]
+  appeals                ModerationAppeal[]
   identityVerifications  IdentityVerification[]
   photoModerationResults PhotoModerationResult[]
 
@@ -992,7 +992,7 @@ model PrivacyRequest {
 
   // Time-limited signed download for ACCESS / PORTABILITY -- generated,
   // never a permanent public link (see admin/lib/privacyExport.ts).
-  exportFileUrl String?
+  exportFileUrl   String?
   exportExpiresAt DateTime?
 
   legalHoldId String?
@@ -1044,7 +1044,7 @@ enum PrivacyIncidentStatus {
 }
 
 model PrivacyIncident {
-  id          String @id @default(cuid())
+  id          String                  @id @default(cuid())
   title       String
   description String
   severity    PrivacyIncidentSeverity
@@ -1118,17 +1118,17 @@ model RetentionPolicy {
 // controller to maintain -- lightweight documentation rows, not a live
 // data-flow scanner.
 model ProcessingActivity {
-  id                  String   @id @default(cuid())
-  name                String
-  purpose             String
-  dataCategories      String[] @default([])
-  legalBasis          String
-  dataSubjects        String   @default("App users (Data Principals)")
-  recipients          String[] @default([])
+  id                   String   @id @default(cuid())
+  name                 String
+  purpose              String
+  dataCategories       String[] @default([])
+  legalBasis           String
+  dataSubjects         String   @default("App users (Data Principals)")
+  recipients           String[] @default([])
   retentionCategoryRef String? // free-text pointer to a RetentionPolicy.dataCategory
-  crossBorderTransfer Boolean  @default(false)
-  dpiaRequired        Boolean  @default(false)
-  dpiaDocUrl          String?
+  crossBorderTransfer  Boolean  @default(false)
+  dpiaRequired         Boolean  @default(false)
+  dpiaDocUrl           String?
 
   ownerId String?
   owner   AdminUser? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
