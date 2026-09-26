@@ -75,13 +75,19 @@ export const selfHostedImageModerationProvider: ImageModerationProvider = {
   name: 'self-hosted-nsfwjs+faceapi',
   modelVersion: 'nsfwjs-mobilenet-v2+faceapi-ssd-mobilenetv1-3',
   async analyze(imageBuffer) {
-    // Typed as `any`, not `typeof import(...)`: these packages have no
-    // type declarations resolvable until they're actually installed (see
-    // the setup steps in this file's doc comment), and this whole
-    // function doesn't run -- so isn't worth blocking `tsc --noEmit` on --
-    // until IMAGE_MODERATION_PROVIDER=self-hosted is actually selected.
-    // Same "optional peer-ish dependency" pattern as lib/native.ts uses
-    // for @capacitor/* (dynamic import, never a static one).
+    // Typed as `any`, not `typeof import(...)`: these are real
+    // dependencies (see package.json) so they resolve fine once installed,
+    // but two of them (jpeg-js, pngjs) ship no TypeScript declarations, so
+    // a plain `import` can still fail `tsc` depending on whether
+    // @types/* happens to be present. `@ts-ignore` (not `@ts-expect-error`
+    // -- that fails the build with "unused directive" the moment the
+    // import *does* type-check cleanly, which is exactly what broke this
+    // build once npm install actually succeeded) suppresses either way,
+    // whether or not there's an error to suppress. Dynamic import, not a
+    // static one, purely so this whole function -- and needing any of
+    // these five packages at all -- stays opt-in behind
+    // IMAGE_MODERATION_PROVIDER=self-hosted; same pattern as lib/native.ts
+    // uses for @capacitor/*.
     /* eslint-disable @typescript-eslint/no-explicit-any */
     let nsfwjs: any;
     let faceapi: any;
@@ -89,15 +95,15 @@ export const selfHostedImageModerationProvider: ImageModerationProvider = {
     let jpeg: any;
     let PNG: any;
     try {
-      // @ts-expect-error -- optional dependency, not installed yet
+      // @ts-ignore
       nsfwjs = await import('nsfwjs');
-      // @ts-expect-error -- optional dependency, not installed yet
+      // @ts-ignore
       faceapi = await import('@vladmandic/face-api');
-      // @ts-expect-error -- optional dependency, not installed yet
+      // @ts-ignore
       tf = await import('@tensorflow/tfjs');
-      // @ts-expect-error -- optional dependency, not installed yet
+      // @ts-ignore
       jpeg = await import('jpeg-js');
-      // @ts-expect-error -- optional dependency, not installed yet
+      // @ts-ignore
       ({ PNG } = await import('pngjs'));
     } catch (err) {
       throw new Error(
