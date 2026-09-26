@@ -151,6 +151,20 @@ export const selfHostedImageModerationProvider: ImageModerationProvider = {
       );
     }
 
+    // face-api.node-wasm.js's own `require("@tensorflow/tfjs-backend-wasm")`
+    // (see the dynamic import above) registers the WASM backend factory
+    // with tf's global engine as a side effect -- but registering a
+    // backend and ACTIVATING it are different steps. Nothing else here
+    // ever called tf.setBackend/tf.ready, so the engine's default backend
+    // stayed uninitialized and the first tensor op (decoding the model's
+    // own weights, inside loadFromDisk below) threw "the highest priority
+    // backend 'wasm' has not yet been initialized". setBackend no-ops
+    // once 'wasm' is already active (true on warm serverless invocations,
+    // same module-scope reuse as the isLoaded guard below), so calling
+    // this unconditionally on every request is cheap.
+    await tf.setBackend('wasm');
+    await tf.ready();
+
     const { data: rgb, width, height } = await decodeToRgb(imageBuffer, sharp, heicConvert);
 
     const modelPath = process.env.FACE_API_MODEL_PATH || './public/models/face-api';
