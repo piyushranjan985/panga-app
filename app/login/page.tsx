@@ -99,7 +99,13 @@ export default function LoginPage() {
       setHint(data.devHint ?? null);
       const query = method === 'phone' ? `phone=${encodeURIComponent(phone)}` : `email=${encodeURIComponent(email)}`;
       const existingFlag = data.alreadyHasProfile ? '&existing=1' : '';
-      router.push(`/verify?method=${method}&${query}${existingFlag}`);
+      // router.push happens on the very next line after setHint -- this
+      // page unmounts before React ever gets a chance to paint that hint,
+      // so it was never actually visible here regardless of what the
+      // server returned. Carrying it in the query string instead of
+      // relying on in-memory state is what actually lets /verify show it.
+      const hintFlag = data.devHint ? `&hint=${encodeURIComponent(data.devHint)}` : '';
+      router.push(`/verify?method=${method}&${query}${existingFlag}${hintFlag}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {

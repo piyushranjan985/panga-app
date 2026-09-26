@@ -14,7 +14,14 @@ function VerifyForm() {
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hint, setHint] = useState<string | null>(null);
+  // Seeded from the query string login/page.tsx now carries this in --
+  // previously this page just hardcoded "the code is always 123456" as
+  // static text regardless of what the server actually decided (mock or
+  // not), which is misleading either way: says nothing when the real
+  // provider legitimately doesn't have a fixed code, and lies if OTP_
+  // PROVIDER isn't actually resolving to "mock" at runtime despite the
+  // .env file saying so. Only ever shows a hint the server actually sent.
+  const [hint, setHint] = useState<string | null>(params.get('hint') ?? null);
 
   // A code was just sent from the login page, so resending immediately
   // would only ever be useful if it got lost -- a short cooldown (rather
@@ -83,9 +90,9 @@ function VerifyForm() {
       <div>
         <h1 className="font-display text-3xl font-extrabold">Enter the code</h1>
         <p className="mt-2 text-sm text-inkSoft">
-          Sent to {destination || (method === 'email' ? 'your email' : 'your number')}. In dev mode, the code is
-          always <span className="mono font-semibold">123456</span>.
+          Sent to {destination || (method === 'email' ? 'your email' : 'your number')}.
         </p>
+        {hint && <p className="mt-1 text-sm font-semibold text-mint">{hint}</p>}
       </div>
       {alreadyHasProfile && (
         <p className="rounded-xl bg-marigold/10 px-3 py-2 text-sm text-inkSoft">
@@ -104,7 +111,6 @@ function VerifyForm() {
           required
         />
         {error && <p className="text-sm text-magenta">{error}</p>}
-        {hint && <p className="text-sm text-mint">{hint}</p>}
         <button
           type="submit"
           disabled={loading}
