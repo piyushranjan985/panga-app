@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
-import { moderateImageUrl, recordPhotoModeration, type ModerationOutcome } from '@/lib/safety/moderateAndUpload';
+import { moderateImageUrl, recordPhotoModeration, photoRejectionMessage, type ModerationOutcome } from '@/lib/safety/moderateAndUpload';
 import { DATE_VIBES, TONIGHT_OPTIONS, VALUES_OPTIONS, LIVING_PREFERENCES, FUTURE_VIBE_QUESTIONS, CHILDREN_OPTIONS } from '@/lib/constants';
 
 // This route's PUT handler moderates every onboarding photo sequentially
@@ -179,10 +179,14 @@ export async function PUT(req: Request) {
     );
     moderatedPhotos = results.filter((p) => p.outcome.decision !== 'REJECTED');
     if (moderatedPhotos.length === 0) {
-      return NextResponse.json(
-        { error: "None of your photos passed our photo guidelines — try a clear photo of your face instead." },
-        { status: 400 },
-      );
+      // All rejected -- surface the first one's specific reason (no face,
+      // explicit content, unreadable file, ...) rather than one generic
+      // sentence that doesn't tell the person what to actually fix.
+      const firstOutcome = results[0]?.outcome;
+      const message = firstOutcome
+        ? photoRejectionMessage(firstOutcome)
+        : "None of your photos passed our photo guidelines — try a clear photo of your face instead.";
+      return NextResponse.json({ error: message }, { status: 400 });
     }
   }
 

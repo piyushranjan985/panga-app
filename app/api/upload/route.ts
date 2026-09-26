@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
-import { assertValidImage, uploadImage } from '@/lib/upload';
-import { moderateImageBuffer } from '@/lib/safety/moderateAndUpload';
+import { assertValidImage, normalizeImageForStorage, uploadImageBuffer } from '@/lib/upload';
+import { moderateImageBuffer, photoRejectionMessage } from '@/lib/safety/moderateAndUpload';
 
 // Self-hosted image moderation (IMAGE_MODERATION_PROVIDER=self-hosted)
 // runs two small CNNs on pure-JS tfjs (no native/WASM acceleration, see
@@ -47,13 +47,11 @@ export async function POST(req: Request) {
     const outcome = await moderateImageBuffer(buffer);
 
     if (outcome.decision === 'REJECTED') {
-      return NextResponse.json(
-        { error: "This photo doesn't meet findmyVybe's photo guidelines — try a clear photo of your face instead." },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: photoRejectionMessage(outcome) }, { status: 400 });
     }
 
-    const url = await uploadImage(file, `onboarding/${session.userId}`);
+    const normalized = await normalizeImageForStorage(buffer, file.type);
+    const url = await uploadImageBuffer(normalized, `onboarding/${session.userId}`);
     return NextResponse.json({ url });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Upload failed' }, { status: 400 });

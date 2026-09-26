@@ -9,12 +9,19 @@ import { hashDocumentReference, checkDuplicateIdentity } from './duplicateIdenti
  * section 2.
  *
  * SCOPE NOTE (2026-09-26): no selfie capture, no liveness check, no
- * face-match step. This module only confirms "this person holds a
- * government-issued document, and its date of birth matches what they
- * told us" -- it does NOT confirm "the person in this document is the
- * person using this account." That's a deliberate, explicit product
- * decision to descope face-matching; see the same note in
- * lib/safety/policyEngine.ts for the consequence.
+ * face-match step. This module confirms four things about the document,
+ * and nothing about whether the account's photos show the same person:
+ *   1. it holds a government-issued document (Aadhaar or Driving Licence),
+ *   2. that document's OWN date of birth puts them at 18 or older --
+ *      checked against the document's DOB directly, not the profile's
+ *      self-reported one, since that's the value actually being verified,
+ *   3. that DOB is consistent with what they entered at onboarding,
+ *   4. the document's name shares at least one word with their profile
+ *      display name (see namesShareAToken() below).
+ * It does NOT confirm "the person in this document is the person using
+ * this account" -- that would need a selfie + face-match step, which was
+ * a deliberate, explicit product decision to descope; see the same note
+ * in lib/safety/policyEngine.ts for the consequence.
  *
  * REAL CREDENTIALS: getting production DigiLocker OAuth credentials
  * (DIGILOCKER_CLIENT_ID / DIGILOCKER_CLIENT_SECRET) requires findmyVybe's
@@ -191,13 +198,13 @@ function maskReference(reference: string): string {
 // mismatch), REJECTED (duplicate identity) -- can be exercised without
 // ever touching real DigiLocker.
 
-export type MockScenario = 'match' | 'dob_mismatch' | 'duplicate';
+export type MockScenario = 'match' | 'dob_mismatch' | 'duplicate' | 'underage' | 'name_mismatch';
 
 export async function mockFetchIdentityDocument(
   userId: string,
   scenario: MockScenario = 'match',
 ): Promise<FetchedIdentityDocument> {
-  const profile = await db.profile.findUnique({ where: { userId }, select: { dateOfBirth: true } });
+  const profile = await db.profile.findUnique({ where: { userId }, select: { dateOfBirth: true, displayName: true } });
 
   // A stable per-user reference by default, so re-running the mock flow
   // for the same user doesn't spuriously trip duplicate detection against
@@ -210,60 +217,150 @@ export async function mockFetchIdentityDocument(
 
   const dateOfBirth =
     scenario === 'dob_mismatch'
-      ? new Date('1990-01-01T00:00:00.000Z') // deliberately wrong, to exercise the mismatch path
-      : profile?.dateOfBirth ?? new Date('2000-01-01T00:00:00.000Z');
+      ? new Date('1990-01-01T00:00:00.000Z') // deliberately wrong (but still an adult), to exercise the mismatch path in isolation
+      : scenario === 'underage'
+        ? new Date(`${new Date().getUTCFullYear() - 10}-01-01T00:00:00.000Z`) // a stable 10-year-old, today
+        : profile?.dateOfBirth ?? new Date('2000-01-01T00:00:00.000Z');
+
+  const name =
+    scenario === 'name_mismatch'
+      ? 'Someone Else Entirely' // deliberately shares no token with any real profile name
+      : profile?.displayName ?? null; // "match" (and everything else): a document name consistent with the profile, so only the scenario under test triggers
 
   return {
     documentType: 'AADHAAR',
     referenceForHash: reference,
     referenceMasked: maskReference(reference),
     dateOfBirth,
-    name: null,
+    name,
     providerReference: `mock-${Date.now()}`,
   };
 }
 
 // --- Shared decision logic -----------------------------------------------
 
+export type AgeStatus = 'adult' | 'minor' | 'unknown';
+
 export interface VerificationDecision {
   status: 'VERIFIED' | 'MANUAL_REVIEW' | 'REJECTED';
   failureReason?: string;
   dobMatchedProfile: boolean;
   isDuplicate: boolean;
+  ageStatus: AgeStatus;
+  nameMatchesProfile: boolean | null; // null = document had no name to compare, not treated as a mismatch
 }
 
 /**
- * Same decision rule regardless of provider (mock or real DigiLocker):
- *   - document reference already backs a different account -> REJECTED
- *     (a shared-secret government ID number behind two accounts is a
- *     strong, specific fraud signal -- not sent to manual review).
- *   - DOB from the document doesn't match what the user entered at
- *     onboarding -> MANUAL_REVIEW (could be a typo, could be lying about
- *     age -- a human decides, never an automated reject given the
- *     underage-user stakes involved).
- *   - otherwise -> VERIFIED.
+ * Same decision rule regardless of provider (mock or real DigiLocker),
+ * checked in this order -- most severe/certain signal first:
+ *
+ *   1. document reference already backs a different account -> REJECTED
+ *      (a shared-secret government ID number behind two accounts is a
+ *      strong, specific fraud signal -- not sent to manual review).
+ *   2. the DOCUMENT's own DOB (never the profile's self-reported one --
+ *      that's exactly the value being verified against) says under 18 ->
+ *      REJECTED. This is a hard, non-negotiable safety stop, unlike every
+ *      other check here: there is no "human might have a good reason to
+ *      overrule this" case for letting a confirmed minor onto a dating
+ *      platform, so this is the one place a REJECTED here is final
+ *      (see docs/IDENTITY_VERIFICATION_AND_SAFETY.md section 6/7).
+ *   3. the document's DOB couldn't be parsed at all -> MANUAL_REVIEW.
+ *      Distinct from "confirmed minor" -- this is "we don't know," and an
+ *      unconfirmed age is not the same claim as a confirmed one.
+ *   4. DOB from the document doesn't match what the user entered at
+ *      onboarding -> MANUAL_REVIEW (could be a typo; already known-adult
+ *      by this point since #2/#3 didn't fire, so this is purely a
+ *      profile-data-quality question, not a safety one).
+ *   5. the document's name shares no word with the profile's display
+ *      name (see namesShareAToken()) -> MANUAL_REVIEW -- a specific,
+ *      real catfish signal (verified as someone, presenting as someone
+ *      else entirely), but with enough innocent explanations (married
+ *      name, a short-form nickname unrelated to the legal name, a
+ *      transliteration difference) that it goes to a human, not an
+ *      automated reject.
+ *   6. otherwise -> VERIFIED.
  */
 export function decideVerificationOutcome(params: {
   dobMatchedProfile: boolean;
   isDuplicate: boolean;
+  ageStatus: AgeStatus;
+  nameMatchesProfile: boolean | null;
 }): VerificationDecision {
+  const base = {
+    dobMatchedProfile: params.dobMatchedProfile,
+    isDuplicate: params.isDuplicate,
+    ageStatus: params.ageStatus,
+    nameMatchesProfile: params.nameMatchesProfile,
+  };
   if (params.isDuplicate) {
-    return { status: 'REJECTED', failureReason: 'duplicate_identity', dobMatchedProfile: params.dobMatchedProfile, isDuplicate: true };
+    return { ...base, status: 'REJECTED', failureReason: 'duplicate_identity' };
+  }
+  if (params.ageStatus === 'minor') {
+    return { ...base, status: 'REJECTED', failureReason: 'underage' };
+  }
+  if (params.ageStatus === 'unknown') {
+    return { ...base, status: 'MANUAL_REVIEW', failureReason: 'dob_unavailable' };
   }
   if (!params.dobMatchedProfile) {
-    return {
-      status: 'MANUAL_REVIEW',
-      failureReason: 'dob_mismatch',
-      dobMatchedProfile: false,
-      isDuplicate: false,
-    };
+    return { ...base, status: 'MANUAL_REVIEW', failureReason: 'dob_mismatch' };
   }
-  return { status: 'VERIFIED', dobMatchedProfile: true, isDuplicate: false };
+  if (params.nameMatchesProfile === false) {
+    return { ...base, status: 'MANUAL_REVIEW', failureReason: 'name_mismatch' };
+  }
+  return { ...base, status: 'VERIFIED' };
 }
 
 function datesMatch(a: Date | null, b: Date | null): boolean {
   if (!a || !b) return false;
   return a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
+}
+
+const MINIMUM_AGE_YEARS = 18;
+
+function ageStatusFor(dob: Date | null, asOf: Date = new Date()): AgeStatus {
+  if (!dob) return 'unknown';
+  let age = asOf.getUTCFullYear() - dob.getUTCFullYear();
+  const monthDiff = asOf.getUTCMonth() - dob.getUTCMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && asOf.getUTCDate() < dob.getUTCDate())) {
+    age -= 1;
+  }
+  return age >= MINIMUM_AGE_YEARS ? 'adult' : 'minor';
+}
+
+/**
+ * "One part of the ID's name matches one part of the profile's name" --
+ * tokenize both (lowercase, diacritics stripped so e.g. transliteration
+ * accents don't cause a spurious miss, single-letter initials dropped as
+ * noise) and require at least one shared token. Deliberately loose: this
+ * is a catfish-signal check, not an exact-match requirement, so nickname/
+ * middle-name/order differences shouldn't trip it -- only a name that
+ * shares literally nothing with the profile's should.
+ */
+function namesShareAToken(documentName: string, profileDisplayName: string): boolean {
+  const tokenize = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z\s]/g, ' ')
+      .split(/\s+/)
+      .filter((t) => t.length > 1);
+  const documentTokens = new Set(tokenize(documentName));
+  const profileTokens = tokenize(profileDisplayName);
+  return profileTokens.some((t) => documentTokens.has(t));
+}
+
+function categoryForFailureReason(reason: string | undefined): string {
+  switch (reason) {
+    case 'duplicate_identity':
+      return 'scam_fraud';
+    case 'underage':
+      return 'underage'; // matches the category taxonomy already noted on ModerationCase.category
+    case 'name_mismatch':
+      return 'fake_catfish';
+    default:
+      return 'identity_verification'; // dob_mismatch, dob_unavailable
+  }
 }
 
 /**
@@ -283,10 +380,13 @@ export async function finalizeIdentityVerification(params: {
   const documentHash = hashDocumentReference(document.documentType, document.referenceForHash);
   const dup = await checkDuplicateIdentity(documentHash, userId);
 
-  const profile = await db.profile.findUnique({ where: { userId }, select: { dateOfBirth: true } });
+  const profile = await db.profile.findUnique({ where: { userId }, select: { dateOfBirth: true, displayName: true } });
   const dobMatchedProfile = datesMatch(document.dateOfBirth, profile?.dateOfBirth ?? null);
+  const ageStatus = ageStatusFor(document.dateOfBirth);
+  const nameMatchesProfile =
+    document.name && profile?.displayName ? namesShareAToken(document.name, profile.displayName) : null;
 
-  const decision = decideVerificationOutcome({ dobMatchedProfile, isDuplicate: dup.isDuplicate });
+  const decision = decideVerificationOutcome({ dobMatchedProfile, isDuplicate: dup.isDuplicate, ageStatus, nameMatchesProfile });
 
   let moderationCaseId: string | undefined;
   if (decision.status !== 'VERIFIED') {
@@ -294,14 +394,16 @@ export async function finalizeIdentityVerification(params: {
       data: {
         subjectUserId: userId,
         sourceType: 'AUTOMATED_FLAG',
-        category: decision.isDuplicate ? 'scam_fraud' : 'identity_verification',
-        severity: decision.isDuplicate ? 'HIGH' : 'MEDIUM',
+        category: categoryForFailureReason(decision.failureReason),
+        severity: decision.status === 'REJECTED' ? 'HIGH' : 'MEDIUM',
         status: 'OPEN',
         evidence: {
           documentType: document.documentType,
           referenceMasked: document.referenceMasked,
           failureReason: decision.failureReason,
           duplicateOfUserId: dup.existingUserId,
+          ageStatus,
+          nameMatchesProfile,
         },
       },
     });

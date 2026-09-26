@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
-import { assertValidImage, uploadImage } from '@/lib/upload';
-import { moderateImageBuffer, recordPhotoModeration } from '@/lib/safety/moderateAndUpload';
+import { assertValidImage, normalizeImageForStorage, uploadImageBuffer } from '@/lib/upload';
+import { moderateImageBuffer, recordPhotoModeration, photoRejectionMessage } from '@/lib/safety/moderateAndUpload';
 
 // Self-hosted image moderation (IMAGE_MODERATION_PROVIDER=self-hosted)
 // runs two small CNNs on pure-JS tfjs (no native/WASM acceleration, see
@@ -51,13 +51,11 @@ export async function POST(req: Request) {
     const outcome = await moderateImageBuffer(buffer);
 
     if (outcome.decision === 'REJECTED') {
-      return NextResponse.json(
-        { error: "This photo doesn't meet findmyVybe's photo guidelines — try a clear photo of your face instead." },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: photoRejectionMessage(outcome) }, { status: 400 });
     }
 
-    const url = await uploadImage(file, `profiles/${session.userId}`);
+    const normalized = await normalizeImageForStorage(buffer, file.type);
+    const url = await uploadImageBuffer(normalized, `profiles/${session.userId}`);
     const nextPosition = profile.photos.reduce((max, p) => Math.max(max, p.position), -1) + 1;
     const photo = await db.photo.create({
       data: { profileId: profile.id, url, position: nextPosition, moderationStatus: outcome.decision, moderatedAt: new Date() },

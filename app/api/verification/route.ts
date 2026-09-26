@@ -27,9 +27,11 @@ import {
  *    whole verification state machine is testable today, before any real
  *    DigiLocker credentials exist.
  *
- * A mock request may pass ?scenario=match|dob_mismatch|duplicate to
+ * A mock request may pass
+ * ?scenario=match|dob_mismatch|duplicate|underage|name_mismatch to
  * exercise a specific outcome -- see identityVerification.ts's
- * MockScenario doc comment. Ignored entirely when provider=digilocker.
+ * MockScenario doc comment and decideVerificationOutcome()'s ordered
+ * rule list. Ignored entirely when provider=digilocker.
  */
 export async function POST(req: NextRequest) {
   const session = await getSession();
@@ -39,6 +41,27 @@ export async function POST(req: NextRequest) {
   if (!profile) return NextResponse.json({ error: 'Finish onboarding first.' }, { status: 400 });
   if (profile.verification === 'VERIFIED') {
     return NextResponse.json({ ok: true, status: 'VERIFIED' });
+  }
+
+  // A confirmed-underage REJECTED is the one outcome with no self-service
+  // retry path (see decideVerificationOutcome()'s doc comment and
+  // docs/IDENTITY_VERIFICATION_AND_SAFETY.md section 6) -- their real
+  // document's DOB won't change on a retry anyway, but resubmitting
+  // should surface as needing a human's attention (an admin clearing it
+  // via users.action.resetVerification), not a quiet "try again" that
+  // looks like any other rejection.
+  if (profile.verification === 'REJECTED') {
+    const latestAttempt = await db.identityVerification.findFirst({
+      where: { userId: session.userId },
+      orderBy: { submittedAt: 'desc' },
+      select: { failureReason: true },
+    });
+    if (latestAttempt?.failureReason === 'underage') {
+      return NextResponse.json(
+        { error: 'This account needs admin review before verification can be retried. Contact support.' },
+        { status: 403 },
+      );
+    }
   }
 
   const provider = getVerificationProviderName();
@@ -63,8 +86,10 @@ export async function POST(req: NextRequest) {
   await db.profile.update({ where: { userId: session.userId }, data: { verification: 'PENDING' } });
 
   const scenarioParam = req.nextUrl.searchParams.get('scenario');
-  const scenario: MockScenario =
-    scenarioParam === 'dob_mismatch' || scenarioParam === 'duplicate' ? scenarioParam : 'match';
+  const KNOWN_SCENARIOS: MockScenario[] = ['dob_mismatch', 'duplicate', 'underage', 'name_mismatch'];
+  const scenario: MockScenario = (KNOWN_SCENARIOS as string[]).includes(scenarioParam ?? '')
+    ? (scenarioParam as MockScenario)
+    : 'match';
 
   // Simulates an async KYC round trip. A real integration returns
   // immediately (see the digilocker branch above) and resolves from the

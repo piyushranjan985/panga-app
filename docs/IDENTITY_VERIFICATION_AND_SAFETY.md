@@ -94,13 +94,16 @@ not a stale build.
 > **Scope decision (2026-09-26):** selfie-vs-ID-document face matching is
 > explicitly descoped by product decision. There is no selfie capture, no
 > liveness check, and no face-match step anywhere in this flow. DigiLocker
-> verification confirms two things only: "this person holds a
-> government-issued document" and "its date of birth matches what they
-> told us at onboarding." It does **not** confirm that the person using
-> the account is the person named on the document. This is a real,
-> intentional reduction in assurance from the original design (which is
-> why this note exists instead of quietly editing history) — see §3 for
-> the matching consequence on the photo-moderation side.
+> verification confirms: the person holds a government-issued document;
+> that document's own DOB puts them at 18 or older (checked against the
+> document, never the self-reported profile DOB — see below); that DOB is
+> consistent with what they told us at onboarding; and the document's
+> name shares at least one word with their profile display name. It does
+> **not** confirm that the person using the account is the person named
+> on the document — that would need a selfie + face-match step, which is
+> a real, intentional reduction in assurance from the original design
+> (which is why this note exists instead of quietly editing history) —
+> see §3 for the matching consequence on the photo-moderation side.
 
 DigiLocker is a Government of India OAuth2-based document-sharing API. The
 user authorizes a document pull via an OTP-based consent screen on
@@ -130,14 +133,21 @@ Flow (implemented in `lib/safety/identityVerification.ts` +
    - document type (`AADHAAR` | `DRIVING_LICENCE`)
    - a document reference, hashed immediately (see below) — the raw value
      is never persisted
-   - DOB, for a onetime cross-check against `Profile.dateOfBirth` (flags a
-     mismatch into `MANUAL_REVIEW` rather than auto-rejecting — people
-     genuinely mistype onboarding DOB)
+   - DOB — checked directly for a minimum age of 18 (see below), and
+     separately cross-checked against `Profile.dateOfBirth` (a mismatch
+     there alone, once already known-adult, is `MANUAL_REVIEW` not a
+     reject — people genuinely mistype onboarding DOB)
+   - name — compared against `Profile.displayName` (see below)
 5. `duplicateIdentity.checkDuplicateIdentity(...)` — see below.
-6. `identityVerification.decideVerificationOutcome(...)` decides `VERIFIED`
-   / `MANUAL_REVIEW` (DOB mismatch) / `REJECTED` (duplicate document); only
-   the **result** is persisted (see §8) — the raw document payload is
-   discarded when the request completes, by never assigning it to
+6. `identityVerification.decideVerificationOutcome(...)` applies, in
+   order: duplicate document → `REJECTED`; document DOB says under 18 →
+   `REJECTED` (a hard stop, no human-override path, unlike every other
+   check here); document DOB unparseable → `MANUAL_REVIEW`; DOB doesn't
+   match the profile's → `MANUAL_REVIEW`; document name shares no word
+   with the profile's display name → `MANUAL_REVIEW`; otherwise
+   `VERIFIED`. Only the **result** is persisted (see §8) — the raw
+   document payload is discarded when the request completes, by never
+   assigning it to
    anything beyond a local variable in the handler.
 
 **Real credentials, honestly**: DigiLocker's API has no license fee, but
@@ -199,21 +209,41 @@ route (Node runtime, not Edge):
 > accidental — revisit §2's flow (adding a selfie + face-match step back
 > in) if that assurance is ever needed.
 
-**Deployment note, twice-revised**: the original plan used
+**Deployment note, three-times-revised**: the original plan used
 `@tensorflow/tfjs-node`, whose native binary (100MB+) risks exceeding a
 Vercel serverless function's size/memory limits. The first replacement —
 plain `@tensorflow/tfjs` plus the `canvas` package for image decoding —
 was implemented, then broke a real Vercel deploy outright: `canvas`'s
 native addon failed to build in Vercel's build image (`Package pixman-1
-was not found`, and no prebuilt binary exists for that Node ABI). That
-was a hard failure, not a soft "might exceed a limit" risk, so it wasn't
-patched around — `canvas` was removed entirely. The implementation now
-decodes JPEG/PNG buffers with pure-JS libraries (`jpeg-js`, `pngjs` —
-neither has a native build step) into a raw pixel array, builds a
-`tf.Tensor3D` directly, and hands that tensor straight to both nsfwjs and
-face-api, which both accept a tensor as input without any Canvas/Image/DOM
-shim. Nothing in this path has a native build step any more, so `npm
-install` can't fail this way again on any platform or plan.
+was not found`, and no prebuilt binary exists for that Node ABI). `canvas`
+was removed entirely and replaced with pure-JS `jpeg-js`/`pngjs` decoding
+— but that only covered JPEG/PNG, and any other format (WebP, HEIC/HEIF —
+i.e. every default iPhone photo) failed to decode and fell through the
+fail-safe path into `MANUAL_REVIEW` instead of a hard reject, which made
+an unmoderated photo look approved to its own owner. The implementation
+now decodes with **`sharp`** (the same native image library Next.js's own
+built-in image optimization uses in production on Vercel — its prebuilt
+per-platform binaries, e.g. `@img/sharp-linux-x64`, are fully
+self-contained npm optional dependencies with no system library headers
+required, unlike `canvas`/node-canvas's cairo/pixman dependency) for
+JPEG/PNG/WebP/GIF/AVIF/TIFF, with **`heic-convert`** (WASM `libheif-js`,
+no native build step) as a pre-conversion pass specifically for
+HEIC/HEIF, detected by sniffing the ISOBMFF `ftyp` box rather than a
+magic-byte prefix (HEIC shares MP4's container format, so it has no fixed
+magic bytes). EXIF orientation is normalized via sharp's `.rotate()` with
+no arguments, since phone photos routinely store a rotation flag instead
+of pre-rotated pixels. Any buffer that still fails to decode after this —
+truly corrupt or unsupported — now throws a distinct `UndecodableImageError`
+that `moderateAndUpload.ts` maps to a hard `REJECTED`, never
+`MANUAL_REVIEW`, closing the bypass described above. Decoded pixels feed
+a `tf.Tensor3D` directly to both nsfwjs and face-api. HEIC photos that
+pass moderation are also transcoded to JPEG for storage
+(`normalizeImageForStorage` in `lib/upload.ts`), since a raw HEIC file
+renders as a broken image in most non-Safari browsers — accepting the
+upload format and actually displaying it to other users are two separate
+problems, both now handled. Nothing in this path has a native build step
+that needs system libraries, so `npm install` can't fail the original
+`canvas` way again on any platform or plan.
 
 Known, honestly-documented gap: **there is no reliable free/open-source
 AI-generated-person or deepfake detector** comparable to what a paid vendor
@@ -385,12 +415,19 @@ Admin (`admin/app/api/...`, all gated by existing RBAC in
 
 ```
 UNVERIFIED --(start)--> PENDING --(DigiLocker document pulled)--> {
-    DOB matches profile, document not a known duplicate -> VERIFIED
-    DOB mismatch -> MANUAL_REVIEW
-    document hash matches another account's -> REJECTED
+    document hash matches another account's -> REJECTED  (fraud, final)
+    document DOB says under 18              -> REJECTED  (hard safety stop, no retry)
+    document DOB unparseable                -> MANUAL_REVIEW
+    DOB doesn't match profile's              -> MANUAL_REVIEW
+    document name shares no word with
+      profile's display name                -> MANUAL_REVIEW
+    otherwise                                -> VERIFIED
 }
 MANUAL_REVIEW --(admin decision)--> VERIFIED | REJECTED
-REJECTED --(user retries)--> PENDING
+REJECTED --(user retries)--> PENDING   -- EXCEPT a confirmed-underage REJECTED,
+                                            which an admin must clear explicitly
+                                            (users.action.resetVerification) rather
+                                            than the user just resubmitting
 ```
 
 `Photo.moderationStatus` (per photo, independent of the profile's
@@ -513,7 +550,13 @@ rather than a new surface:
   currently unused since there's no real verification flow to reset) is
   wired up to actually set `Profile.verification = UNVERIFIED` and log the
   action, same pattern as every other action in
-  `admin/lib/userActions.ts`.
+  `admin/lib/userActions.ts`. This is now the **only** way out of a
+  confirmed-underage `REJECTED` state: `POST /api/verification` returns a
+  403 on retry when the user's latest `IdentityVerification.failureReason`
+  is `'underage'`, so those rows sit in the queue until an admin
+  investigates and, if warranted (e.g. a genuine document-read error),
+  calls `resetVerification` explicitly — a minor can never simply
+  resubmit their way to `VERIFIED`.
 - Configurable thresholds (nudity score cutoffs) live in the existing
   `FeatureFlag`/config model rather than
   hardcoded constants, so Trust & Safety can tune false-positive/negative
@@ -557,6 +600,33 @@ different test accounts) assert the second is `REJECTED` with
 `failureReason: "duplicate_identity"` and opens a `ModerationCase`, not
 silently blocked and not silently allowed.
 
+**Underage (18+ gate)**: `POST /api/verification?scenario=underage` mocks
+a document DOB 10 years before today; asserts `ageStatus: 'minor'`,
+`Profile.verification: 'REJECTED'`, `failureReason: 'underage'`, and,
+critically, that a subsequent retry (`POST /api/verification` again for
+the same user) returns **403**, not a fresh `PENDING` attempt — this is
+the one non-appealable outcome in the whole state machine and the test
+exists specifically to prevent a regression that would let it be
+self-resubmitted away.
+
+**Name mismatch**: `POST /api/verification?scenario=name_mismatch` mocks
+a document name (`"Someone Else Entirely"`) sharing no token with the test
+profile's `displayName`; asserts `nameMatchesProfile: false`,
+`Profile.verification: 'MANUAL_REVIEW'`, `failureReason: 'name_mismatch'`,
+and that (unlike `underage`) a retry is still permitted — this is a
+catfish *signal*, not a hard block, so a legitimate user whose document
+uses a different name (marriage, transliteration, a name the profile
+shortened) can still get a human to look rather than being locked out.
+
+**Format coverage**: the upload-pipeline integration test (above) is
+parameterized over a small fixture set — one real JPEG, one PNG, one WebP,
+and one HEIC, all of the same non-explicit checked-in face photo re-encoded
+per format — asserting all four decode successfully and reach the same
+policy decision. A fifth fixture (a genuinely corrupt/truncated file with
+an `image/*`-plausible name) asserts `UndecodableImageError` →
+`REJECTED`, not `MANUAL_REVIEW` — this is the regression test for the
+original "car pic still went through" bug class.
+
 ---
 
 ### Definition of done, honestly assessed against this design
@@ -568,6 +638,9 @@ for every check except two, both called out rather than glossed over:
 (§3), and — because selfie-vs-ID face matching was explicitly descoped by
 product decision (§2, §3) — **nothing here confirms the account's photos
 show the same person who completed identity verification.** Everything
-else (identity verification against a real government document, human-face
-presence, nudity/explicit content, and duplicate-account prevention) is
+else — identity verification against a real government document (with a
+hard, non-retryable 18+ gate computed from the document's own DOB, and a
+name-token-overlap check against the profile's display name),
+human-face presence across every common upload format (JPEG, PNG, WebP,
+HEIC/HEIF), nudity/explicit content, and duplicate-account prevention — is
 enforced server-side, in one code path, regardless of client.

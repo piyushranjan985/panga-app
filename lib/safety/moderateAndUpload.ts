@@ -1,6 +1,6 @@
 import { db } from '@/lib/db';
 import { evaluatePhoto, type PhotoModerationDecision } from './policyEngine';
-import { getImageModerationProvider } from './imageModeration';
+import { getImageModerationProvider, UndecodableImageError } from './imageModeration';
 
 export interface ModerationOutcome {
   decision: PhotoModerationDecision;
@@ -32,9 +32,29 @@ export async function moderateImageBuffer(imageBuffer: Buffer): Promise<Moderati
   try {
     signals = await provider.analyze(imageBuffer);
   } catch (err) {
-    // Fail safe, loudly: a provider error (e.g. self-hosted models
-    // misconfigured -- see imageModeration.ts's setup steps) never means
-    // "treat as clean" -- it means "a human needs to look at this."
+    if (err instanceof UndecodableImageError) {
+      // Not "our infra is broken" -- "this file isn't a photo we can
+      // analyze at all" (corrupt, or a format neither sharp nor
+      // heic-convert understands). Nothing for a human reviewer to look
+      // at, so reject outright rather than routing to MANUAL_REVIEW --
+      // see imageModeration.ts's DECODE HISTORY note for why this
+      // distinction exists (an earlier version conflated the two and
+      // that's exactly how an undecodable photo once sailed through).
+      console.warn('[moderateImageBuffer] image could not be decoded, rejecting upload', err.message);
+      return {
+        decision: 'REJECTED',
+        reasons: ['unsupported_or_corrupt_image'],
+        provider: provider.name,
+        modelVersion: provider.modelVersion,
+        faceDetected: false,
+        faceCount: 0,
+        nudityScore: 0,
+        raw: { porn: 0, hentai: 0, sexy: 0 },
+      };
+    }
+    // Fail safe, loudly: any OTHER provider error (e.g. self-hosted
+    // models misconfigured -- see imageModeration.ts's setup steps) never
+    // means "treat as clean" -- it means "a human needs to look at this."
     console.error('[moderateImageBuffer] provider analysis failed, routing to MANUAL_REVIEW', err);
     return {
       decision: 'MANUAL_REVIEW',
@@ -63,6 +83,25 @@ export async function moderateImageBuffer(imageBuffer: Buffer): Promise<Moderati
 
 const CATEGORY_FOR_REASONS = (reasons: string[]): string =>
   reasons.includes('explicit_content_detected') ? 'sexual_content' : 'photo_violation';
+
+/**
+ * A single, friendly, reason-specific message for a REJECTED outcome --
+ * used by every upload route so "no face" / "explicit content" / "we
+ * couldn't read this file" don't all collapse into one generic sentence
+ * that tells the user nothing about what to actually do differently.
+ */
+export function photoRejectionMessage(outcome: ModerationOutcome): string {
+  if (outcome.reasons.includes('unsupported_or_corrupt_image')) {
+    return "We couldn't read that image file. Please try a different photo (JPG, PNG, HEIC, and WebP are all supported).";
+  }
+  if (outcome.reasons.includes('explicit_content_detected')) {
+    return "This photo doesn't meet findmyVybe's photo guidelines.";
+  }
+  if (outcome.reasons.includes('no_face_detected')) {
+    return "We couldn't find a clear human face in that photo — please upload a photo that clearly shows your face.";
+  }
+  return "This photo doesn't meet findmyVybe's photo guidelines — try a clear photo of your face instead.";
+}
 
 const SEVERITY_FOR_DECISION = (decision: PhotoModerationDecision): 'LOW' | 'MEDIUM' | 'HIGH' =>
   decision === 'REJECTED' ? 'HIGH' : 'LOW';

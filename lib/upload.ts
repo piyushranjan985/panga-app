@@ -1,4 +1,5 @@
 import { put, del } from '@vercel/blob';
+import { isHeic } from '@/lib/safety/imageModeration';
 
 /**
  * Photo storage: Vercel Blob, since that's zero-extra-infra on Vercel
@@ -17,33 +18,81 @@ import { put, del } from '@vercel/blob';
  */
 export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024; // 4MB
 
-// Restricted to what lib/safety/imageModeration.ts's self-hosted provider
-// can actually decode (jpeg-js + pngjs, both pure JS, no native deps --
-// see that file). This used to accept any `image/*` MIME type, which was
-// a real moderation bypass: a WebP or HEIC photo (HEIC being the iPhone
-// camera default) would fail to decode, and moderateAndUpload.ts's
-// fail-safe turns a decode error into MANUAL_REVIEW rather than a hard
-// block -- and a MANUAL_REVIEW photo still gets created and still shows
-// up in the uploader's own profile, so it looked identical to an
-// approved photo. Rejecting the format up front, with a clear message,
-// closes that instead of relying on the review queue to catch it.
-const ACCEPTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png']);
+// The real content gate is decode-time, inside
+// lib/safety/imageModeration.ts (sharp + heic-convert, which between them
+// handle every common phone/browser photo format) -- an undecodable file
+// gets REJECTED there with a clear reason, not silently waved through.
+// This upfront check is just a fast, friendly first filter, not the sole
+// boundary, which is why it's permissive rather than a strict allowlist:
+// it also accepts an empty/generic MIME type paired with a recognized
+// extension, since some mobile browsers report HEIC photos that way.
+const ACCEPTED_IMAGE_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+  'image/gif',
+  'image/avif',
+]);
+const ACCEPTED_IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'gif', 'avif']);
 
 export function assertValidImage(file: File) {
-  if (!ACCEPTED_IMAGE_TYPES.has(file.type)) {
-    throw new Error('Please upload a JPG or PNG photo (other formats like HEIC/WebP/GIF aren\'t supported yet).');
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  const genericOrEmptyType = file.type === '' || file.type === 'application/octet-stream';
+  const acceptable = ACCEPTED_IMAGE_TYPES.has(file.type) || (genericOrEmptyType && ACCEPTED_IMAGE_EXTENSIONS.has(ext));
+  if (!acceptable) {
+    throw new Error('Please upload a photo (JPG, PNG, HEIC, or WebP).');
   }
   if (file.size > MAX_UPLOAD_BYTES) {
     throw new Error('Image must be under 4MB');
   }
 }
 
-export async function uploadImage(file: File, pathPrefix: string): Promise<string> {
-  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-  const key = `${pathPrefix}/${crypto.randomUUID()}.${ext}`;
-  const blob = await put(key, file, {
+export interface NormalizedImage {
+  buffer: Buffer;
+  contentType: string;
+  ext: string;
+}
+
+/**
+ * HEIC (the iPhone camera's default format) decodes fine for moderation
+ * (see imageModeration.ts, which converts it internally for analysis),
+ * but almost no browser besides Safari can render raw HEIC bytes in an
+ * <img> tag -- so a HEIC photo that passed moderation would still show
+ * up as a broken image to anyone not on Safari/iOS. This re-encodes HEIC
+ * to JPEG specifically for STORAGE, independent of whether
+ * IMAGE_MODERATION_PROVIDER is even "self-hosted" (display compatibility
+ * isn't a moderation concern) -- everything else (JPEG/PNG/WebP/GIF/AVIF)
+ * already renders natively in every current browser, so it's stored as
+ * uploaded.
+ */
+export async function normalizeImageForStorage(buffer: Buffer, originalType: string): Promise<NormalizedImage> {
+  if (isHeic(buffer)) {
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+    let heicConvert: any;
+    try {
+      // @ts-ignore -- real dependency (package.json), same
+      // "not resolvable until installed" situation as
+      // lib/safety/imageModeration.ts's dynamic imports
+      heicConvert = (await import('heic-convert')).default;
+    } catch (err) {
+      throw new Error(
+        `heic-convert isn't installed (npm install heic-convert) -- can't store a HEIC photo as a browser-displayable JPEG. Original error: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+    const jpegBuffer = Buffer.from(await heicConvert({ buffer, format: 'JPEG', quality: 0.92 }));
+    return { buffer: jpegBuffer, contentType: 'image/jpeg', ext: 'jpg' };
+  }
+  const ext = originalType.split('/')[1] || 'jpg';
+  return { buffer, contentType: originalType || 'image/jpeg', ext };
+}
+
+export async function uploadImageBuffer(image: NormalizedImage, pathPrefix: string): Promise<string> {
+  const key = `${pathPrefix}/${crypto.randomUUID()}.${image.ext}`;
+  const blob = await put(key, image.buffer, {
     access: 'public',
-    contentType: file.type || undefined,
+    contentType: image.contentType,
   });
   return blob.url;
 }

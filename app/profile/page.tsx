@@ -217,6 +217,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [verifying, setVerifying] = useState(false);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
@@ -369,9 +370,18 @@ export default function ProfilePage() {
 
   async function requestVerification() {
     setVerifying(true);
+    setVerificationError(null);
     try {
       const res = await fetch('/api/verification', { method: 'POST' });
       const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        // e.g. the confirmed-underage retry block (403) -- surface it
+        // instead of silently showing "Verifying..." for something that
+        // was never actually started server-side.
+        setVerificationError(data?.error ?? 'Could not start verification. Try again.');
+        setVerifying(false);
+        return;
+      }
       if (data?.authorizationUrl) {
         // Real DigiLocker mode: full-page redirect to DigiLocker's
         // consent screen. The user lands back on this page via
@@ -383,6 +393,7 @@ export default function ProfilePage() {
       setProfile((p) => (p ? { ...p, verification: 'PENDING' } : p));
       pollVerificationStatus(0);
     } catch {
+      setVerificationError('Could not start verification. Try again.');
       setVerifying(false);
     }
   }
@@ -557,7 +568,7 @@ export default function ProfilePage() {
             {profile.photos.length < MAX_PHOTOS && (
               <label className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-line text-xs font-semibold text-inkSoft">
                 {uploadingPhoto ? 'Uploading...' : '+ Add'}
-                <input type="file" accept="image/jpeg,image/png" className="hidden" disabled={uploadingPhoto} onChange={addPhoto} />
+                <input type="file" accept="image/jpeg,image/png,image/heic,image/heif,image/webp" className="hidden" disabled={uploadingPhoto} onChange={addPhoto} />
               </label>
             )}
           </div>
@@ -699,6 +710,7 @@ export default function ProfilePage() {
               </button>
             )}
           </div>
+          {verificationError && <p className="mt-2 text-xs text-magenta">{verificationError}</p>}
         </section>
 
         <section className="mt-6">

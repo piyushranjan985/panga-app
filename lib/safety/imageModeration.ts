@@ -16,6 +16,17 @@ export interface ImageModerationProvider {
 }
 
 /**
+ * Thrown specifically when the input bytes can't be decoded as an image
+ * at all (corrupt file, or a format neither sharp nor heic-convert
+ * understands) -- as opposed to every other failure mode below (models
+ * not loaded, tensor op failed), which means "our infra is broken, a
+ * human should look." moderateAndUpload.ts treats this one differently:
+ * REJECTED outright, not MANUAL_REVIEW, because there's nothing for a
+ * human reviewer to look AT. See that file's catch block.
+ */
+export class UndecodableImageError extends Error {}
+
+/**
  * Deterministic, dependency-free provider for local dev and automated
  * tests. Assumes a clean single-face photo so the upload -> moderation ->
  * Photo pipeline is exercisable end-to-end without any ML dependencies
@@ -39,29 +50,41 @@ export const mockImageModerationProvider: ImageModerationProvider = {
  * licensed, both running on plain @tensorflow/tfjs (pure JavaScript, no
  * native bindings).
  *
- * CORRECTION (2026-09-26): the first version of this file used the
- * `canvas` package (node-canvas) purely to decode images. That broke a
- * real Vercel deploy outright -- `npm install` failed building canvas's
- * native addon (`Package pixman-1 was not found`, and no prebuilt binary
- * exists for Vercel's Node ABI). That wasn't a "might exceed a size
- * limit" risk, it was a hard failure, so it's removed entirely rather
- * than patched around. This version decodes JPEG/PNG buffers with pure-JS
- * libraries (`jpeg-js`, `pngjs` -- neither has a native build step, so
- * `npm install` can never fail this way again) into a raw pixel array,
- * builds a `tf.Tensor3D` from it directly, and hands that tensor straight
- * to both nsfwjs and face-api -- both accept a `tf.Tensor3D` as input
- * without needing a Canvas/Image/DOM shim at all. This is the standard,
- * documented way to run either library in Node without tfjs-node or
- * node-canvas.
+ * DECODE HISTORY, both corrections kept here rather than erased, because
+ * the reasoning matters for the next format that comes up:
+ *
+ *  1. First version used `canvas` (node-canvas) to decode images. That
+ *     broke a real Vercel deploy outright -- `npm install` failed
+ *     building canvas's native addon (`Package pixman-1 was not found`,
+ *     no prebuilt binary for that Node ABI). Removed entirely.
+ *  2. Second version hand-rolled JPEG/PNG-only decoding via `jpeg-js` +
+ *     `pngjs` (pure JS, no native step -- safe, but only two formats).
+ *     That silently mis-handled anything else (WebP, and critically
+ *     HEIC -- the iPhone camera's default format): decode would throw,
+ *     and the generic fail-safe below turned that into MANUAL_REVIEW,
+ *     which still creates the photo and still shows it in the uploader's
+ *     OWN profile (only hidden from other users) -- so an unsupported
+ *     format looked identical to an approved photo to whoever was
+ *     testing. That's what actually happened testing a car photo.
+ *
+ *  This version uses `sharp` for decoding -- the same library Next.js's
+ *  own built-in image optimization uses in production on Vercel, so its
+ *  prebuilt native binary (resolved automatically per-platform via npm
+ *  optional dependencies) is proven safe there, unlike canvas's from-
+ *  source build. Sharp handles JPEG/PNG/WebP/GIF/AVIF/TIFF -- everything
+ *  an Android camera or a browser "Save image" produces -- directly.
+ *  HEIC/HEIF (the iPhone default) is the one format sharp's stock binary
+ *  can't decode (licensing, not a technical gap), so that one case is
+ *  special-cased through `heic-convert`, which decodes via a WASM build
+ *  of libheif (`libheif-js`) -- a static .wasm asset, no native
+ *  compilation, same safety profile as sharp's prebuilt binary.
  *
  * Setup: the npm packages are already in package.json (always
  * installed), and scripts/download-face-api-models.mjs fetches
  * ssd_mobilenetv1's model weight files (face counting only -- no
  * landmark/recognition model needed) into FACE_API_MODEL_PATH
  * automatically before every build and `next dev` run (see package.json's
- * "prebuild"/"predev", which download from jsdelivr's npm CDN, failing
- * soft with a warning rather than blocking the build if that fetch
- * fails). The only manual step left is setting
+ * "prebuild"/"predev"). The only manual step left is setting
  * IMAGE_MODERATION_PROVIDER=self-hosted -- including on Vercel
  * (Production + Preview), then redeploying, since an env var change alone
  * doesn't touch an existing deployment.
@@ -71,39 +94,27 @@ export const mockImageModerationProvider: ImageModerationProvider = {
  * anything (a car photo included) purely to exercise the upload ->
  * moderate -> Photo pipeline in dev/tests without any ML dependencies.
  * That's expected mock behavior, not a bug in the policy engine below.
- *
- * If the model files still couldn't be fetched by the time a request
- * comes in (fetch failed at build time, or FACE_API_MODEL_PATH points
- * somewhere else), this throws rather than silently falling back
- * to "approve everything" -- moderateAndUpload.ts catches that error and
- * routes the photo to MANUAL_REVIEW instead, so a misconfigured deployment
- * fails safe (more admin review work) rather than fails open (unmoderated
- * photos going live). The error is logged loudly specifically so that
- * silent-degradation-to-mock never happens unnoticed in production.
  */
 export const selfHostedImageModerationProvider: ImageModerationProvider = {
   name: 'self-hosted-nsfwjs+faceapi',
-  modelVersion: 'nsfwjs-mobilenet-v2+faceapi-ssd-mobilenetv1-3',
+  modelVersion: 'nsfwjs-mobilenet-v2+faceapi-ssd-mobilenetv1-4',
   async analyze(imageBuffer) {
     // Typed as `any`, not `typeof import(...)`: these are real
-    // dependencies (see package.json) so they resolve fine once installed,
-    // but two of them (jpeg-js, pngjs) ship no TypeScript declarations, so
-    // a plain `import` can still fail `tsc` depending on whether
-    // @types/* happens to be present. `@ts-ignore` (not `@ts-expect-error`
-    // -- that fails the build with "unused directive" the moment the
-    // import *does* type-check cleanly, which is exactly what broke this
-    // build once npm install actually succeeded) suppresses either way,
-    // whether or not there's an error to suppress. Dynamic import, not a
-    // static one, purely so this whole function -- and needing any of
-    // these five packages at all -- stays opt-in behind
+    // dependencies (see package.json) so they resolve fine once
+    // installed, but `@ts-ignore` (not `@ts-expect-error` -- that fails
+    // the build the moment the import DOES type-check cleanly, which is
+    // exactly what broke an earlier version of this file) suppresses
+    // either way, whether or not there's an error to suppress. Dynamic
+    // import, not a static one, purely so this whole function -- and
+    // needing any of these packages at all -- stays opt-in behind
     // IMAGE_MODERATION_PROVIDER=self-hosted; same pattern as lib/native.ts
     // uses for @capacitor/*.
     /* eslint-disable @typescript-eslint/no-explicit-any */
     let nsfwjs: any;
     let faceapi: any;
     let tf: any;
-    let jpeg: any;
-    let PNG: any;
+    let sharp: any;
+    let heicConvert: any;
     try {
       // @ts-ignore
       nsfwjs = await import('nsfwjs');
@@ -112,36 +123,25 @@ export const selfHostedImageModerationProvider: ImageModerationProvider = {
       // @ts-ignore
       tf = await import('@tensorflow/tfjs');
       // @ts-ignore
-      jpeg = await import('jpeg-js');
+      sharp = (await import('sharp')).default;
       // @ts-ignore
-      ({ PNG } = await import('pngjs'));
+      heicConvert = (await import('heic-convert')).default;
     } catch (err) {
       throw new Error(
         `[imageModeration] self-hosted provider selected but its dependencies ` +
-          `aren't installed (npm install nsfwjs @vladmandic/face-api @tensorflow/tfjs jpeg-js pngjs) ` +
+          `aren't installed (npm install nsfwjs @vladmandic/face-api @tensorflow/tfjs sharp heic-convert) ` +
           `or face-api's model files are missing. Original error: ${err instanceof Error ? err.message : err}`,
       );
     }
 
-    const { data: rgba, width, height } = decodeToRgba(imageBuffer, jpeg, PNG);
-
-    // Drop the alpha channel -- both models expect 3-channel RGB.
-    const rgb = new Uint8Array(width * height * 3);
-    for (let i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
-      rgb[j] = rgba[i] ?? 0;
-      rgb[j + 1] = rgba[i + 1] ?? 0;
-      rgb[j + 2] = rgba[i + 2] ?? 0;
-    }
+    const { data: rgb, width, height } = await decodeToRgb(imageBuffer, sharp, heicConvert);
 
     const modelPath = process.env.FACE_API_MODEL_PATH || './public/models/face-api';
     await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath);
 
     const imageTensor = tf.tensor3d(rgb, [height, width, 3], 'int32');
     try {
-      const [nsfwModel, faceDetections] = await Promise.all([
-        nsfwjs.load(),
-        faceapi.detectAllFaces(imageTensor),
-      ]);
+      const [nsfwModel, faceDetections] = await Promise.all([nsfwjs.load(), faceapi.detectAllFaces(imageTensor)]);
       const nsfwPredictions = await nsfwModel.classify(imageTensor);
       const scoreFor = (className: string) =>
         nsfwPredictions.find((p: { className: string; probability: number }) => p.className === className)
@@ -162,55 +162,66 @@ export const selfHostedImageModerationProvider: ImageModerationProvider = {
 };
 
 /**
- * Sniffs the format from magic bytes and decodes to a flat RGBA pixel
- * buffer, entirely in pure JS. Only JPEG and PNG are supported -- those
- * are the only two formats lib/upload.ts's assertValidImage() accepts,
- * specifically BECAUSE this function can only decode those two.
- *
- * IMPORTANT: this throws a clearly-labeled error for anything else
- * (WebP, HEIC, GIF, ...) rather than guessing "must be JPEG" the way an
- * earlier version of this file did. That earlier version's silent
- * fallback was a real bypass: an unrecognized format would fail
- * jpeg.decode() with an opaque error, which moderateAndUpload.ts's
- * fail-safe turns into MANUAL_REVIEW -- and a MANUAL_REVIEW photo still
- * gets created and still shows up in the uploader's own profile (it's
- * only hidden from *other* users), so from the person testing it, an
- * unsupported-format photo looked identical to an approved one. A car
- * photo saved as WebP (common from a quick reverse-image-search save) or
- * HEIC (default on iPhone) would have silently passed straight through
- * exactly like that -- see decode() below and assertValidImage() for the
- * two-sided fix: the client is told plainly to use JPG/PNG instead of
- * being waved through to a review queue nobody is watching yet.
+ * ISOBMFF ("ftyp" box) sniff for HEIC/HEIF -- the same check the `file-type`
+ * npm package and most format sniffers use. HEIC containers share MP4's
+ * container format, so this can't be a simple magic-byte prefix check the
+ * way PNG/JPEG are; it has to look at the brand tag inside the ftyp box.
  */
-function decodeToRgba(
-  buffer: Buffer,
-  jpeg: { decode: (b: Buffer, opts?: { useTArray?: boolean }) => { width: number; height: number; data: Uint8Array } },
-  PNG: new () => { parse: (b: Buffer, cb: (err: Error | null, data: { width: number; height: number; data: Uint8Array }) => void) => void },
-): { data: Uint8Array; width: number; height: number } {
-  const isPng =
-    buffer.length > 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
-  const isJpeg = buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+export function isHeic(buffer: Buffer): boolean {
+  if (buffer.length < 12) return false;
+  if (buffer.toString('ascii', 4, 8) !== 'ftyp') return false;
+  const brand = buffer.toString('ascii', 8, 12);
+  return ['heic', 'heix', 'heim', 'heis', 'hevc', 'hevx', 'hevm', 'hevs', 'mif1', 'msf1'].includes(brand);
+}
 
-  if (isPng) {
-    // pngjs's callback-style parse is synchronous under the hood for an
-    // in-memory buffer; wrap it so this function stays a plain sync call.
-    let result: { width: number; height: number; data: Uint8Array } | null = null;
-    let parseError: Error | null = null;
-    new PNG().parse(buffer, (err, data) => {
-      parseError = err;
-      result = data;
-    });
-    if (parseError) throw parseError;
-    if (!result) throw new Error('[imageModeration] PNG decode produced no data');
-    return result;
+/**
+ * Decodes any common photo format (JPEG, PNG, WebP, GIF, AVIF, TIFF via
+ * sharp; HEIC/HEIF via heic-convert -> sharp) into a flat, alpha-free RGB
+ * pixel buffer plus dimensions. `.rotate()` with no arguments applies and
+ * then strips any EXIF orientation tag -- phone photos are very commonly
+ * stored "sideways" with a rotation flag rather than pre-rotated pixels,
+ * which would otherwise make face detection fail on a perfectly normal
+ * portrait photo.
+ *
+ * Throws UndecodableImageError (not a plain Error) for a genuinely
+ * corrupt or unrecognized file, so moderateAndUpload.ts can tell "this
+ * isn't a photo we can analyze" apart from "our analysis pipeline broke"
+ * and reject the former outright instead of routing it to manual review
+ * -- see that file's catch block, and the DECODE HISTORY note above this
+ * provider for why that distinction exists at all.
+ */
+async function decodeToRgb(
+  buffer: Buffer,
+  sharp: (input: Buffer) => {
+    rotate: () => ReturnType<typeof sharp>;
+    removeAlpha: () => ReturnType<typeof sharp>;
+    toColourspace: (name: string) => ReturnType<typeof sharp>;
+    raw: () => ReturnType<typeof sharp>;
+    toBuffer: (opts: { resolveWithObject: true }) => Promise<{ data: Buffer; info: { width: number; height: number } }>;
+  },
+  heicConvert: (opts: { buffer: Buffer; format: string; quality: number }) => Promise<ArrayBuffer>,
+): Promise<{ data: Uint8Array; width: number; height: number }> {
+  let working = buffer;
+
+  if (isHeic(buffer)) {
+    try {
+      working = Buffer.from(await heicConvert({ buffer, format: 'JPEG', quality: 0.92 }));
+    } catch (err) {
+      throw new UndecodableImageError(`HEIC decode failed: ${err instanceof Error ? err.message : err}`);
+    }
   }
-  if (isJpeg) {
-    return jpeg.decode(buffer, { useTArray: true });
+
+  try {
+    const { data, info } = await sharp(working)
+      .rotate()
+      .removeAlpha()
+      .toColourspace('srgb')
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    return { data: new Uint8Array(data), width: info.width, height: info.height };
+  } catch (err) {
+    throw new UndecodableImageError(`Image decode failed: ${err instanceof Error ? err.message : err}`);
   }
-  throw new Error(
-    '[imageModeration] unsupported image format for decoding (only JPEG/PNG magic bytes recognized) -- ' +
-      'this should have been caught by assertValidImage() before reaching here',
-  );
 }
 
 export function getImageModerationProvider(): ImageModerationProvider {
