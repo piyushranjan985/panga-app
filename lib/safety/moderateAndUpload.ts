@@ -11,10 +11,13 @@ export interface ModerationOutcome {
   faceCount: number;
   nudityScore: number; // max(porn, hentai, sexy) -- single number for the Photo-list admin view; full breakdown lives in `raw`
   raw: { porn: number; hentai: number; sexy: number };
-  // Only set for reasons: ['moderation_provider_error'] -- the actual
-  // thrown error's message, so an admin looking at the ModerationCase this
-  // opens (see recordPhotoModeration) can tell what actually broke instead
-  // of guessing from a generic code. Never shown to the uploader.
+  // Only set for reasons: ['moderation_unavailable'] -- the actual thrown
+  // error's message, for the server log only (see moderateImageBuffer's
+  // catch block). This decision is now a hard REJECTED (see that block's
+  // comment for why), which never opens a ModerationCase -- so unlike the
+  // other REJECTED reasons this text has nowhere to surface in the admin
+  // UI either. It exists purely so a `console.error` grep in the deploy
+  // logs shows a real message, not a guess. Never shown to the uploader.
   errorDetail?: string;
 }
 
@@ -57,13 +60,28 @@ export async function moderateImageBuffer(imageBuffer: Buffer): Promise<Moderati
         raw: { porn: 0, hentai: 0, sexy: 0 },
       };
     }
-    // Fail safe, loudly: any OTHER provider error (e.g. self-hosted
-    // models misconfigured -- see imageModeration.ts's setup steps) never
-    // means "treat as clean" -- it means "a human needs to look at this."
-    console.error('[moderateImageBuffer] provider analysis failed, routing to MANUAL_REVIEW', err);
+    // Product decision (2026-09-26): any OTHER provider error (e.g.
+    // self-hosted models misconfigured -- see imageModeration.ts's setup
+    // steps) used to fail safe to MANUAL_REVIEW ("we don't know, a human
+    // should look") rather than treat a crash as "this photo is clean."
+    // That reasoning still holds in the abstract, but in practice there's
+    // no actively-staffed queue watching MANUAL_REVIEW cases, so a photo
+    // stuck there because the analysis pipeline itself broke just sits
+    // invisible to other users indefinitely -- functionally identical to
+    // "no face detected" from the uploader's side, except unexplained and
+    // unresolvable by them. Reject outright instead, exactly like a
+    // confirmed no-face photo (see policyEngine.ts's faceCount === 0
+    // branch): the uploader gets a clear, immediate message and can just
+    // retry, which is the right answer for what's usually a transient
+    // failure anyway (see next.config.mjs's outputFileTracingIncludes
+    // comment for the specific bug this was covering for). No
+    // ModerationCase gets opened for this reason any more -- see
+    // recordPhotoModeration, which only ever runs for a Photo row that
+    // was actually created, and a REJECTED photo never is.
+    console.error('[moderateImageBuffer] provider analysis failed, rejecting upload', err);
     return {
-      decision: 'MANUAL_REVIEW',
-      reasons: ['moderation_provider_error'],
+      decision: 'REJECTED',
+      reasons: ['moderation_unavailable'],
       provider: provider.name,
       modelVersion: provider.modelVersion,
       faceDetected: false,
@@ -100,6 +118,9 @@ export function photoRejectionMessage(outcome: ModerationOutcome): string {
   if (outcome.reasons.includes('unsupported_or_corrupt_image')) {
     return "We couldn't read that image file. Please try a different photo (JPG, PNG, HEIC, and WebP are all supported).";
   }
+  if (outcome.reasons.includes('moderation_unavailable')) {
+    return "We couldn't verify that photo just now. Please try uploading it again in a moment.";
+  }
   if (outcome.reasons.includes('explicit_content_detected')) {
     return "This photo doesn't meet findmyVybe's photo guidelines.";
   }
@@ -120,9 +141,11 @@ export function photoRejectionMessage(outcome: ModerationOutcome): string {
  * the moment they upload, not minutes later.
  */
 export function manualReviewMessage(outcome: ModerationOutcome): string {
-  if (outcome.reasons.includes('moderation_provider_error')) {
-    return "Your photo was uploaded, but our automatic photo check couldn't run just now, so a person on our team will take a quick look. It's visible only to you until then.";
-  }
+  // A provider crash is a hard REJECTED now (see moderateImageBuffer's
+  // catch block), so it can never reach this function -- MANUAL_REVIEW at
+  // this point always means a real, ambiguous content signal (borderline
+  // nudity score, more than one face) that genuinely needs a human's
+  // judgment call, not a system failure standing in for one.
   if (outcome.reasons.includes('multiple_faces_unresolved')) {
     return 'Your photo was uploaded. Since it shows more than one face, a person on our team will take a quick look before it\'s shown to others.';
   }

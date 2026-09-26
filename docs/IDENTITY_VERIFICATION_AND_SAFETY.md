@@ -436,11 +436,35 @@ verification status):
 ```
 (upload) --(policyEngine.evaluate)--> {
     clean -> APPROVED               (Photo row visible to other users)
-    borderline -> MANUAL_REVIEW     (Photo row exists, owner sees "under
-                                      review", NOT shown to other users)
-    clear violation -> REJECTED     (no Photo row is ever created; blob
-                                      deleted; uploader sees rejection reason)
+    borderline (real content signal,
+      e.g. 2+ faces, nudity score
+      near the threshold) -> MANUAL_REVIEW
+                                     (Photo row exists, owner sees "under
+                                      review", NOT shown to other users;
+                                      opens a ModerationCase for an admin)
+    clear violation, OR the analysis
+      pipeline itself failed to run
+      (moderation_unavailable)      -> REJECTED
+                                     (no Photo row is ever created; blob
+                                      deleted; uploader sees rejection
+                                      reason, no ModerationCase opened)
 }
+```
+
+Product decision (2026-09-26): a provider/analysis failure used to fail
+safe to MANUAL_REVIEW ("we don't know, a human should look"). Changed to a
+hard REJECTED instead, once it became clear there's no actively-staffed
+queue watching MANUAL_REVIEW cases -- a photo stuck there over a system
+crash just sat invisible to other users indefinitely, unexplained and
+unresolvable by the uploader. A REJECTED for this reason gives them an
+immediate, actionable message ("try again in a moment") instead, at the
+cost of occasionally rejecting a perfectly fine photo if the analysis
+pipeline is genuinely down -- an accepted tradeoff given nothing is
+actively resolving the alternative today. See
+lib/safety/moderateAndUpload.ts's moderateImageBuffer for the reasoning
+kept in code.
+
+```
 MANUAL_REVIEW --(admin decision)--> APPROVED | REJECTED
 APPROVED --(re-moderation trigger)--> PENDING re-evaluation, using the same
     three-way outcome above. Triggers: photo reported (§7, immediate),
@@ -626,6 +650,15 @@ policy decision. A fifth fixture (a genuinely corrupt/truncated file with
 an `image/*`-plausible name) asserts `UndecodableImageError` →
 `REJECTED`, not `MANUAL_REVIEW` — this is the regression test for the
 original "car pic still went through" bug class.
+
+**Provider/analysis failure**: mocking `provider.analyze()` to throw a
+plain `Error` (not `UndecodableImageError`) — simulating the model files
+being missing at runtime, the exact failure this repo hit once already
+(see next.config.mjs's `outputFileTracingIncludes` comment) — asserts
+`REJECTED` with `reasons: ['moderation_unavailable']`, never
+`MANUAL_REVIEW`, and asserts no `ModerationCase` is created for it. This
+is the regression test for the "silently stuck under review with no
+explanation" bug class this design used to have.
 
 ---
 
