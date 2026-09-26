@@ -5,6 +5,15 @@ import { getSession } from '@/lib/session';
 import { moderateImageUrl, recordPhotoModeration, type ModerationOutcome } from '@/lib/safety/moderateAndUpload';
 import { DATE_VIBES, TONIGHT_OPTIONS, VALUES_OPTIONS, LIVING_PREFERENCES, FUTURE_VIBE_QUESTIONS, CHILDREN_OPTIONS } from '@/lib/constants';
 
+// This route's PUT handler moderates every onboarding photo sequentially
+// (see moderateImageUrl calls below) with the self-hosted, pure-JS-tfjs
+// provider (IMAGE_MODERATION_PROVIDER=self-hosted, see
+// lib/safety/imageModeration.ts) -- no native/WASM acceleration, so
+// several photos in one request can take a while. 60s is the max most
+// Vercel plans allow without Enterprise.
+export const maxDuration = 60;
+
+
 // Intent-scoped pick-lists (see lib/constants.ts) validated as fixed
 // slug enums -- these aren't DB-backed relations, just plain string
 // fields on Profile, so this is the only place enforcing "must be one of

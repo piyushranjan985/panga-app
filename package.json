@@ -20,7 +20,9 @@
     "verify:matching": "tsx scripts/verify-matching.ts",
     "cap:sync": "npx cap sync",
     "cap:ios": "npx cap open ios",
-    "cap:android": "npx cap open android"
+    "cap:android": "npx cap open android",
+    "prebuild": "node scripts/download-face-api-models.mjs",
+    "predev": "node scripts/download-face-api-models.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

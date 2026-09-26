@@ -20,6 +20,10 @@ npm-debug.log*
 # prisma
 /prisma/dev.db
 
+# face-api model weights -- downloaded at build/dev time by
+# scripts/download-face-api-models.mjs, never checked in
+/public/models/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

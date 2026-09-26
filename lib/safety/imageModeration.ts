@@ -54,17 +54,27 @@ export const mockImageModerationProvider: ImageModerationProvider = {
  * documented way to run either library in Node without tfjs-node or
  * node-canvas.
  *
- * Setup steps, none of which this sandbox can do (they all need network):
+ * Setup: the npm packages are already in package.json (always
+ * installed), and scripts/download-face-api-models.mjs fetches
+ * ssd_mobilenetv1's model weight files (face counting only -- no
+ * landmark/recognition model needed) into FACE_API_MODEL_PATH
+ * automatically before every build and `next dev` run (see package.json's
+ * "prebuild"/"predev", which download from jsdelivr's npm CDN, failing
+ * soft with a warning rather than blocking the build if that fetch
+ * fails). The only manual step left is setting
+ * IMAGE_MODERATION_PROVIDER=self-hosted -- including on Vercel
+ * (Production + Preview), then redeploying, since an env var change alone
+ * doesn't touch an existing deployment.
  *
- *   1. npm install nsfwjs @vladmandic/face-api @tensorflow/tfjs jpeg-js pngjs
- *   2. Download face-api's model weight files (ssd_mobilenetv1 only --
- *      no landmark or recognition model needed, since this only counts
- *      faces) into public/models/face-api/ (or another path
- *      FACE_API_MODEL_PATH points at) -- see
- *      https://github.com/vladmandic/face-api/tree/master/model.
- *   3. Set IMAGE_MODERATION_PROVIDER=self-hosted in .env.
+ * Until that's set, this provider never runs at all -- "mock" mode
+ * (the default) never looks at the image, by design, so it approves
+ * anything (a car photo included) purely to exercise the upload ->
+ * moderate -> Photo pipeline in dev/tests without any ML dependencies.
+ * That's expected mock behavior, not a bug in the policy engine below.
  *
- * Until all three are done, this throws rather than silently falling back
+ * If the model files still couldn't be fetched by the time a request
+ * comes in (fetch failed at build time, or FACE_API_MODEL_PATH points
+ * somewhere else), this throws rather than silently falling back
  * to "approve everything" -- moderateAndUpload.ts catches that error and
  * routes the photo to MANUAL_REVIEW instead, so a misconfigured deployment
  * fails safe (more admin review work) rather than fails open (unmoderated

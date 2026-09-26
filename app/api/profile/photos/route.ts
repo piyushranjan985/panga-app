@@ -4,6 +4,16 @@ import { getSession } from '@/lib/session';
 import { assertValidImage, uploadImage } from '@/lib/upload';
 import { moderateImageBuffer, recordPhotoModeration } from '@/lib/safety/moderateAndUpload';
 
+// Self-hosted image moderation (IMAGE_MODERATION_PROVIDER=self-hosted)
+// runs two small CNNs on pure-JS tfjs (no native/WASM acceleration, see
+// lib/safety/imageModeration.ts) -- slower than a native backend, so this
+// route gets more time than a Vercel default function allows. 60s is the
+// max most plans allow without Enterprise; if photo uploads still time
+// out in practice, that's the next thing to address, not something more
+// duration alone fixes.
+export const maxDuration = 60;
+
+
 const MAX_PHOTOS = 5;
 
 /**
