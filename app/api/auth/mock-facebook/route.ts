@@ -8,15 +8,20 @@ const bodySchema = z.object({
 });
 
 /**
- * Stand-in for "Sign in with Facebook" (the closest real equivalent to an
- * Instagram login — Meta retired general-purpose "Sign in with Instagram"
- * for non-business apps, so there isn't a working Instagram button to wire
- * up here). No real Meta OAuth is connected; this simulates the profile
- * data Facebook would hand back after consent.
+ * Stand-in for "Sign in with Facebook", posted to by the mock consent
+ * form in app/login/page.tsx -- simulates the profile data Facebook
+ * would hand back after consent. Also what "Continue with Instagram"
+ * posts to (see app/login/page.tsx's SOCIAL_ENDPOINT comment) -- Meta
+ * retired general-purpose "Sign in with Instagram" for non-business
+ * apps, so unlike Google/Facebook, Instagram has no real flow to grow
+ * into; this mock is permanent for that button, not a placeholder.
  *
- * To go live: real Meta OAuth via Auth.js's Facebook provider —
- * https://authjs.dev/getting-started/providers/facebook — needs an app
- * created at https://developers.facebook.com, which only you can do.
+ * A REAL Facebook OAuth flow now exists alongside this one (Facebook
+ * only, never Instagram): app/api/auth/facebook/route.ts + .../callback/
+ * route.ts (see lib/auth/facebookOAuth.ts). Once FACEBOOK_APP_ID/SECRET
+ * are set, the login page's "Continue with Facebook" button navigates
+ * straight to the real flow; this route stays as the fallback (and for
+ * Instagram, permanently) exactly like mock-google's does.
  */
 export async function POST(req: Request) {
   const json = await req.json().catch(() => null);

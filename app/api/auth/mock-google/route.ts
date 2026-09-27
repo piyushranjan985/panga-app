@@ -8,16 +8,20 @@ const bodySchema = z.object({
 });
 
 /**
- * Stand-in for "Sign in with Google" — there is no real Google OAuth wired
- * up yet, so this just simulates the profile data Google would normally
- * hand back after consent (an email address) and signs the user in with it.
+ * Stand-in for "Sign in with Google", posted to by the mock consent form
+ * in app/login/page.tsx -- simulates the profile data Google would hand
+ * back after consent (an email address) and signs the user in with it.
  *
- * To go live: replace this route with a real OAuth flow, e.g. Auth.js
- * (next-auth) with the Google provider — https://authjs.dev/getting-started/providers/google.
- * That needs an OAuth client ID/secret from https://console.cloud.google.com,
- * which only you can create (a real account, outside what an AI assistant
- * can do on your behalf). Once you have those, swap this route for the
- * Auth.js callback and drop the mock consent screen in app/login/page.tsx.
+ * A REAL Google OAuth flow now exists alongside this one:
+ * app/api/auth/google/route.ts + .../callback/route.ts (see
+ * lib/auth/googleOAuth.ts). Once GOOGLE_CLIENT_ID/SECRET are set, the
+ * login page's "Continue with Google" button navigates straight to the
+ * real flow and this route is never reached from there again -- it's
+ * only still hit directly if GOOGLE_CLIENT_ID/SECRET are unset (the
+ * button then redirects back to the mock form on purpose, see
+ * app/api/auth/google/route.ts) or in an existing test that still posts
+ * here directly. Left in place rather than deleted so local dev/tests
+ * keep working with zero external setup.
  */
 export async function POST(req: Request) {
   const json = await req.json().catch(() => null);

@@ -1,7 +1,20 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+
+// Shown on the login page when a real OAuth round trip (google/facebook)
+// comes back with ?error=... -- see app/api/auth/google/callback and
+// app/api/auth/facebook/callback. Deliberately separate from
+// SOCIAL_ENDPOINT's mock-form JSON error strings below: those describe a
+// mock POST failing validation, these describe a real redirect flow
+// failing (or being cancelled) partway through.
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  oauth_cancelled: 'Sign-in was cancelled.',
+  oauth_invalid: 'That sign-in link expired or was invalid — please try again.',
+  email_in_use: 'That email is already used by a different sign-in method — try phone or email code instead.',
+  oauth_failed: 'Something went wrong signing in — please try again, or use phone or email code instead.',
+};
 
 type Method = 'phone' | 'email';
 type SocialProvider = 'google' | 'facebook' | 'instagram' | null;
@@ -68,8 +81,9 @@ const SOCIAL_ICON: Record<'google' | 'facebook' | 'instagram', () => React.React
   instagram: InstagramIcon,
 };
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [method, setMethod] = useState<Method>('phone');
   const [phone, setPhone] = useState('+91');
   const [email, setEmail] = useState('');
@@ -81,6 +95,23 @@ export default function LoginPage() {
   const [socialEmail, setSocialEmail] = useState('');
   const [socialLoading, setSocialLoading] = useState(false);
   const [socialError, setSocialError] = useState<string | null>(null);
+
+  // Reached two ways: app/api/auth/google|facebook/route.ts redirects back
+  // here with ?mock=<provider> when GOOGLE_CLIENT_ID/FACEBOOK_APP_ID isn't
+  // set yet (falls back to exactly the mock form below, just reached via a
+  // real navigation instead of the button's old onClick), or the real
+  // callback route redirects here with ?error=<reason> after a failed/
+  // cancelled OAuth round trip.
+  useEffect(() => {
+    const mockProvider = searchParams.get('mock');
+    if (mockProvider === 'google' || mockProvider === 'facebook') {
+      setSocialProvider(mockProvider);
+    }
+    const oauthError = searchParams.get('error');
+    if (oauthError) {
+      setSocialError(OAUTH_ERROR_MESSAGES[oauthError] ?? 'Something went wrong signing in — please try again.');
+    }
+  }, [searchParams]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -200,21 +231,43 @@ export default function LoginPage() {
       <div className="flex flex-col gap-2.5">
         {(['google', 'facebook', 'instagram'] as const).map((p) => {
           const Icon = SOCIAL_ICON[p];
-          return (
-            <button
-              key={p}
-              type="button"
-              onClick={() => {
-                setSocialProvider(p);
-                setSocialError(null);
-              }}
-              className="flex h-12 w-full items-center justify-center gap-3 rounded-full border border-line bg-white px-4 text-sm font-semibold text-ink transition hover:border-inkSoft/40"
-            >
+          const className =
+            'flex h-12 w-full items-center justify-center gap-3 rounded-full border border-line bg-white px-4 text-sm font-semibold text-ink transition hover:border-inkSoft/40';
+          const content = (
+            <>
               <span className="grid h-5 w-5 flex-shrink-0 place-items-center overflow-hidden rounded-full">
                 <Icon />
               </span>
               Continue with {SOCIAL_LABEL[p]}
-            </button>
+            </>
+          );
+          // Google/Facebook: a real top-level navigation to a server route
+          // that redirects to the real provider (once GOOGLE_CLIENT_ID/
+          // FACEBOOK_APP_ID are set) or back here with ?mock=... otherwise
+          // -- has to be a real navigation, not a fetch, since an OAuth
+          // consent screen isn't reachable from client JS/CORS. Instagram
+          // has no real flow to navigate to at all (see SOCIAL_ENDPOINT's
+          // comment above) -- it opens the mock form directly, same as
+          // every button here used to.
+          if (p === 'instagram') {
+            return (
+              <button
+                key={p}
+                type="button"
+                onClick={() => {
+                  setSocialProvider(p);
+                  setSocialError(null);
+                }}
+                className={className}
+              >
+                {content}
+              </button>
+            );
+          }
+          return (
+            <a key={p} href={`/api/auth/${p}`} className={className}>
+              {content}
+            </a>
           );
         })}
       </div>
@@ -259,5 +312,13 @@ export default function LoginPage() {
         </form>
       )}
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }
