@@ -3,10 +3,7 @@ import { isFacebookOAuthConfigured, buildFacebookAuthorizationUrl } from '@/lib/
 import { signSocialOAuthState } from '@/lib/auth/oauthState';
 
 /**
- * Same shape as app/api/auth/google/route.ts -- see its comment. Only
- * "Continue with Facebook" reaches here; "Continue with Instagram" never
- * does (see lib/auth/facebookOAuth.ts's top comment for why there's no
- * real Instagram flow to route to).
+ * Same shape as app/api/auth/google/route.ts -- see its comment.
  */
 export async function GET() {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';

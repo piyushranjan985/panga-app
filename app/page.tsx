@@ -54,6 +54,9 @@ export default function LandingPage() {
           <p className="text-xs text-white/60" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}>
             Live in Bengaluru, Pune &amp; Delhi NCR. This is an MVP build — expect rough edges.
           </p>
+          <Link href="/privacy" className="text-xs font-semibold text-white/70 underline underline-offset-2">
+            Privacy Policy
+          </Link>
         </div>
       </main>
     </>

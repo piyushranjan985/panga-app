@@ -10,18 +10,20 @@ const bodySchema = z.object({
 /**
  * Stand-in for "Sign in with Facebook", posted to by the mock consent
  * form in app/login/page.tsx -- simulates the profile data Facebook
- * would hand back after consent. Also what "Continue with Instagram"
- * posts to (see app/login/page.tsx's SOCIAL_ENDPOINT comment) -- Meta
- * retired general-purpose "Sign in with Instagram" for non-business
- * apps, so unlike Google/Facebook, Instagram has no real flow to grow
- * into; this mock is permanent for that button, not a placeholder.
+ * would hand back after consent.
  *
- * A REAL Facebook OAuth flow now exists alongside this one (Facebook
- * only, never Instagram): app/api/auth/facebook/route.ts + .../callback/
- * route.ts (see lib/auth/facebookOAuth.ts). Once FACEBOOK_APP_ID/SECRET
- * are set, the login page's "Continue with Facebook" button navigates
- * straight to the real flow; this route stays as the fallback (and for
- * Instagram, permanently) exactly like mock-google's does.
+ * A REAL Facebook OAuth flow now exists alongside this one:
+ * app/api/auth/facebook/route.ts + .../callback/route.ts (see
+ * lib/auth/facebookOAuth.ts). Once FACEBOOK_APP_ID/SECRET are set, the
+ * login page's "Continue with Facebook" button navigates straight to
+ * the real flow; this route stays as the fallback exactly like
+ * mock-google's does.
+ *
+ * (There used to be a "Continue with Instagram" button that also
+ * posted here -- removed 2026-09-27 rather than kept mocked, since Meta
+ * has no standalone consumer OAuth for Instagram at all, so unlike this
+ * Facebook flow there was never a real one for it to grow into. See
+ * lib/auth/facebookOAuth.ts's top comment.)
  */
 export async function POST(req: Request) {
   const json = await req.json().catch(() => null);

@@ -17,23 +17,23 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 };
 
 type Method = 'phone' | 'email';
-type SocialProvider = 'google' | 'facebook' | 'instagram' | null;
+type SocialProvider = 'google' | 'facebook' | null;
 
-// Instagram has no standalone consumer OAuth (Meta folded it into Facebook
-// Login), so "Continue with Instagram" intentionally hits the same
-// /api/auth/mock-facebook endpoint as the Facebook button — same identity
-// column, same mock flow, just a different icon/label so people can pick
-// whichever account they think of first.
-const SOCIAL_ENDPOINT: Record<'google' | 'facebook' | 'instagram', string> = {
+// Instagram had a button here until 2026-09-27, removed rather than kept
+// mocked: Meta has no standalone consumer OAuth for Instagram at all (the
+// current Instagram API only grants login to Instagram Business/Creator
+// accounts, aimed at content/DM management tools, not "any user signs
+// into your app with their personal Instagram") -- so unlike Google/
+// Facebook, there was never a real flow for it to grow into. See
+// lib/auth/facebookOAuth.ts's top comment for the full explanation.
+const SOCIAL_ENDPOINT: Record<'google' | 'facebook', string> = {
   google: '/api/auth/mock-google',
   facebook: '/api/auth/mock-facebook',
-  instagram: '/api/auth/mock-facebook',
 };
 
-const SOCIAL_LABEL: Record<'google' | 'facebook' | 'instagram', string> = {
+const SOCIAL_LABEL: Record<'google' | 'facebook', string> = {
   google: 'Google',
   facebook: 'Facebook',
-  instagram: 'Instagram',
 };
 
 function GoogleIcon() {
@@ -56,29 +56,9 @@ function FacebookIcon() {
   );
 }
 
-function InstagramIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden>
-      <defs>
-        <linearGradient id="igGrad" x1="0" y1="20" x2="20" y2="0">
-          <stop offset="0" stopColor="#FED576" />
-          <stop offset="0.26" stopColor="#F47133" />
-          <stop offset="0.61" stopColor="#BC3081" />
-          <stop offset="1" stopColor="#4C63D2" />
-        </linearGradient>
-      </defs>
-      <rect width="20" height="20" rx="5.5" fill="url(#igGrad)" />
-      <rect x="4.5" y="4.5" width="11" height="11" rx="3" stroke="#fff" strokeWidth="1.3" fill="none" />
-      <circle cx="10" cy="10" r="3" stroke="#fff" strokeWidth="1.3" fill="none" />
-      <circle cx="14" cy="6" r="0.8" fill="#fff" />
-    </svg>
-  );
-}
-
-const SOCIAL_ICON: Record<'google' | 'facebook' | 'instagram', () => React.ReactElement> = {
+const SOCIAL_ICON: Record<'google' | 'facebook', () => React.ReactElement> = {
   google: GoogleIcon,
   facebook: FacebookIcon,
-  instagram: InstagramIcon,
 };
 
 function LoginForm() {
@@ -224,49 +204,27 @@ function LoginForm() {
         <span className="h-px flex-1 bg-line" />
       </div>
 
-      {/* Every button here shares the same height, radius, font, and icon
-          slot size — only the icon and label change per provider — so the
-          row reads as one consistent set instead of three mismatched
-          widgets bolted together. */}
+      {/* Both buttons share the same height, radius, font, and icon slot
+          size — only the icon and label change per provider — so the row
+          reads as one consistent pair rather than two mismatched widgets. */}
       <div className="flex flex-col gap-2.5">
-        {(['google', 'facebook', 'instagram'] as const).map((p) => {
+        {/* A real top-level navigation to a server route that redirects to
+            the real provider (once GOOGLE_CLIENT_ID/FACEBOOK_APP_ID are
+            set) or back here with ?mock=... otherwise -- has to be a real
+            navigation, not a fetch, since an OAuth consent screen isn't
+            reachable from client JS/CORS. */}
+        {(['google', 'facebook'] as const).map((p) => {
           const Icon = SOCIAL_ICON[p];
-          const className =
-            'flex h-12 w-full items-center justify-center gap-3 rounded-full border border-line bg-white px-4 text-sm font-semibold text-ink transition hover:border-inkSoft/40';
-          const content = (
-            <>
+          return (
+            <a
+              key={p}
+              href={`/api/auth/${p}`}
+              className="flex h-12 w-full items-center justify-center gap-3 rounded-full border border-line bg-white px-4 text-sm font-semibold text-ink transition hover:border-inkSoft/40"
+            >
               <span className="grid h-5 w-5 flex-shrink-0 place-items-center overflow-hidden rounded-full">
                 <Icon />
               </span>
               Continue with {SOCIAL_LABEL[p]}
-            </>
-          );
-          // Google/Facebook: a real top-level navigation to a server route
-          // that redirects to the real provider (once GOOGLE_CLIENT_ID/
-          // FACEBOOK_APP_ID are set) or back here with ?mock=... otherwise
-          // -- has to be a real navigation, not a fetch, since an OAuth
-          // consent screen isn't reachable from client JS/CORS. Instagram
-          // has no real flow to navigate to at all (see SOCIAL_ENDPOINT's
-          // comment above) -- it opens the mock form directly, same as
-          // every button here used to.
-          if (p === 'instagram') {
-            return (
-              <button
-                key={p}
-                type="button"
-                onClick={() => {
-                  setSocialProvider(p);
-                  setSocialError(null);
-                }}
-                className={className}
-              >
-                {content}
-              </button>
-            );
-          }
-          return (
-            <a key={p} href={`/api/auth/${p}`} className={className}>
-              {content}
             </a>
           );
         })}
@@ -311,6 +269,14 @@ function LoginForm() {
           </div>
         </form>
       )}
+
+      <p className="text-center text-xs text-inkSoft">
+        By continuing, you agree to findmyVybe's{' '}
+        <a href="/privacy" className="font-semibold underline underline-offset-2">
+          Privacy Policy
+        </a>
+        .
+      </p>
     </main>
   );
 }

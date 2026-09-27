@@ -2,14 +2,15 @@
  * Real "Sign in with Facebook" -- OAuth2 authorization-code flow against
  * Meta's Graph API, same shape as googleOAuth.ts alongside it.
  *
- * NOT Instagram: Meta retired general-purpose "Sign in with Instagram"
- * for ordinary consumer apps (the current Instagram API only grants
- * login to Instagram Business/Creator accounts, aimed at content/DM
- * management tools, not "let any user sign into your app with their
- * personal Instagram") -- see app/login/page.tsx's SOCIAL_ENDPOINT
- * comment. The "Continue with Instagram" button stays on the mock
- * consent screen permanently, not just until credentials exist; there is
- * no real flow for this file to grow into for it.
+ * NOT Instagram, and there never will be an equivalent instagramOAuth.ts:
+ * Meta retired general-purpose "Sign in with Instagram" for ordinary
+ * consumer apps -- the current Instagram API only grants login to
+ * Instagram Business/Creator accounts, aimed at content/DM management
+ * tools, not "let any user sign into your app with their personal
+ * Instagram." findmyVybe's login page had a "Continue with Instagram"
+ * button until 2026-09-27; it was removed rather than left mocked
+ * indefinitely, since (unlike this Facebook flow) there's no real
+ * provider for it to eventually route to.
  *
  * REAL CREDENTIALS: FACEBOOK_APP_ID/SECRET come from a free Meta app
  * (developers.facebook.com -> Create App -> add the "Facebook Login"
