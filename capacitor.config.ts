@@ -9,16 +9,19 @@ import type { CapacitorConfig } from '@capacitor/cli';
 // pattern for a full-stack app like this one -- there is no static
 // export step, and none is needed.
 //
-// IMPORTANT: replace `server.url` below with your actual production
-// domain before running `npx cap add ios` / `npx cap add android` (see
-// MOBILE_APP_SETUP.md for the full walkthrough). Until it's a real
-// https:// URL, the native shells have nothing to load.
+// server.url is findmyvybe.com (the app's real, owned domain, added as a
+// custom domain on the Vercel project -- see next.config-adjacent setup
+// notes) rather than the *.vercel.app default. Editing this file alone
+// is NOT enough to update an already-built native app: run `npx cap
+// sync ios` / `npx cap sync android` after any change here (copies this
+// into ios/App/App/capacitor.config.json and
+// android/app/src/main/assets/capacitor.config.json) and rebuild.
 const config: CapacitorConfig = {
   appId: 'app.findmyvybe.mobile', // reverse-DNS bundle id -- pick your own if you'd rather not use this one; it must be unique on both stores and, once submitted, is very painful to change
   appName: 'findmyVybe',
   webDir: 'public', // required by the CLI even though remote-URL mode doesn't serve local files as the app's content
   server: {
-    url: 'https://findmyvybe-app.vercel.app',
+    url: 'https://findmyvybe.com',
     cleartext: false,
   },
   ios: {

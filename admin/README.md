@@ -96,7 +96,7 @@ repo as the consumer app, not a second deployment of the existing one:
    Vercel project -- that's the whole point of sharing the schema.
 6. Deploy. The admin portal gets its own Vercel URL/domain, separate from
    the consumer app's -- put it behind your own DNS name (e.g.
-   `admin.findmyvybe.app`) rather than leaving it on the default
+   `admin.findmyvybe.com`) rather than leaving it on the default
    `*.vercel.app` subdomain, and consider Vercel's password/SSO
    protection or an IP allowlist on top of this app's own login+MFA, since
    this console can read PII and take enforcement action across your
