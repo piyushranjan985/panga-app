@@ -18,7 +18,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ userId:
 
   const profile = await db.profile.findUnique({
     where: { userId },
-    include: { photos: { orderBy: { position: 'asc' }, take: 1 } },
+    // Same viewer-facing rule as app/api/discover/route.ts: a family-preview
+    // link is still another person looking at this profile, so an
+    // unapproved (MANUAL_REVIEW) or admin-removed photo must never show here
+    // either -- there was no filter at all before, so both could leak.
+    include: { photos: { where: { removedAt: null, moderationStatus: 'APPROVED' }, orderBy: { position: 'asc' }, take: 1 } },
   });
 
   if (!profile || !profile.familyPreviewOn) {

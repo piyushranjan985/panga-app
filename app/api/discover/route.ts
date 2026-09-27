@@ -77,7 +77,15 @@ export async function GET() {
         interests: true,
         user: { select: { lastActiveAt: true } },
         answers: { include: { prompt: true }, take: 3 },
-        photos: { where: { removedAt: null }, orderBy: { position: 'asc' }, take: 1 },
+        // Viewer-facing: moderationStatus: 'APPROVED' is required here, not
+        // just removedAt: null -- a MANUAL_REVIEW photo (borderline nudity
+        // score, or an unresolved multi-face shot, see policyEngine.ts) had a
+        // real Photo row and no filter here, so it was visible to every other
+        // user browsing /discover before a human ever looked at it -- exactly
+        // what schema.prisma's comment on Photo.moderationStatus promises
+        // never happens ("nothing becomes visible to other users before
+        // that"). This is the one signal that actually enforces it.
+        photos: { where: { removedAt: null, moderationStatus: 'APPROVED' }, orderBy: { position: 'asc' }, take: 1 },
       },
       // latitude/longitude/locationUpdatedAt come along for free (no
       // `select` narrowing on this query) -- distanceLabel above reads

@@ -37,7 +37,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ matchId
         interests: true,
         tribes: true,
         relationshipStyles: true,
-        photos: { orderBy: { position: 'asc' }, take: 1 },
+        // Same viewer-facing rule as app/api/discover/route.ts -- a matched
+        // partner is still another user, not the profile owner, so an
+        // unapproved or admin-removed photo must never render here either.
+        photos: { where: { removedAt: null, moderationStatus: 'APPROVED' }, orderBy: { position: 'asc' }, take: 1 },
       },
     }),
     db.profile.findUnique({ where: { userId: session.userId }, select: { latitude: true, longitude: true, city: true } }),
