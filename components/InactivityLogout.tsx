@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 // import a server/edge module's constant into this client component
 // directly, so this is the one place it's repeated. (A mismatch here
 // only changes how snappy the client-side redirect feels; the server
-// side -- middleware.ts sliding the cookie, and app/api routes' own
+// side -- proxy.ts sliding the cookie, and app/api routes' own
 // getSession() checks -- is what actually enforces it either way.)
 const TIMEOUT_MS = 10 * 60 * 1000;
 

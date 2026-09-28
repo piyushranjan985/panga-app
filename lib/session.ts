@@ -15,7 +15,7 @@ import {
 // "Trust & Safety" section of the strategy doc.
 //
 // The JWT signing/verifying itself lives in lib/sessionToken.ts (kept
-// free of next/headers and the database) so middleware.ts -- which
+// free of next/headers and the database) so proxy.ts -- which
 // slides the cookie's expiry on every request, see IDLE_TIMEOUT_SECONDS
 // there -- can import just that piece.
 
@@ -44,7 +44,7 @@ export async function createSession(
     sameSite: 'lax',
     path: '/',
     // 10-minute idle timeout (not the JWT's own longer expiry) --
-    // middleware.ts slides this forward on every request, so it only
+    // proxy.ts slides this forward on every request, so it only
     // actually runs out after IDLE_TIMEOUT_SECONDS with no requests at
     // all reaching the server. See lib/sessionToken.ts's comment.
     maxAge: IDLE_TIMEOUT_SECONDS,

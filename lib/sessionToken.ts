@@ -4,7 +4,7 @@ import { SignJWT, jwtVerify } from 'jose';
  * The pure, edge-safe half of session handling: the JWT itself and the
  * shared constants around it, with no dependency on next/headers or the
  * database. Split out from lib/session.ts specifically so
- * middleware.ts can import it alone -- middleware verifies and slides
+ * proxy.ts can import it alone -- middleware verifies and slides
  * the session cookie on every request, and pulling in lib/db.ts's
  * Prisma/pg client there would drag Node-only APIs into a file that
  * needs to run in the Edge runtime.
@@ -22,7 +22,7 @@ export const SECRET = new TextEncoder().encode(
 // day; see IDLE_TIMEOUT_SECONDS for that.
 export const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
-// The session cookie's own Max-Age. middleware.ts re-sets this on every
+// The session cookie's own Max-Age. proxy.ts re-sets this on every
 // request while the cookie still verifies, so in practice it only ever
 // counts down to zero after this many seconds with NO request reaching
 // the server at all -- tab/app closed, device asleep, network gone.
