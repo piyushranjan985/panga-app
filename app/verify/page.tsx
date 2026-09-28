@@ -93,7 +93,7 @@ function VerifyForm() {
         <input
           value={code}
           onChange={(e) => setCode(e.target.value)}
-          placeholder="43364336"
+          placeholder="00000000"
           inputMode="numeric"
           maxLength={8}
           className="rounded-2xl border border-line bg-white px-4 py-3 text-center text-2xl tracking-[0.5em]"
