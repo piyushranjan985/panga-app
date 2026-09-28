@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
+import InactivityLogout from '@/components/InactivityLogout';
 import IntentBadge from '@/components/IntentBadge';
 
 interface MatchRow {
@@ -23,6 +24,7 @@ export default function MatchesPage() {
   return (
     <div className="min-h-screen pb-24 sm:pb-10">
       <Navbar />
+      <InactivityLogout />
       <main className="mx-auto max-w-3xl px-4 py-6">
         <h1 className="mb-6 font-display text-2xl font-extrabold">Your matches</h1>
 

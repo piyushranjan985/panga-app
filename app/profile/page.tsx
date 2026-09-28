@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
+import InactivityLogout from '@/components/InactivityLogout';
 import IntentBadge from '@/components/IntentBadge';
 import { getCurrentPosition } from '@/lib/native';
 import {
@@ -490,6 +491,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen pb-24 sm:pb-10">
       <Navbar />
+      <InactivityLogout />
       <main className="mx-auto max-w-2xl px-4 py-6">
         <div className="flex items-center gap-4">
           {primaryPhoto ? (

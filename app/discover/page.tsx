@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Navbar from '@/components/Navbar';
+import InactivityLogout from '@/components/InactivityLogout';
 import VibeCard, { type FeedProfile } from '@/components/VibeCard';
 import MatchModal from '@/components/MatchModal';
 
@@ -48,6 +49,7 @@ export default function DiscoverPage() {
   return (
     <div className="min-h-screen pb-24 sm:pb-10">
       <Navbar />
+      <InactivityLogout />
       <main className="mx-auto max-w-3xl px-4 py-6">
         <h1 className="mb-1 font-display text-2xl font-extrabold">Discover</h1>
         <p className="mb-6 text-sm text-inkSoft">Ranked by shared interests, city, and intent.</p>

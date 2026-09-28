@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import InactivityLogout from '@/components/InactivityLogout';
 import {
   CITIES,
   DATE_VIBES,
@@ -517,6 +518,7 @@ function OnboardingForm() {
 
   return (
     <>
+      <InactivityLogout />
       <header className="sticky top-0 z-20 border-b border-line bg-white/95 px-6 py-3 backdrop-blur">
         <Link href="/discover" className="font-display text-lg font-extrabold">
           Vybe<span className="text-magenta">Match</span>

@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
+import InactivityLogout from '@/components/InactivityLogout';
 import { HELP_CATEGORIES, HELP_ENTRIES, entryById, searchHelp, type HelpEntry } from '@/lib/helpCenter';
 
 // useSearchParams() (used below, for VybeHelp's /help?entry=<id> deep
@@ -62,6 +63,7 @@ function HelpCenterContent() {
   return (
     <div className="min-h-screen pb-24 sm:pb-10">
       <Navbar />
+      <InactivityLogout />
       <main className="mx-auto max-w-2xl px-4 py-6">
         <h1 className="font-display text-2xl font-extrabold">Help Center</h1>
         <p className="mt-1 text-sm text-inkSoft">

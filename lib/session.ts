@@ -1,25 +1,29 @@
-import { SignJWT, jwtVerify } from 'jose';
 import { cookies, headers } from 'next/headers';
 import { db } from '@/lib/db';
+import {
+  COOKIE_NAME,
+  IDLE_TIMEOUT_SECONDS,
+  signSessionToken,
+  verifySessionToken,
+  type SessionPayload,
+} from '@/lib/sessionToken';
 
 // MVP auth: a signed, httpOnly JWT cookie set after OTP verification.
 // This is intentionally minimal so it's easy to read end-to-end. Before a
 // real launch, swap in a managed auth provider (Clerk / Supabase Auth) or at
 // least add refresh-token rotation and device/session revocation — see the
 // "Trust & Safety" section of the strategy doc.
+//
+// The JWT signing/verifying itself lives in lib/sessionToken.ts (kept
+// free of next/headers and the database) so middleware.ts -- which
+// slides the cookie's expiry on every request, see IDLE_TIMEOUT_SECONDS
+// there -- can import just that piece.
 
-const COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'findmyvybe_session';
-const SECRET = new TextEncoder().encode(
-  process.env.SESSION_JWT_SECRET || 'dev-only-change-me-please-generate-a-real-secret',
-);
-const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
+export { COOKIE_NAME, verifySessionToken, type SessionPayload };
 
 // Deliberately just the user id: a session no longer implies "signed in with
 // phone" now that email, Google, and Facebook are all valid ways in. Anything
 // that needs the user's phone/email looks it up fresh from the DB.
-export interface SessionPayload {
-  userId: string;
-}
 
 // `method` distinguishes phone OTP / email OTP / Google / Facebook -- the
 // four call sites (app/api/auth/verify-otp, verify-email-otp,
@@ -31,11 +35,7 @@ export async function createSession(
   payload: SessionPayload,
   meta: { method: 'phone_otp' | 'email_otp' | 'google' | 'facebook' },
 ) {
-  const token = await new SignJWT({ ...payload })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
-    .sign(SECRET);
+  const token = await signSessionToken(payload);
 
   const cookieStore = await cookies();
   cookieStore.set(COOKIE_NAME, token, {
@@ -43,7 +43,11 @@ export async function createSession(
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
-    maxAge: SESSION_TTL_SECONDS,
+    // 10-minute idle timeout (not the JWT's own longer expiry) --
+    // middleware.ts slides this forward on every request, so it only
+    // actually runs out after IDLE_TIMEOUT_SECONDS with no requests at
+    // all reaching the server. See lib/sessionToken.ts's comment.
+    maxAge: IDLE_TIMEOUT_SECONDS,
   });
 
   try {
@@ -70,44 +74,29 @@ export async function getSession(): Promise<SessionPayload | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
-  try {
-    const { payload } = await jwtVerify(token, SECRET);
-    if (typeof payload.userId !== 'string' || typeof payload.iat !== 'number') return null;
 
-    // "Force logout" (admin User Action, see admin's users/[userId]/actions
-    // route) sets User.sessionsInvalidatedAt -- any cookie issued before
-    // that moment is rejected here even though the JWT itself still
-    // verifies fine. One extra indexed lookup per request; acceptable at
-    // this scale (every route already does several Prisma calls), and a
-    // clean place to add caching later if it ever isn't.
-    const user = await db.user.findUnique({
-      where: { id: payload.userId },
-      select: { sessionsInvalidatedAt: true },
-    });
-    if (!user) return null;
-    if (user.sessionsInvalidatedAt && payload.iat * 1000 < user.sessionsInvalidatedAt.getTime()) {
-      return null;
-    }
+  const verified = await verifySessionToken(token);
+  if (!verified) return null;
 
-    return { userId: payload.userId };
-  } catch {
+  // "Force logout" (admin User Action, see admin's users/[userId]/actions
+  // route) sets User.sessionsInvalidatedAt -- any cookie issued before
+  // that moment is rejected here even though the JWT itself still
+  // verifies fine. One extra indexed lookup per request; acceptable at
+  // this scale (every route already does several Prisma calls), and a
+  // clean place to add caching later if it ever isn't.
+  const user = await db.user.findUnique({
+    where: { id: verified.userId },
+    select: { sessionsInvalidatedAt: true },
+  });
+  if (!user) return null;
+  if (user.sessionsInvalidatedAt && verified.iat * 1000 < user.sessionsInvalidatedAt.getTime()) {
     return null;
   }
-}
 
-export async function verifySessionToken(token: string): Promise<SessionPayload | null> {
-  try {
-    const { payload } = await jwtVerify(token, SECRET);
-    if (typeof payload.userId !== 'string') return null;
-    return { userId: payload.userId };
-  } catch {
-    return null;
-  }
+  return { userId: verified.userId };
 }
 
 export async function destroySession() {
   const cookieStore = await cookies();
   cookieStore.set(COOKIE_NAME, '', { path: '/', maxAge: 0 });
 }
-
-export { COOKIE_NAME };

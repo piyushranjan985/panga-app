@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import IntentBadge from '@/components/IntentBadge';
+import InactivityLogout from '@/components/InactivityLogout';
 import type { PairIntent, SignalItem } from '@/lib/matchSignals';
 import {
   pickVybePrompt,
@@ -386,6 +387,7 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-screen flex-col">
+      <InactivityLogout />
       <header className="flex items-center justify-between gap-2 border-b border-line bg-white px-3 py-3">
         <Link href="/matches" className="shrink-0 text-sm font-semibold text-inkSoft">
           ← Matches
