@@ -14,6 +14,7 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   oauth_invalid: 'That sign-in link expired or was invalid — please try again.',
   email_in_use: 'That email is already used by a different sign-in method — try phone or email code instead.',
   oauth_failed: 'Something went wrong signing in — please try again, or use phone or email code instead.',
+  not_invited: "findmyVybe isn't open to the public yet — this account isn't on the invite list.",
 };
 
 type Method = 'phone' | 'email';

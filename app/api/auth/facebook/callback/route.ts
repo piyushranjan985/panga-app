@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { createSession } from '@/lib/session';
 import { exchangeFacebookCodeForProfile } from '@/lib/auth/facebookOAuth';
 import { verifySocialOAuthState } from '@/lib/auth/oauthState';
+import { isBetaAllowed } from '@/lib/auth/betaAllowlist';
 
 /**
  * Same shape as app/api/auth/google/callback/route.ts -- see its
@@ -30,6 +31,13 @@ export async function GET(req: NextRequest) {
 
   try {
     const profile = await exchangeFacebookCodeForProfile(code);
+
+    // profile.email can be null (Facebook lets someone decline the email
+    // permission) -- isBetaAllowed(null) is false, so a declined-email
+    // sign-in is correctly refused rather than silently let through.
+    if (!isBetaAllowed(profile.email)) {
+      return redirectToLogin('not_invited');
+    }
 
     const user = await db.user.upsert({
       where: { facebookId: profile.facebookId },

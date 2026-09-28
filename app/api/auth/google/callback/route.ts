@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { createSession } from '@/lib/session';
 import { exchangeGoogleCodeForProfile } from '@/lib/auth/googleOAuth';
 import { verifySocialOAuthState } from '@/lib/auth/oauthState';
+import { isBetaAllowed } from '@/lib/auth/betaAllowlist';
 
 /**
  * Google redirects the user's browser here with ?code=&state= after they
@@ -33,6 +34,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const profile = await exchangeGoogleCodeForProfile(code);
+
+    if (!isBetaAllowed(profile.email)) {
+      return redirectToLogin('not_invited');
+    }
 
     const user = await db.user.upsert({
       where: { googleId: profile.googleId },

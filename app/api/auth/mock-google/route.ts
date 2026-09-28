@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { createSession } from '@/lib/session';
+import { isBetaAllowed, BETA_LOCKED_MESSAGE } from '@/lib/auth/betaAllowlist';
 
 const bodySchema = z.object({
   email: z.string().trim().toLowerCase().email('Enter a valid email address'),
@@ -30,6 +31,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid email' }, { status: 400 });
   }
   const { email } = parsed.data;
+
+  if (!isBetaAllowed(email)) {
+    return NextResponse.json({ error: BETA_LOCKED_MESSAGE }, { status: 403 });
+  }
+
   const googleId = `google:${email}`;
 
   try {

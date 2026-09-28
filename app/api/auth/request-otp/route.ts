@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { issueOtp } from '@/lib/otp';
+import { isBetaAllowed, BETA_LOCKED_MESSAGE } from '@/lib/auth/betaAllowlist';
 
 const bodySchema = z.object({
   phone: z
@@ -21,6 +22,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid phone number' }, { status: 400 });
   }
   const { phone } = parsed.data;
+
+  if (!isBetaAllowed(phone)) {
+    return NextResponse.json({ error: BETA_LOCKED_MESSAGE }, { status: 403 });
+  }
 
   // Look the number up before creating anything -- lets the client tell
   // someone "welcome back, you already have an account" instead of
