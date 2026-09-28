@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import DevEnvironmentBadge from '@/components/DevEnvironmentBadge';
 
 export const metadata: Metadata = {
   title: 'findmyVybe — say the quiet part first',
@@ -26,7 +27,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body className="font-body antialiased">{children}</body>
+      <body className="font-body antialiased">
+        <DevEnvironmentBadge />
+        {children}
+      </body>
     </html>
   );
 }

@@ -19,6 +19,7 @@
     "db:studio": "prisma studio",
     "verify:matching": "tsx scripts/verify-matching.ts",
     "cap:sync": "npx cap sync",
+    "cap:sync:dev": "CAP_ENV=dev npx cap sync",
     "cap:ios": "npx cap open ios",
     "cap:android": "npx cap open android",
     "prebuild": "node scripts/download-face-api-models.mjs",
