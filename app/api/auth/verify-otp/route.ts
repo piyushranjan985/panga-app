@@ -6,14 +6,14 @@ import { consumeOtp } from '@/lib/otp';
 
 const bodySchema = z.object({
   phone: z.string().trim(),
-  code: z.string().trim().length(6),
+  code: z.string().trim().length(8),
 });
 
 export async function POST(req: Request) {
   const json = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(json);
   if (!parsed.success) {
-    return NextResponse.json({ error: 'Enter the 6-digit code we sent you.' }, { status: 400 });
+    return NextResponse.json({ error: 'Enter the 8-digit code we sent you.' }, { status: 400 });
   }
   const { phone, code } = parsed.data;
 
@@ -24,9 +24,15 @@ export async function POST(req: Request) {
 
   const result = await consumeOtp(user.id, code);
   if (!result.ok) {
-    // Dev-only: says exactly which of the four ways this failed, instead
-    // of the deliberately-vague message every real user gets -- see
-    // consumeOtp's doc comment in lib/otp.ts for why. Never runs in
+    if (result.reason === 'too_many_attempts') {
+      return NextResponse.json(
+        { error: 'Too many wrong guesses for that code — request a new one.' },
+        { status: 429 },
+      );
+    }
+    // Dev-only: says exactly which of the remaining ways this failed,
+    // instead of the deliberately-vague message every real user gets --
+    // see consumeOtp's doc comment in lib/otp.ts for why. Never runs in
     // production (NODE_ENV is always 'production' there, Vercel or
     // otherwise), so this can't be used to enumerate valid/expired codes
     // against a real account.

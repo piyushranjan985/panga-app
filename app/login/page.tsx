@@ -70,7 +70,6 @@ function LoginForm() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hint, setHint] = useState<string | null>(null);
 
   const [socialProvider, setSocialProvider] = useState<SocialProvider>(null);
   const [socialEmail, setSocialEmail] = useState('');
@@ -108,16 +107,9 @@ function LoginForm() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Something went wrong');
-      setHint(data.devHint ?? null);
       const query = method === 'phone' ? `phone=${encodeURIComponent(phone)}` : `email=${encodeURIComponent(email)}`;
       const existingFlag = data.alreadyHasProfile ? '&existing=1' : '';
-      // router.push happens on the very next line after setHint -- this
-      // page unmounts before React ever gets a chance to paint that hint,
-      // so it was never actually visible here regardless of what the
-      // server returned. Carrying it in the query string instead of
-      // relying on in-memory state is what actually lets /verify show it.
-      const hintFlag = data.devHint ? `&hint=${encodeURIComponent(data.devHint)}` : '';
-      router.push(`/verify?method=${method}&${query}${existingFlag}${hintFlag}`);
+      router.push(`/verify?method=${method}&${query}${existingFlag}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -189,7 +181,6 @@ function LoginForm() {
           />
         )}
         {error && <p className="text-sm text-magenta">{error}</p>}
-        {hint && <p className="text-sm text-mint">{hint}</p>}
         <button
           type="submit"
           disabled={loading}

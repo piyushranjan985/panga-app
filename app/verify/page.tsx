@@ -14,15 +14,6 @@ function VerifyForm() {
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Seeded from the query string login/page.tsx now carries this in --
-  // previously this page just hardcoded "the code is always 123456" as
-  // static text regardless of what the server actually decided (mock or
-  // not), which is misleading either way: says nothing when the real
-  // provider legitimately doesn't have a fixed code, and lies if OTP_
-  // PROVIDER isn't actually resolving to "mock" at runtime despite the
-  // .env file saying so. Only ever shows a hint the server actually sent.
-  const [hint, setHint] = useState<string | null>(params.get('hint') ?? null);
-
   // A code was just sent from the login page, so resending immediately
   // would only ever be useful if it got lost -- a short cooldown (rather
   // than an unlimited-tap button) discourages hammering the mock OTP
@@ -54,7 +45,6 @@ function VerifyForm() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Couldn't resend the code");
-      setHint(data.devHint ?? null);
       setResendCooldown(RESEND_COOLDOWN_SECONDS);
     } catch (err) {
       setResendError(err instanceof Error ? err.message : "Couldn't resend the code");
@@ -92,7 +82,6 @@ function VerifyForm() {
         <p className="mt-2 text-sm text-inkSoft">
           Sent to {destination || (method === 'email' ? 'your email' : 'your number')}.
         </p>
-        {hint && <p className="mt-1 text-sm font-semibold text-mint">{hint}</p>}
       </div>
       {alreadyHasProfile && (
         <p className="rounded-xl bg-marigold/10 px-3 py-2 text-sm text-inkSoft">
@@ -104,9 +93,9 @@ function VerifyForm() {
         <input
           value={code}
           onChange={(e) => setCode(e.target.value)}
-          placeholder="123456"
+          placeholder="43364336"
           inputMode="numeric"
-          maxLength={6}
+          maxLength={8}
           className="rounded-2xl border border-line bg-white px-4 py-3 text-center text-2xl tracking-[0.5em]"
           required
         />

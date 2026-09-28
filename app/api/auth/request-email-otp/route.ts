@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { issueOtp } from '@/lib/otp';
-import { isBetaAllowed, BETA_LOCKED_MESSAGE } from '@/lib/auth/betaAllowlist';
 
 const bodySchema = z.object({
   email: z.string().trim().toLowerCase().email('Enter a valid email address'),
@@ -10,8 +9,9 @@ const bodySchema = z.object({
 
 /**
  * Email twin of /api/auth/request-otp — same OtpCode table, same mock
- * behaviour (see lib/otp.ts), just keyed by email instead of phone so
- * someone without an Indian mobile number can still sign in.
+ * behaviour and same cooldown/attempt-cap access model (see lib/otp.ts),
+ * just keyed by email instead of phone so someone without an Indian
+ * mobile number can still sign in.
  */
 export async function POST(req: Request) {
   const json = await req.json().catch(() => null);
@@ -21,17 +21,16 @@ export async function POST(req: Request) {
   }
   const { email } = parsed.data;
 
-  if (!isBetaAllowed(email)) {
-    return NextResponse.json({ error: BETA_LOCKED_MESSAGE }, { status: 403 });
-  }
-
   // Same "tell them before they get surprised" lookup as
   // app/api/auth/request-otp/route.ts -- see the comment there.
   const existing = await db.user.findUnique({ where: { email }, include: { profile: true } });
   const user = existing ?? (await db.user.create({ data: { email } }));
   const alreadyHasProfile = Boolean(existing?.profile);
 
-  const { devHint } = await issueOtp(user.id);
+  const issued = await issueOtp(user.id);
+  if (!issued.ok) {
+    return NextResponse.json({ error: 'A code was already sent recently — check your inbox or wait a bit before requesting another.' }, { status: 429 });
+  }
 
-  return NextResponse.json({ ok: true, devHint, alreadyHasProfile });
+  return NextResponse.json({ ok: true, alreadyHasProfile });
 }

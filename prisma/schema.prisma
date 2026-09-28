@@ -426,6 +426,11 @@ model OtpCode {
   codeHash   String
   expiresAt  DateTime
   consumedAt DateTime?
+  // Wrong-guess counter for THIS row only -- see lib/otp.ts's MAX_ATTEMPTS.
+  // Requesting a fresh code (a new row) starts a fresh count; the
+  // request-side cooldown in issueOtp is what stops that from being used
+  // to reset the counter indefinitely.
+  attempts   Int       @default(0)
   createdAt  DateTime  @default(now())
 
   @@index([userId, expiresAt])
