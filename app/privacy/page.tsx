@@ -16,12 +16,11 @@ import Link from 'next/link';
  * counsel review it before relying on it, especially for India's
  * Digital Personal Data Protection Act, 2023 (DPDP Act) and the IT
  * Rules, 2021, both of which apply to an India-focused app handling
- * this kind of data (location, photos, government ID). The one
- * placeholder that MUST be filled in with a real address before
- * submitting to Google/Meta for review is the contact email in the
- * "Contact us" and "Delete your data" sections below -- Meta in
+ * this kind of data (location, photos, government ID). The contact
+ * email in the "Contact us" and "Delete your data" sections below is
+ * support@findmyvybe.com (a real, monitored inbox) -- Meta in
  * particular may actually test that a Data Deletion request sent there
- * gets a response.
+ * gets a response, so keep that inbox checked once OAuth review starts.
  */
 export default function PrivacyPolicyPage() {
   return (
@@ -120,8 +119,8 @@ export default function PrivacyPolicyPage() {
       <p className="mt-2 text-inkSoft">
         findmyVybe doesn't yet have a self-serve "delete my account" button in the app. To request deletion of
         your account and personal data, email{' '}
-        <a href="mailto:REPLACE-WITH-A-REAL-SUPPORT-EMAIL@findmyvybe.com" className="font-semibold text-magenta">
-          REPLACE-WITH-A-REAL-SUPPORT-EMAIL@findmyvybe.com
+        <a href="mailto:support@findmyvybe.com" className="font-semibold text-magenta">
+          support@findmyvybe.com
         </a>{' '}
         from the email or phone number your account uses, and describe your request. We'll confirm the account,
         delete your profile, photos, messages, and associated personal data within a reasonable time, and let
@@ -151,8 +150,8 @@ export default function PrivacyPolicyPage() {
       <h2 className="mt-8 font-display text-xl font-bold">Contact us</h2>
       <p className="mt-2 text-inkSoft">
         Questions about this policy or your data:{' '}
-        <a href="mailto:REPLACE-WITH-A-REAL-SUPPORT-EMAIL@findmyvybe.com" className="font-semibold text-magenta">
-          REPLACE-WITH-A-REAL-SUPPORT-EMAIL@findmyvybe.com
+        <a href="mailto:support@findmyvybe.com" className="font-semibold text-magenta">
+          support@findmyvybe.com
         </a>
         .
       </p>
