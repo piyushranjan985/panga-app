@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { createSession } from '@/lib/session';
 import { isBetaAllowed, BETA_LOCKED_MESSAGE } from '@/lib/auth/betaAllowlist';
+import { DELETED_ACCOUNT_MESSAGE } from '@/lib/accountEnforcement';
 
 const bodySchema = z.object({
   email: z.string().trim().toLowerCase().email('Enter a valid email address'),
@@ -45,6 +46,10 @@ export async function POST(req: Request) {
       create: { googleId, email, emailVerified: true },
       include: { profile: true },
     });
+
+    if (user.status === 'DELETED') {
+      return NextResponse.json({ error: DELETED_ACCOUNT_MESSAGE }, { status: 403 });
+    }
 
     await createSession({ userId: user.id }, { method: 'google' });
 

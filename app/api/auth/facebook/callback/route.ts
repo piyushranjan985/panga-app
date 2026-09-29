@@ -53,6 +53,12 @@ export async function GET(req: NextRequest) {
       include: { profile: true },
     });
 
+    // Same check every other sign-in route makes -- see
+    // lib/accountEnforcement.ts's DELETED_ACCOUNT_MESSAGE doc comment.
+    if (user.status === 'DELETED') {
+      return redirectToLogin('account_deleted');
+    }
+
     await createSession({ userId: user.id }, { method: 'facebook' });
     return NextResponse.redirect(`${base}/${user.profile ? 'discover' : 'onboarding'}`);
   } catch (err: unknown) {

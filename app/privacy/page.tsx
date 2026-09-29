@@ -29,12 +29,12 @@ export default function PrivacyPolicyPage() {
         &larr; findmyVybe
       </Link>
       <h1 className="mt-4 font-display text-3xl font-extrabold">Privacy Policy</h1>
-      <p className="mt-2 text-xs uppercase tracking-wide text-inkSoft">Last updated: 27 September 2026</p>
+      <p className="mt-2 text-xs uppercase tracking-wide text-inkSoft">Last updated: 29 September 2026</p>
 
       <p className="mt-6 text-inkSoft">
         This policy explains what findmyVybe ("we", "us") collects when you use the app, why, and what you
-        can do about it. findmyVybe is an early-stage (MVP) dating &amp; matrimony-lite app for India, currently
-        live in Bengaluru, Pune, and Delhi NCR.
+        can do about it. findmyVybe is an early-stage (MVP) dating &amp; matrimony-lite app for India. We're
+        rolling out city by city, starting with Bengaluru.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">Information we collect</h2>
@@ -117,15 +117,26 @@ export default function PrivacyPolicyPage() {
         Delete your data
       </h2>
       <p className="mt-2 text-inkSoft">
-        findmyVybe doesn't yet have a self-serve "delete my account" button in the app. To request deletion of
-        your account and personal data, email{' '}
+        "Delete my account" on your Profile screen takes effect immediately: your account is deactivated,
+        you're signed out everywhere, and signing back in won't work. Your profile, photos, and matches
+        stop being visible to other members right away. We don't erase everything the instant you tap
+        delete, though -- Indian law (the IT Rules, 2021) requires platforms like ours to retain a
+        deleted account's records for a minimum period (180 days) for investigation purposes, and longer
+        if there's an open safety investigation or legal hold. During that window your data is kept, not
+        visible to anyone else on the app, and used only for that legal purpose -- then permanently
+        anonymized. If you change your mind before then, email{' '}
         <a href="mailto:support@findmyvybe.com" className="font-semibold text-magenta">
           support@findmyvybe.com
         </a>{' '}
-        from the email or phone number your account uses, and describe your request. We'll confirm the account,
-        delete your profile, photos, messages, and associated personal data within a reasonable time, and let
-        you know once it's done. Records we're legally required to keep (for example, evidence tied to an open
-        safety investigation) are retained only as long as that requirement lasts.
+        from the email or phone number your account used and we can restore your access. You can also
+        always request deletion this way instead of the in-app button, or ask us to permanently erase
+        your data sooner than the retention window where the law allows it.
+      </p>
+
+      <h2 className="mt-8 font-display text-xl font-bold">Governing law</h2>
+      <p className="mt-2 text-inkSoft">
+        This policy is governed by the laws of India, and any dispute arising from it or from how we
+        handle your data is subject to the exclusive jurisdiction of the courts of Ranchi, Jharkhand.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">Security</h2>

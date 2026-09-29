@@ -16,6 +16,7 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   oauth_failed: 'Something went wrong signing in — please try again, or use phone or email code instead.',
   not_invited: "findmyVybe isn't open to the public yet — this account isn't on the invite list.",
   inactive_logout: 'You were logged out after 10 minutes of inactivity — sign back in to continue.',
+  account_deleted: 'This account was deleted. If this was a mistake, contact support@findmyvybe.com to restore access.',
 };
 
 type Method = 'phone' | 'email';

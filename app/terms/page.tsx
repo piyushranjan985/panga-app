@@ -25,9 +25,11 @@ import Link from 'next/link';
  *     for the same reason. Once incorporated (or if run as a sole
  *     proprietorship under GST registration), add the real entity
  *     name/address to the "Who we are" section.
- *  2. "Governing law" names India generically (courts of Bengaluru) as
- *     a reasonable default for an India-only, India-based app -- swap
- *     in the actual city/state once a registered entity exists there.
+ *  2. "Governing law" names the courts of Ranchi, Jharkhand -- an
+ *     explicit choice for this project, not a generic default. Still
+ *     worth confirming with counsel once a registered entity exists,
+ *     since that entity's actual state of incorporation is usually the
+ *     more defensible jurisdiction to name.
  */
 export default function TermsOfServicePage() {
   return (
@@ -40,8 +42,8 @@ export default function TermsOfServicePage() {
 
       <p className="mt-6 text-inkSoft">
         These terms are the agreement between you and findmyVybe ("we", "us") for using the findmyVybe app --
-        an early-stage (MVP) dating &amp; matrimony-lite app for India, currently live in Bengaluru, Pune, and
-        Delhi NCR. By creating an account or otherwise using findmyVybe, you agree to these terms and to our{' '}
+        an early-stage (MVP) dating &amp; matrimony-lite app for India. We're rolling out city by city,
+        starting with Bengaluru. By creating an account or otherwise using findmyVybe, you agree to these terms and to our{' '}
         <Link href="/privacy" className="font-semibold text-magenta">
           Privacy Policy
         </Link>
@@ -199,7 +201,7 @@ export default function TermsOfServicePage() {
       <h2 className="mt-8 font-display text-xl font-bold">Governing law</h2>
       <p className="mt-2 text-inkSoft">
         These terms are governed by the laws of India, and any dispute arising from them or your use of
-        findmyVybe is subject to the exclusive jurisdiction of the courts of Bengaluru, Karnataka.
+        findmyVybe is subject to the exclusive jurisdiction of the courts of Ranchi, Jharkhand.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">Changes to these terms</h2>

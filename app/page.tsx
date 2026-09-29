@@ -52,7 +52,7 @@ export default function LandingPage() {
             </Link>
           </div>
           <p className="text-xs text-white/60" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}>
-            Live in Bengaluru, Pune &amp; Delhi NCR. This is an MVP build — expect rough edges.
+            MVP build, rolling out city by city — starting with Bengaluru. Expect rough edges.
           </p>
           <p className="flex items-center gap-3 text-xs font-semibold text-white/70">
             <Link href="/privacy" className="underline underline-offset-2">

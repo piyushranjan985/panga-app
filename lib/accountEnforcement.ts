@@ -5,6 +5,17 @@ export interface EnforcementCheck {
   reason?: string;
 }
 
+// Shared copy for every place a DELETED account gets turned away -- the six
+// sign-in routes (app/api/auth/verify-otp, verify-email-otp, google/callback,
+// facebook/callback, mock-google, mock-facebook) block *before* creating a
+// session, and lib/session.ts's getSession() checks it again on every request
+// as a defense-in-depth backstop for a session issued just before deletion.
+// Points at support rather than claiming anything about how long undo is
+// possible -- see app/api/me/delete/route.ts's doc comment for the actual
+// retention/undo window.
+export const DELETED_ACCOUNT_MESSAGE =
+  'This account was deleted. If this was a mistake, contact support@findmyvybe.com to restore access.';
+
 // Trust & Safety enforcement, set exclusively via the admin portal (see
 // admin/app/api/users/[userId]/actions/route.ts) writing to User.status /
 // messagingRestricted / discoveryRestricted / profileHidden -- plus, per

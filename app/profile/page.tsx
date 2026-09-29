@@ -226,6 +226,12 @@ export default function ProfilePage() {
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoNotice, setPhotoNotice] = useState<string | null>(null);
+  // "Delete my account" danger zone -- two-step (reveal, then confirm)
+  // rather than a single click, since this is the one irreversible-from-
+  // the-user's-side action on this whole page.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Inline "edit here" state -- one section open at a time, so a handful
   // of generic draft slots (reset whenever a section opens) is simpler
@@ -460,6 +466,26 @@ export default function ProfilePage() {
       setPhotoError(err instanceof Error ? err.message : 'Could not remove photo');
     } finally {
       setDeletingPhotoId(null);
+    }
+  }
+
+  // Soft-deletes via app/api/me/delete -- see that route's doc comment for
+  // exactly what this does and doesn't do (data is retained, not wiped;
+  // sign-in is blocked everywhere; support can restore it). The route
+  // already destroys the session server-side, so this just routes home
+  // rather than calling /api/auth/logout too.
+  async function deleteAccount() {
+    setDeleteError(null);
+    setDeletingAccount(true);
+    try {
+      const res = await fetch('/api/me/delete', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Could not delete account');
+      router.push('/');
+      router.refresh();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Could not delete account');
+      setDeletingAccount(false);
     }
   }
 
@@ -1405,6 +1431,66 @@ export default function ProfilePage() {
             </section>
           </>
         )}
+
+        {/* Danger zone: self-service account deletion (app/api/me/delete).
+            Two-step so a stray tap can't trigger it -- "Delete my account"
+            just reveals the real confirm button, styled and worded
+            distinctly so it doesn't read as reversible like the rest of
+            this page's toggles. See that route's doc comment for what
+            actually happens: data is retained (not wiped) for the legally
+            required minimum, sign-in is blocked everywhere immediately,
+            and support can restore access if you change your mind. */}
+        <section className="mt-8 rounded-2xl border border-red-200 bg-red-50 p-4">
+          <h2 className="font-display text-lg font-bold text-red-900">Danger zone</h2>
+          {!confirmingDelete ? (
+            <>
+              <p className="mt-1 text-sm text-red-800">
+                Deleting your account signs you out everywhere and blocks sign-in right away. Your data isn't
+                erased instantly -- we keep it for the legally required minimum period, then anonymize it. See our{' '}
+                <Link href="/privacy#data-deletion" className="font-semibold underline">
+                  Privacy Policy
+                </Link>{' '}
+                for details, including how to undo this.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteError(null);
+                  setConfirmingDelete(true);
+                }}
+                className="mt-3 rounded-2xl border border-red-300 bg-white px-4 py-2 text-sm font-bold text-red-700"
+              >
+                Delete my account
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="mt-1 text-sm font-semibold text-red-900">
+                Are you sure? You'll be signed out immediately and won't be able to sign back in until you contact
+                support@findmyvybe.com.
+              </p>
+              {deleteError && <p className="mt-2 text-sm font-semibold text-red-700">{deleteError}</p>}
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={deleteAccount}
+                  disabled={deletingAccount}
+                  className="rounded-2xl bg-red-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
+                >
+                  {deletingAccount ? 'Deleting…' : 'Yes, delete my account'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(false)}
+                  disabled={deletingAccount}
+                  className="rounded-2xl border border-red-300 bg-white px-4 py-2 text-sm font-bold text-red-700 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
+        </section>
 
         {/* Help & Support: same reasoning as the Log out button just
             below -- this needs to be reachable from a phone-width screen,

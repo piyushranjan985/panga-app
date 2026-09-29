@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { createSession } from '@/lib/session';
 import { consumeOtp } from '@/lib/otp';
+import { DELETED_ACCOUNT_MESSAGE } from '@/lib/accountEnforcement';
 
 const bodySchema = z.object({
   email: z.string().trim().toLowerCase().email(),
@@ -41,6 +42,10 @@ export async function POST(req: Request) {
         ? ` (dev detail: ${result.reason} -- see lib/otp.ts's consumeOtp doc comment)`
         : '';
     return NextResponse.json({ error: `That code is wrong or expired.${detail}` }, { status: 401 });
+  }
+
+  if (user.status === 'DELETED') {
+    return NextResponse.json({ error: DELETED_ACCOUNT_MESSAGE }, { status: 403 });
   }
 
   await db.user.update({ where: { id: user.id }, data: { emailVerified: true, lastActiveAt: new Date() } });

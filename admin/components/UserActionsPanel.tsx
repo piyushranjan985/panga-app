@@ -78,6 +78,20 @@ export default function UserActionsPanel({ userId, role, status, messagingRestri
           requireStepUp
         />
       )}
+      {/* Only for the reversible self-service soft-delete (app/api/me/delete
+          in the consumer app) -- see the restoreAccount case's comment in
+          app/api/users/[userId]/actions/route.ts for why this can't undo
+          the 'Delete account' button just above. */}
+      {hasPermission(role, 'users.action.deleteAccount') && status === 'DELETED' && (
+        <ConfirmActionButton
+          label="Restore account"
+          confirmTitle="Restore this account"
+          confirmDescription="Reactivates the account and lets the user sign in again -- use this once you've confirmed it's really them getting in touch, after a self-service deletion."
+          endpoint={endpoint}
+          extraBody={{ action: 'restoreAccount' }}
+          requireStepUp
+        />
+      )}
     </div>
   );
 }

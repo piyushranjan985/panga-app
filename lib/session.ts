@@ -84,14 +84,25 @@ export async function getSession(): Promise<SessionPayload | null> {
   // verifies fine. One extra indexed lookup per request; acceptable at
   // this scale (every route already does several Prisma calls), and a
   // clean place to add caching later if it ever isn't.
+  //
+  // Also the backstop for account deletion: the six sign-in routes
+  // (verify-otp, verify-email-otp, google/callback, facebook/callback,
+  // mock-google, mock-facebook) already refuse to issue a session for a
+  // DELETED account, and app/api/me/delete/route.ts sets
+  // sessionsInvalidatedAt when deleting -- so this check is normally
+  // redundant with that timestamp comparison above. It stays as its own
+  // explicit branch anyway for the one gap that leaves: a session created
+  // in the instant *before* a self-service delete completes shouldn't
+  // stay valid a moment longer than the request that deleted it.
   const user = await db.user.findUnique({
     where: { id: verified.userId },
-    select: { sessionsInvalidatedAt: true },
+    select: { sessionsInvalidatedAt: true, status: true },
   });
   if (!user) return null;
   if (user.sessionsInvalidatedAt && verified.iat * 1000 < user.sessionsInvalidatedAt.getTime()) {
     return null;
   }
+  if (user.status === 'DELETED') return null;
 
   return { userId: verified.userId };
 }

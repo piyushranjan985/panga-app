@@ -50,6 +50,16 @@ export async function GET(req: NextRequest) {
       include: { profile: true },
     });
 
+    // Same check every other sign-in route makes -- see
+    // lib/accountEnforcement.ts's DELETED_ACCOUNT_MESSAGE doc comment.
+    // Redirect-based here (like the other error cases above) rather than a
+    // JSON 403, since this route's caller is the browser following
+    // Google's own redirect, not a fetch() call the login page can read
+    // a body from.
+    if (user.status === 'DELETED') {
+      return redirectToLogin('account_deleted');
+    }
+
     await createSession({ userId: user.id }, { method: 'google' });
     return NextResponse.redirect(`${base}/${user.profile ? 'discover' : 'onboarding'}`);
   } catch (err: unknown) {

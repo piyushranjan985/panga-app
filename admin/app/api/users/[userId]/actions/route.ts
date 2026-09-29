@@ -23,6 +23,7 @@ const ACTIONS = [
   'unhideProfile',
   'removePhoto',
   'deleteAccount',
+  'restoreAccount',
 ] as const;
 type Action = (typeof ACTIONS)[number];
 
@@ -42,6 +43,11 @@ const ACTION_PERMISSION: Record<Action, Permission> = {
   unhideProfile: 'users.action.hideProfile',
   removePhoto: 'users.action.removePhoto',
   deleteAccount: 'users.action.deleteAccount',
+  // Reuses deleteAccount's permission (and, via STEP_UP_REQUIRED, its
+  // step-up requirement) rather than a new permission -- same pattern as
+  // ban/unban and suspend/unsuspend above, both reusing one permission
+  // for the reversible pair.
+  restoreAccount: 'users.action.deleteAccount',
 };
 
 const bodySchema = z.object({
@@ -162,6 +168,41 @@ export async function POST(req: Request, { params }: { params: Promise<{ userId:
     case 'deleteAccount': {
       await anonymizeUserAccount(userId, reason);
       newValue = { status: 'DELETED' };
+      break;
+    }
+    case 'restoreAccount': {
+      // Only meaningful for the self-service soft-delete path
+      // (app/api/me/delete in the consumer app) -- if this account was
+      // instead removed via 'deleteAccount' above (or a completed DPDP
+      // erasure), anonymizeUserAccount already nulled its
+      // phone/email/googleId/facebookId, so flipping status back to ACTIVE
+      // here can't restore sign-in; it's left as a no-op-ish status change
+      // rather than a blocked action, since there's no harm in it and no
+      // reliable way from here to tell 'identity wiped' apart from
+      // 'somehow never had one'.
+      if (user.status !== 'DELETED') {
+        return NextResponse.json({ error: 'Account is not deleted.' }, { status: 400 });
+      }
+      await db.user.update({
+        where: { id: userId },
+        data: { status: 'ACTIVE', statusReason: reason, statusChangedAt: new Date(), deletedAt: null },
+      });
+      // A self-service delete files an open PrivacyRequest (see
+      // app/api/me/delete/route.ts in the consumer app) so the compliance
+      // queue knows to anonymize this account once the retention window
+      // passes -- restoring the account means that request no longer
+      // applies, so close out anything still open for it rather than
+      // leaving a stale DELETION request pointed at an ACTIVE user.
+      await db.privacyRequest.updateMany({
+        where: { userId, type: 'DELETION', status: { in: ['RECEIVED', 'VERIFYING_IDENTITY', 'IN_PROGRESS'] } },
+        data: {
+          status: 'REJECTED',
+          handledById: admin.id,
+          resolutionNote: reason || 'Account restored via admin support action; user withdrew the deletion request.',
+          completedAt: new Date(),
+        },
+      });
+      newValue = { status: 'ACTIVE' };
       break;
     }
   }
