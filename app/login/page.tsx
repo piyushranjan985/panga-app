@@ -265,6 +265,10 @@ function LoginForm() {
 
       <p className="text-center text-xs text-inkSoft">
         By continuing, you agree to findmyVybe's{' '}
+        <a href="/terms" className="font-semibold underline underline-offset-2">
+          Terms of Service
+        </a>{' '}
+        and{' '}
         <a href="/privacy" className="font-semibold underline underline-offset-2">
           Privacy Policy
         </a>
