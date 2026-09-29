@@ -176,16 +176,18 @@ export default function TermsOfServicePage() {
 
       <h2 className="mt-8 font-display text-xl font-bold">Ending your account</h2>
       <p className="mt-2 text-inkSoft">
-        You can stop using findmyVybe at any time. To delete your account and personal data, email{' '}
+        You can stop using findmyVybe at any time. "Delete my account" on your Profile screen deactivates
+        your account and blocks sign-in immediately; you can also request deletion by emailing{' '}
         <a href="mailto:support@findmyvybe.com" className="font-semibold text-magenta">
           support@findmyvybe.com
         </a>{' '}
-        as described in our{' '}
+        -- see "Delete your data" in our{' '}
         <Link href="/privacy" className="font-semibold text-magenta">
           Privacy Policy
-        </Link>
-        . We can suspend or terminate your account for breaching these terms, including the community conduct
-        rules above, being confirmed underage, or suspected fraud or abuse.
+        </Link>{' '}
+        for exactly what deleting does and doesn't do, including how to undo it. We can suspend or
+        terminate your account for breaching these terms, including the community conduct rules above,
+        being confirmed underage, or suspected fraud or abuse.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">The app itself</h2>
