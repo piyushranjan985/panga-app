@@ -22,7 +22,7 @@ export default function Sidebar({ role, name, email }: { role: AdminRole; name: 
     <aside className="flex h-screen w-64 flex-none flex-col border-r border-border bg-surface">
       <div className="flex items-center justify-between px-5 py-5">
         <p className="text-sm font-extrabold">
-          Vybe<span className="text-brand">Match</span> Admin
+          findmy<span className="text-brand">Vybe</span> Admin
         </p>
         <ThemeToggle />
       </div>

@@ -53,7 +53,7 @@ function LoginForm() {
     <div className="flex min-h-screen items-center justify-center bg-canvas px-4">
       <div className="w-full max-w-sm rounded-card border border-border bg-surface p-8 shadow-sm">
         <p className="text-lg font-bold">
-          Vybe<span className="text-brand">Match</span> Admin
+          findmy<span className="text-brand">Vybe</span> Admin
         </p>
         <p className="mt-1 text-sm text-inkSoft">Sign in with your admin credentials.</p>
 

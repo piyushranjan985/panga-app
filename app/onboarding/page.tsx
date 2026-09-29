@@ -521,7 +521,7 @@ function OnboardingForm() {
       <InactivityLogout />
       <header className="sticky top-0 z-20 border-b border-line bg-white/95 px-6 py-3 backdrop-blur">
         <Link href="/discover" className="font-display text-lg font-extrabold">
-          Vybe<span className="text-magenta">Match</span>
+          findmy<span className="text-magenta">Vybe</span>
         </Link>
       </header>
       <main className="mx-auto flex min-h-screen max-w-lg flex-col gap-6 px-6 py-10">

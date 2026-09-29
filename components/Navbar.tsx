@@ -32,7 +32,7 @@ export default function Navbar() {
             screen, as a home link, everywhere someone can end up in the
             app, not just on wider viewports. */}
         <Link href="/discover" className="flex-none whitespace-nowrap font-display text-base font-extrabold sm:text-lg">
-          Vybe<span className="text-magenta">Match</span>
+          findmy<span className="text-magenta">Vybe</span>
         </Link>
         {/* flex-1 (not w-full) so this shares the row with the logo above
             instead of demanding the full width and overflowing it, now
