@@ -5,9 +5,9 @@ export interface EnforcementCheck {
   reason?: string;
 }
 
-// Shared copy for every place a DELETED account gets turned away -- the six
+// Shared copy for every place a DELETED account gets turned away -- the four
 // sign-in routes (app/api/auth/verify-otp, verify-email-otp, google/callback,
-// facebook/callback, mock-google, mock-facebook) block *before* creating a
+// mock-google) block *before* creating a
 // session, and lib/session.ts's getSession() checks it again on every request
 // as a defense-in-depth backstop for a session issued just before deletion.
 // Points at support rather than claiming anything about how long undo is

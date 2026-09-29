@@ -91,7 +91,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     category: 'account-login',
     question: 'How do I sign up or log in?',
     answer:
-      "From the welcome screen, choose to continue with your phone number (you'll get a one-time code by SMS) or with Google or Facebook. First time in, you'll be taken through onboarding to set up your profile; if you already have a profile, you'll land straight on Discover.",
+      "From the welcome screen, choose to continue with your phone number (you'll get a one-time code by SMS) or with Google. First time in, you'll be taken through onboarding to set up your profile; if you already have a profile, you'll land straight on Discover.",
     keywords: ['sign up', 'log in', 'register', 'create account', 'otp'],
   },
   {
@@ -99,7 +99,7 @@ export const HELP_ENTRIES: HelpEntry[] = [
     category: 'account-login',
     question: "I didn't receive my OTP code -- what do I do?",
     answer:
-      "Double-check the phone number you entered (including the country code), then use the \"Resend code\" option -- SMS delivery can occasionally take a minute. If it still doesn't arrive after a couple of tries, switch to signing in with Google or Facebook instead, or reach out from the Contact section below.",
+      "Double-check the phone number you entered (including the country code), then use the \"Resend code\" option -- SMS delivery can occasionally take a minute. If it still doesn't arrive after a couple of tries, switch to signing in with Google instead, or reach out from the Contact section below.",
     keywords: ['otp', 'code not received', 'sms', 'verification code'],
   },
   {

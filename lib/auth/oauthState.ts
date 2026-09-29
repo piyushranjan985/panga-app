@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify } from 'jose';
 
 /**
  * Shared OAuth2 `state` param signer for the real social-login providers
- * (Google, Facebook) below -- same CSRF-protection role as
+ * (currently just Google) below -- same CSRF-protection role as
  * lib/safety/identityVerification.ts's signVerificationState, just without
  * a userId to embed: at login time there's no session yet (that's the
  * whole point of this redirect), so the only thing this needs to prove on
@@ -19,13 +19,13 @@ const STATE_SECRET = new TextEncoder().encode(
 const STATE_TTL_SECONDS = 60 * 10; // 10 minutes -- plenty for a consent screen, short enough to limit replay risk
 const AUDIENCE = 'social_oauth_state';
 
-export type SocialProvider = 'google' | 'facebook';
+export type SocialProvider = 'google';
 
 /**
  * `provider` is embedded and re-checked on verify so a state token minted
- * for /api/auth/google can never be replayed against
- * /api/auth/facebook/callback (or vice versa) even though both reuse the
- * same secret and audience.
+ * for one provider's flow can't be replayed against another's callback --
+ * kept generic (SocialProvider is a union, currently of one) in case a
+ * second real OAuth provider is added later.
  */
 export async function signSocialOAuthState(provider: SocialProvider): Promise<string> {
   return new SignJWT({ provider })

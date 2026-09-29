@@ -2,12 +2,9 @@ import Link from 'next/link';
 
 /**
  * Real, published Privacy Policy -- required before Google will let
- * "Sign in with Google" open beyond a handful of added test users, and
- * before Meta will grant App Review for "Sign in with Facebook"
- * (Meta separately requires a reachable Data Deletion Instructions URL
- * too; #data-deletion below is written to satisfy that as one page
- * rather than a second route, and is the exact URL to paste into
- * both consoles' "Data Deletion Instructions" field).
+ * "Sign in with Google" open beyond a handful of added test users.
+ * #data-deletion below covers self-service and support-assisted account
+ * deletion; it isn't tied to any OAuth provider's requirements.
  *
  * DRAFT, NOT LEGAL ADVICE: this describes what findmyVybe's code
  * actually does today (verified against this codebase, not generic
@@ -41,9 +38,9 @@ export default function PrivacyPolicyPage() {
       <p className="mt-2 text-inkSoft">
         <strong className="text-ink">Account &amp; sign-in.</strong> Depending on how you sign in: your phone
         number (for a one-time SMS code), your email address (for a one-time email code), or — if you choose
-        "Continue with Google" or "Continue with Facebook" — the basic profile Google or Facebook shares with
-        us after you consent (your name, email address, and a unique account identifier from that provider).
-        We never see or store your Google or Facebook password.
+        "Continue with Google" — the basic profile Google shares with us after you consent (your name, email
+        address, and a unique account identifier from that provider). We never see or store your Google
+        password.
       </p>
       <p className="mt-2 text-inkSoft">
         <strong className="text-ink">Profile information.</strong> What you enter during onboarding and in your
@@ -90,8 +87,8 @@ export default function PrivacyPolicyPage() {
         Other members only see what your profile and settings choose to show them (never your phone number,
         email, or raw location — only an approximate distance). Infrastructure providers that store or process
         data on our behalf under contract (our database and file-storage hosts) — never sold or handed over for
-        their own marketing use. If you sign in with Google or Facebook, the only data exchanged is the standard
-        OAuth handshake needed to confirm who you are; we don't post to your Google or Facebook account or read
+        their own marketing use. If you sign in with Google, the only data exchanged is the standard OAuth
+        handshake needed to confirm who you are; we don't post to your Google account or read
         anything beyond the basic profile you approve on their consent screen. We disclose information to law
         enforcement only when legally required to.
       </p>

@@ -2,10 +2,9 @@ import Link from 'next/link';
 
 /**
  * Real, published Terms of Service -- required alongside app/privacy/
- * page.tsx before Google will grant OAuth consent screen verification
- * and before Meta will grant App Review for "Sign in with Facebook."
- * Paste https://findmyvybe.com/terms into both consoles' "Application
- * Terms of Service link" field.
+ * page.tsx before Google will grant OAuth consent screen verification.
+ * Paste https://findmyvybe.com/terms into the Google console's
+ * "Application Terms of Service link" field.
  *
  * DRAFT, NOT LEGAL ADVICE: like privacy/page.tsx, this describes what
  * findmyVybe's code actually does today (verified against this
@@ -62,9 +61,9 @@ export default function TermsOfServicePage() {
 
       <h2 className="mt-8 font-display text-xl font-bold">Your account</h2>
       <p className="mt-2 text-inkSoft">
-        You can sign in with a one-time code sent to your phone or email, or with "Continue with Google" /
-        "Continue with Facebook." Whichever method you use, you're responsible for keeping access to that phone
-        number, email inbox, Google account, or Facebook account secure -- anyone who can complete your sign-in
+        You can sign in with a one-time code sent to your phone or email, or with "Continue with Google."
+        Whichever method you use, you're responsible for keeping access to that phone number, email inbox, or
+        Google account secure -- anyone who can complete your sign-in
         method can access your findmyVybe account. Tell us right away at{' '}
         <a href="mailto:support@findmyvybe.com" className="font-semibold text-magenta">
           support@findmyvybe.com

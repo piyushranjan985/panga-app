@@ -22,18 +22,18 @@ import {
 export { COOKIE_NAME, verifySessionToken, type SessionPayload };
 
 // Deliberately just the user id: a session no longer implies "signed in with
-// phone" now that email, Google, and Facebook are all valid ways in. Anything
-// that needs the user's phone/email looks it up fresh from the DB.
+// phone" now that email and Google are also valid ways in. Anything that
+// needs the user's phone/email looks it up fresh from the DB.
 
-// `method` distinguishes phone OTP / email OTP / Google / Facebook -- the
-// four call sites (app/api/auth/verify-otp, verify-email-otp,
-// mock-google, mock-facebook) each pass their own. This also writes a
+// `method` distinguishes phone OTP / email OTP / Google -- the three call
+// sites (app/api/auth/verify-otp, verify-email-otp, mock-google) each pass
+// their own. This also writes a
 // LoginEvent row (admin portal's "Login/session history" on the User
 // detail page, and the Dashboard's platform breakdown) -- best-effort:
 // a logging failure never blocks the actual login.
 export async function createSession(
   payload: SessionPayload,
-  meta: { method: 'phone_otp' | 'email_otp' | 'google' | 'facebook' },
+  meta: { method: 'phone_otp' | 'email_otp' | 'google' },
 ) {
   const token = await signSessionToken(payload);
 
@@ -85,9 +85,9 @@ export async function getSession(): Promise<SessionPayload | null> {
   // this scale (every route already does several Prisma calls), and a
   // clean place to add caching later if it ever isn't.
   //
-  // Also the backstop for account deletion: the six sign-in routes
-  // (verify-otp, verify-email-otp, google/callback, facebook/callback,
-  // mock-google, mock-facebook) already refuse to issue a session for a
+  // Also the backstop for account deletion: the four sign-in routes
+  // (verify-otp, verify-email-otp, google/callback, mock-google) already
+  // refuse to issue a session for a
   // DELETED account, and app/api/me/delete/route.ts sets
   // sessionsInvalidatedAt when deleting -- so this check is normally
   // redundant with that timestamp comparison above. It stays as its own

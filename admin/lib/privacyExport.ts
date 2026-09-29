@@ -58,7 +58,7 @@ export async function compileUserDataExport(userId: string) {
       phone: user.phone,
       emailVerified: user.emailVerified,
       phoneVerified: user.phoneVerified,
-      signupMethods: [user.googleId && 'google', user.facebookId && 'facebook', user.phone && 'phone_otp', user.email && 'email_otp'].filter(Boolean),
+      signupMethods: [user.googleId && 'google', user.phone && 'phone_otp', user.email && 'email_otp'].filter(Boolean),
       status: user.status,
       createdAt: user.createdAt,
       lastActiveAt: user.lastActiveAt,

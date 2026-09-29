@@ -110,18 +110,18 @@ enum AccountStatus {
 model User {
   id            String   @id @default(cuid())
   // Every identity field below is optional and independently unique: a user
-  // signs up with exactly one of them (phone OTP, email OTP, Google,
-  // Facebook) but the schema doesn't force a "primary" method, so any of
-  // them can be null. At real scale this becomes a separate AuthIdentity
-  // join table (see the Swipe/Message models for the same "start simple,
-  // note the real-scale shape" pattern) so one person can link more than
-  // one method to the same account — not needed yet at MVP size.
+  // signs up with exactly one of them (phone OTP, email OTP, Google) but
+  // the schema doesn't force a "primary" method, so any of them can be
+  // null. At real scale this becomes a separate AuthIdentity join table
+  // (see the Swipe/Message models for the same "start simple, note the
+  // real-scale shape" pattern) so one person can link more than one
+  // method to the same account — not needed yet at MVP size. (Facebook
+  // login, and its facebookId column, were removed 2026-09-29.)
   phone         String?  @unique
   phoneVerified Boolean  @default(false)
   email         String?  @unique
   emailVerified Boolean  @default(false)
   googleId      String?  @unique
-  facebookId    String?  @unique
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   lastActiveAt  DateTime @default(now())

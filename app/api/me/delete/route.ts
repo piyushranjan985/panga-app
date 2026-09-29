@@ -9,7 +9,7 @@ import { writeAudit } from '@/lib/audit';
  * (admin/lib/userLifecycle.ts) -- those two exist for different reasons and
  * shouldn't share behavior:
  *
- *  - anonymizeUserAccount nulls phone/email/googleId/facebookId immediately.
+ *  - anonymizeUserAccount nulls phone/email/googleId immediately.
  *    Right for a Trust & Safety-driven removal or a DPDP deletion request
  *    the compliance team has already confirmed and completed -- irreversible
  *    on purpose.

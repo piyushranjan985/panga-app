@@ -8,8 +8,8 @@ import { db } from '@/lib/db';
  * "how OTPs are generated/checked" only has to be gotten right once.
  *
  * Access model: sign-up/sign-in is open to any phone number or email --
- * there's no per-person allowlist on this path (see mock-google/
- * mock-facebook and the real OAuth callbacks for the one place an
+ * there's no per-person allowlist on this path (see mock-google and
+ * the real Google OAuth callback for the one place an
  * allowlist, lib/auth/betaAllowlist.ts, is still used). What gates entry
  * here is knowing MOCK_OTP, a fixed code that's never included in any
  * API response or UI. Two things keep that fixed code from being brute

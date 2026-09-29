@@ -3,10 +3,9 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-// Shown on the login page when a real OAuth round trip (google/facebook)
-// comes back with ?error=... -- see app/api/auth/google/callback and
-// app/api/auth/facebook/callback. Deliberately separate from
-// SOCIAL_ENDPOINT's mock-form JSON error strings below: those describe a
+// Shown on the login page when a real OAuth round trip (google) comes
+// back with ?error=... -- see app/api/auth/google/callback. Deliberately
+// separate from SOCIAL_ENDPOINT's mock-form JSON error strings below: those describe a
 // mock POST failing validation, these describe a real redirect flow
 // failing (or being cancelled) partway through.
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
@@ -20,23 +19,25 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 };
 
 type Method = 'phone' | 'email';
-type SocialProvider = 'google' | 'facebook' | null;
+type SocialProvider = 'google' | null;
 
-// Instagram had a button here until 2026-09-27, removed rather than kept
-// mocked: Meta has no standalone consumer OAuth for Instagram at all (the
-// current Instagram API only grants login to Instagram Business/Creator
-// accounts, aimed at content/DM management tools, not "any user signs
-// into your app with their personal Instagram") -- so unlike Google/
-// Facebook, there was never a real flow for it to grow into. See
-// lib/auth/facebookOAuth.ts's top comment for the full explanation.
-const SOCIAL_ENDPOINT: Record<'google' | 'facebook', string> = {
+// Instagram had a button here until 2026-09-27, and Facebook until
+// 2026-09-29, both removed rather than kept mocked: Meta has no standalone
+// consumer OAuth for Instagram at all (the current Instagram API only
+// grants login to Instagram Business/Creator accounts, aimed at content/DM
+// management tools, not "any user signs into your app with their personal
+// Instagram") -- so there was never a real flow for it to grow into.
+// Facebook login worked technically, but Meta's Business Verification
+// requires a registered business entity to issue App Review, which
+// findmyVybe doesn't have -- not worth blocking launch on, especially since
+// most dating apps (Tinder, Hinge, Bumble) have themselves moved away from
+// requiring/offering it, favoring phone number + Google/Apple instead.
+const SOCIAL_ENDPOINT: Record<'google', string> = {
   google: '/api/auth/mock-google',
-  facebook: '/api/auth/mock-facebook',
 };
 
-const SOCIAL_LABEL: Record<'google' | 'facebook', string> = {
+const SOCIAL_LABEL: Record<'google', string> = {
   google: 'Google',
-  facebook: 'Facebook',
 };
 
 function GoogleIcon() {
@@ -50,18 +51,8 @@ function GoogleIcon() {
   );
 }
 
-function FacebookIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden>
-      <circle cx="10" cy="10" r="10" fill="#1877F2" />
-      <path fill="#fff" d="M13.3 10.5h-1.9V17H9V10.5H7.6V8.3H9V6.9c0-1.7.8-3.4 3.3-3.4h2v2.1h-1.4c-.4 0-.9.2-.9 1.1v1.6h2.4l-.3 2.2Z" />
-    </svg>
-  );
-}
-
-const SOCIAL_ICON: Record<'google' | 'facebook', () => React.ReactElement> = {
+const SOCIAL_ICON: Record<'google', () => React.ReactElement> = {
   google: GoogleIcon,
-  facebook: FacebookIcon,
 };
 
 function LoginForm() {
@@ -78,15 +69,14 @@ function LoginForm() {
   const [socialLoading, setSocialLoading] = useState(false);
   const [socialError, setSocialError] = useState<string | null>(null);
 
-  // Reached two ways: app/api/auth/google|facebook/route.ts redirects back
-  // here with ?mock=<provider> when GOOGLE_CLIENT_ID/FACEBOOK_APP_ID isn't
-  // set yet (falls back to exactly the mock form below, just reached via a
-  // real navigation instead of the button's old onClick), or the real
-  // callback route redirects here with ?error=<reason> after a failed/
-  // cancelled OAuth round trip.
+  // Reached two ways: app/api/auth/google/route.ts redirects back here
+  // with ?mock=google when GOOGLE_CLIENT_ID isn't set yet (falls back to
+  // exactly the mock form below, just reached via a real navigation instead
+  // of the button's old onClick), or the real callback route redirects
+  // here with ?error=<reason> after a failed/cancelled OAuth round trip.
   useEffect(() => {
     const mockProvider = searchParams.get('mock');
-    if (mockProvider === 'google' || mockProvider === 'facebook') {
+    if (mockProvider === 'google') {
       setSocialProvider(mockProvider);
     }
     const oauthError = searchParams.get('error');
@@ -203,11 +193,11 @@ function LoginForm() {
           reads as one consistent pair rather than two mismatched widgets. */}
       <div className="flex flex-col gap-2.5">
         {/* A real top-level navigation to a server route that redirects to
-            the real provider (once GOOGLE_CLIENT_ID/FACEBOOK_APP_ID are
-            set) or back here with ?mock=... otherwise -- has to be a real
-            navigation, not a fetch, since an OAuth consent screen isn't
-            reachable from client JS/CORS. */}
-        {(['google', 'facebook'] as const).map((p) => {
+            the real provider (once GOOGLE_CLIENT_ID is set) or back here
+            with ?mock=google otherwise -- has to be a real navigation, not a
+            fetch, since an OAuth consent screen isn't reachable from client
+            JS/CORS. */}
+        {(['google'] as const).map((p) => {
           const Icon = SOCIAL_ICON[p];
           return (
             <a

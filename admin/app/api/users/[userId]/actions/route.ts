@@ -175,7 +175,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ userId:
       // (app/api/me/delete in the consumer app) -- if this account was
       // instead removed via 'deleteAccount' above (or a completed DPDP
       // erasure), anonymizeUserAccount already nulled its
-      // phone/email/googleId/facebookId, so flipping status back to ACTIVE
+      // phone/email/googleId, so flipping status back to ACTIVE
       // here can't restore sign-in; it's left as a no-op-ish status change
       // rather than a blocked action, since there's no harm in it and no
       // reliable way from here to tell 'identity wiped' apart from

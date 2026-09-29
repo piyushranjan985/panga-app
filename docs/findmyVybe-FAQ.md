@@ -50,11 +50,11 @@ Two things: (1) intent is explicit and visible from the start -- you and everyon
 
 ### How do I sign up or log in?
 
-From the welcome screen, choose to continue with your phone number (you'll get a one-time code by SMS) or with Google, Facebook, or Instagram. First time in, you'll be taken through onboarding to set up your profile; if you already have a profile, you'll land straight on Discover.
+From the welcome screen, choose to continue with your phone number (you'll get a one-time code by SMS) or with Google. First time in, you'll be taken through onboarding to set up your profile; if you already have a profile, you'll land straight on Discover.
 
 ### I didn't receive my OTP code -- what do I do?
 
-Double-check the phone number you entered (including the country code), then use the "Resend code" option -- SMS delivery can occasionally take a minute. If it still doesn't arrive after a couple of tries, switch to signing in with Google, Facebook, or Instagram instead, or reach out from the Contact section below.
+Double-check the phone number you entered (including the country code), then use the "Resend code" option -- SMS delivery can occasionally take a minute. If it still doesn't arrive after a couple of tries, switch to signing in with Google instead, or reach out from the Contact section below.
 
 ### Is my account the same on the website and the mobile app?
 
