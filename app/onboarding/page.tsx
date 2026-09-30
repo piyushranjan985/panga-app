@@ -1122,7 +1122,17 @@ function OnboardingForm() {
       {error && <p className="text-sm text-magenta">{error}</p>}
       {finishNotice && <p className="text-sm text-inkSoft">{finishNotice}</p>}
 
-      <div className="mt-auto flex justify-between pt-4">
+      {/* Sticky rather than a plain in-flow row: several steps (interests,
+          tribe, values, prompts) run well past one screen's height, and a
+          Next button that only appears after scrolling all the way down is
+          easy to miss entirely on first glance -- pinning it to the bottom
+          of the viewport means it's always reachable with zero scrolling,
+          on both mobile and desktop web. -mx-6/px-6 cancels then reinstates
+          <main>'s own horizontal padding so the bar's background spans the
+          full width of the centered column instead of floating with gaps
+          on either side; the safe-area padding keeps it clear of the home
+          indicator on iOS (this ships inside the Capacitor app too). */}
+      <div className="sticky bottom-0 z-10 -mx-6 mt-auto flex justify-between border-t border-line bg-white/95 px-6 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 backdrop-blur">
         <button
           type="button"
           disabled={step === minStep}
