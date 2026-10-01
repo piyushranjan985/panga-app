@@ -26,7 +26,7 @@ export default function PrivacyPolicyPage() {
         &larr; findmyVybe
       </Link>
       <h1 className="mt-4 font-display text-3xl font-extrabold">Privacy Policy</h1>
-      <p className="mt-2 text-xs uppercase tracking-wide text-inkSoft">Last updated: 29 September 2026</p>
+      <p className="mt-2 text-xs uppercase tracking-wide text-inkSoft">Last updated: 1 October 2026</p>
 
       <p className="mt-6 text-inkSoft">
         This policy explains what findmyVybe ("we", "us") collects when you use the app, why, and what you
@@ -50,14 +50,16 @@ export default function PrivacyPolicyPage() {
       </p>
       <p className="mt-2 text-inkSoft">
         <strong className="text-ink">Location.</strong> Your city (set during onboarding) is always used to find
-        matches nearby. Sharing your device's precise location is optional and off by default — we only ask for
-        it when you explicitly tap "Share location" on your Profile, which triggers your browser's or phone's
-        own permission prompt; we never request it automatically, and we only ever ask for access while you're
-        using the app, never in the background. If you share it, we use it to show a rounded distance to other
+        matches nearby. Sharing your device's precise location is optional and off by default — we only ask when
+        you explicitly tap "Share location" on your Profile, which triggers your phone's or browser's own
+        permission prompt. That prompt gives you two outcomes: <strong className="text-ink">While Using the
+        App</strong>, so we can read your location only while findmyVybe is open, or <strong className="text-ink">
+        Never</strong>, so we don't get it at all and nothing else changes — Just Vibing and the rest of the app
+        still work from your city instead. We never request "Always"/background access (the same approach Tinder
+        takes), and we never ask automatically. If you do share it, we use it to show a rounded distance to other
         members (e.g. "3 km away," never your exact coordinates) and, in Just Vibing mode specifically, to find
-        and rank nearby matches more precisely. If you don't share it, Just Vibing still works, using your
-        city's general area instead of your exact location. You can turn location sharing off at any time from
-        your Profile, which deletes the stored coordinates.
+        and rank nearby matches more precisely. You can turn location sharing off at any time from your Profile,
+        which deletes the stored coordinates.
       </p>
       <p className="mt-2 text-inkSoft">
         <strong className="text-ink">Photos.</strong> Every photo you upload is automatically checked before it
