@@ -2,6 +2,13 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
 
+// Defensive bound for a very long-tenured, very active user -- matches
+// lists aren't currently paginated in the UI (unlike chat messages above,
+// which can legitimately run into the tens of thousands for one
+// conversation, nobody realistically accumulates more than a few hundred
+// live matches), so this is a ceiling, not a page size.
+const MATCH_LIST_LIMIT = 300;
+
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
@@ -17,12 +24,23 @@ export async function GET() {
         { userBId: session.userId, hiddenBAt: null },
       ],
     },
-    include: {
-      userA: { include: { profile: true } },
-      userB: { include: { profile: true } },
-      messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+    select: {
+      id: true,
+      createdAt: true,
+      userAId: true,
+      userBId: true,
+      // select, not include -- the full User+Profile models carry dozens
+      // of fields (onboarding tags, verification internals, etc.) this
+      // list view never uses; only one side of each pair is even shown
+      // (see `other` below), so the previous `include` fetched roughly
+      // 2x the profile data actually displayed, for every match, on
+      // every call.
+      userA: { select: { id: true, profile: { select: { displayName: true, avatarSeed: true, avatarHue: true, intent: true } } } },
+      userB: { select: { id: true, profile: { select: { displayName: true, avatarSeed: true, avatarHue: true, intent: true } } } },
+      messages: { orderBy: { createdAt: 'desc' }, take: 1, select: { body: true, senderId: true, createdAt: true } },
     },
     orderBy: { createdAt: 'desc' },
+    take: MATCH_LIST_LIMIT,
   });
 
   const shaped = matches.map((m) => {

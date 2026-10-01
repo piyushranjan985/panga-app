@@ -384,6 +384,6 @@ export const CHILDREN_OPTIONS: { slug: string; label: string; emoji: string }[] 
   { slug: 'open-unsure', label: 'Open / unsure', emoji: '🤔' },
 ];
 
-export const CITIES = ['Bengaluru', 'Mumbai', 'Delhi NCR', 'Pune', 'Hyderabad', 'Chennai'];
+export const CITIES = ['Bengaluru', 'Mumbai', 'Delhi NCR', 'Pune', 'Kolkata', 'Hyderabad', 'Chennai'];
 
 export const AVATAR_HUES = [1, 2, 3, 4, 5, 6] as const;

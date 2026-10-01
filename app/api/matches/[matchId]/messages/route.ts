@@ -6,6 +6,17 @@ import { getSession } from '@/lib/session';
 import { assertParticipant } from '@/lib/matchAuthz';
 import { checkMessagingAllowed } from '@/lib/accountEnforcement';
 
+// Most-recent messages returned, not the full history. A chat with months
+// of real back-and-forth has no natural cap otherwise -- this used to
+// fetch and ship every message in the match on every single page load,
+// fine in testing, silently unbounded for a long-lived real conversation.
+// 200 is a stopgap, not a feature: it keeps the worst case bounded without
+// requiring the chat page to support "load older messages" yet (a real
+// infinite-scroll/cursor-pagination UI is a reasonable follow-up, not
+// needed to fix the scale risk itself -- see @@index([matchId, createdAt])
+// on Message, which already supports it efficiently when that's built).
+const MESSAGE_PAGE_LIMIT = 200;
+
 export async function GET(_req: Request, { params }: { params: Promise<{ matchId: string }> }) {
   const { matchId } = await params;
   const session = await getSession();
@@ -14,14 +25,19 @@ export async function GET(_req: Request, { params }: { params: Promise<{ matchId
   const match = await assertParticipant(matchId, session.userId);
   if (!match) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
-  const messages = await db.message.findMany({
+  const latest = await db.message.findMany({
     where: { matchId },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { createdAt: 'desc' },
+    take: MESSAGE_PAGE_LIMIT,
     include: {
       likes: { select: { userId: true } },
       replyTo: { select: { id: true, body: true, senderId: true, kind: true } },
     },
   });
+  // Fetched newest-first (so the take: cap keeps the *recent* end of a long
+  // chat, not the oldest), reversed back to the ascending order the chat
+  // page already expects.
+  const messages = latest.reverse();
 
   return NextResponse.json({ messages });
 }

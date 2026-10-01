@@ -30,7 +30,7 @@ findmyVybe is a dating and matchmaking app built for how people actually date to
 
 ### Which cities is findmyVybe available in?
 
-findmyVybe currently matches people within the same city, across Bengaluru, Mumbai, Delhi NCR, Pune, Hyderabad, and Chennai. Set your city during onboarding -- Discover only shows people in the same city as you.
+findmyVybe currently operates in Bengaluru, Mumbai, Delhi NCR, Pune, Kolkata, Hyderabad, and Chennai -- set your city during onboarding. Who Discover shows you depends on which mode you're in: Just Vibing is distance-based (closer matches first, within about 25km), while Something Real and Rishta Ready show anyone in your city, plus nearby profiles just outside it (within about 50km).
 
 ### Is findmyVybe free to use?
 
@@ -158,7 +158,7 @@ There's currently no way to undo or take back a swipe once it's made -- take a m
 
 ### Who can see my profile?
 
-Anyone in the same city as you, matching your stated preferences, who hasn't been blocked and isn't excluded by Quiet Mode -- i.e., the same pool Discover pulls your candidates from, just in reverse. If you turn on Quiet Mode, you stop appearing to anyone.
+Anyone matching your stated preferences who's within the same distance/city rule your own Discover mode uses (same city, or nearby depending on your Discover mode -- see the cities question above), who hasn't been blocked and isn't excluded by Quiet Mode -- i.e., the same pool Discover pulls your candidates from, just in reverse. If you turn on Quiet Mode, you stop appearing to anyone.
 
 ### How does matching actually work -- do we both have to like each other?
 

@@ -2,10 +2,18 @@
  * Haversine great-circle distance -- the standard approach dating apps use
  * for "X km away": store each profile's last-shared lat/lng (opt-in,
  * browser Geolocation API), then compute distance on the server for any
- * pair that both have it set. Deliberately not part of lib/matching.ts's
- * scoring -- discovery eligibility is still same-city (see matching.ts),
- * this is purely a display signal, like Tinder/Hinge showing "3 miles
- * away" alongside (not instead of) their own ranking.
+ * pair that both have it set.
+ *
+ * Distance IS now part of lib/matching.ts's eligibility/scoring for some
+ * intents (Just Vibing is distance-first, not city-gated -- see
+ * DISTANCE_RADIUS_KM there) -- matching.ts keeps its own small haversine
+ * helper rather than importing this file, to stay zero-import/framework-
+ * free and trivially unit-testable (see scripts/verify-matching.ts); this
+ * file's haversineKm is what powers the *display* label below, and
+ * effectiveCoords (also used by the discover route to populate each
+ * MatchableProfile's lat/lng) is the shared source of truth for "what
+ * point do we use when a profile hasn't shared precise GPS" in both
+ * places.
  */
 
 const EARTH_RADIUS_KM = 6371;
@@ -50,6 +58,7 @@ export const CITY_CENTROIDS: Record<string, { lat: number; lng: number }> = {
   Mumbai: { lat: 19.076, lng: 72.8777 },
   'Delhi NCR': { lat: 28.6139, lng: 77.209 },
   Pune: { lat: 18.5204, lng: 73.8567 },
+  Kolkata: { lat: 22.5726, lng: 88.3639 },
   Hyderabad: { lat: 17.385, lng: 78.4867 },
   Chennai: { lat: 13.0827, lng: 80.2707 },
 };
@@ -63,7 +72,7 @@ interface DistanceSource {
 /** A profile's own precise, opted-in coordinates when it has them, else
  * its city's centroid. `exact` tells distanceLabel whether the result is
  * a real GPS point or a same-city estimate. */
-function effectiveCoords(p: DistanceSource | null | undefined): { lat: number; lng: number; exact: boolean } | null {
+export function effectiveCoords(p: DistanceSource | null | undefined): { lat: number; lng: number; exact: boolean } | null {
   if (p?.latitude != null && p?.longitude != null) return { lat: p.latitude, lng: p.longitude, exact: true };
   const centroid = p?.city ? CITY_CENTROIDS[p.city] : undefined;
   return centroid ? { lat: centroid.lat, lng: centroid.lng, exact: false } : null;

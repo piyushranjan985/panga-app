@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { rankCandidates, type MatchableProfile } from '@/lib/matching';
-import { distanceLabel } from '@/lib/geo';
+import { distanceLabel, effectiveCoords } from '@/lib/geo';
 import { checkAccountActive } from '@/lib/accountEnforcement';
 import { cacheGet, cacheSet } from '@/lib/cache';
 
@@ -36,7 +36,15 @@ function toMatchable(p: {
   quietMode: boolean;
   interests: { id: string }[];
   user: { lastActiveAt: Date };
+  latitude?: number | null;
+  longitude?: number | null;
 }): MatchableProfile {
+  // Effective coords (real GPS if shared, else the city's centroid) --
+  // same fallback distanceLabel() already uses for the display string, now
+  // also feeding lib/matching.ts's eligibility/ranking for Just Vibing /
+  // Something Real / Rishta Ready. See lib/geo.ts's effectiveCoords and the
+  // file-level comment on lib/matching.ts's MatchableProfile.
+  const coords = effectiveCoords({ latitude: p.latitude ?? null, longitude: p.longitude ?? null, city: p.city });
   return {
     userId: p.userId,
     gender: p.gender as MatchableProfile['gender'],
@@ -46,6 +54,8 @@ function toMatchable(p: {
     quietMode: p.quietMode,
     interestIds: p.interests.map((i) => i.id),
     lastActiveAt: p.user.lastActiveAt,
+    latitude: coords?.lat ?? null,
+    longitude: coords?.lng ?? null,
   };
 }
 
@@ -72,7 +82,7 @@ function toMatchable(p: {
  * FEED_SIZE winners, not for the whole pool. See the GET handler below.
  */
 async function getCityCandidatePool(city: string): Promise<MatchableProfile[]> {
-  const cacheKey = `discover:pool:v1:${city}`;
+  const cacheKey = `discover:pool:v2:${city}`; // v2: added latitude/longitude (intent-aware distance matching)
   const cached = await cacheGet<MatchableProfile[]>(cacheKey);
   if (cached) {
     // Round-tripping through JSON (cacheSet/cacheGet) turns Date fields into
@@ -94,6 +104,8 @@ async function getCityCandidatePool(city: string): Promise<MatchableProfile[]> {
       city: true,
       intent: true,
       quietMode: true,
+      latitude: true,
+      longitude: true,
       interests: { select: { id: true } },
       user: { select: { lastActiveAt: true } },
     },
@@ -126,10 +138,12 @@ export async function GET() {
     where: { userId: session.userId },
     include: { interests: true, user: { select: { lastActiveAt: true } } },
   });
-  // Distance is purely a display signal, computed independently of the
-  // ranking/eligibility layer above (see lib/geo.ts) -- omitted from the
-  // feed entirely for any pair where either side hasn't opted into
-  // sharing location, rather than showing a placeholder.
+  // The `distance` field in the final feed response below is still a pure
+  // *display* label (see lib/geo.ts's distanceLabel, unchanged) -- omitted
+  // whenever either side's effective coordinates can't be resolved. That's
+  // separate from the raw lat/lng now feeding eligibility/ranking in
+  // lib/matching.ts (see toMatchable above) for Just Vibing / Something
+  // Real / Rishta Ready.
   if (!viewerProfile) {
     return NextResponse.json({ error: 'Finish onboarding first' }, { status: 409 });
   }

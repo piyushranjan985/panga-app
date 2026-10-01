@@ -2,10 +2,20 @@
  * Core discovery/compatibility logic for findmyVybe.
  *
  * Deliberately framework- and database-free: every type here is a plain
- * object, so this file has zero imports and can be unit-tested with nothing
- * but a TypeScript runtime (see scripts/verify-matching.ts). The API route
- * at app/api/discover/route.ts maps Prisma rows onto these shapes and calls
- * straight into here — the query layer should never contain scoring logic.
+ * object, so this file has zero *framework/DB* imports and can be
+ * unit-tested with nothing but a TypeScript runtime (see
+ * scripts/verify-matching.ts). The API route at app/api/discover/route.ts
+ * maps Prisma rows onto these shapes and calls straight into here — the
+ * query layer should never contain scoring logic.
+ *
+ * latitude/longitude on MatchableProfile are EFFECTIVE coordinates —
+ * either a profile's real opted-in GPS point, or its city's centroid as a
+ * fallback (see lib/geo.ts's effectiveCoords, which the discover route
+ * calls before building these objects) — so distance below is always
+ * computable for any profile with a recognized city, not just the minority
+ * who've granted precise location. This file keeps its own tiny haversine
+ * helper rather than importing lib/geo.ts's, purely to stay self-contained
+ * per the paragraph above; the two are intentionally the same formula.
  */
 
 export type IntentType = 'JUST_VIBING' | 'SOMETHING_REAL' | 'RISHTA_READY';
@@ -20,6 +30,12 @@ export interface MatchableProfile {
   quietMode: boolean;
   interestIds: string[];
   lastActiveAt: Date;
+  // Effective (GPS-or-city-centroid-fallback) coordinates -- see the
+  // file-level comment above. Optional/nullable because a handful of call
+  // sites (tests, anywhere a city can't be resolved to a centroid) may not
+  // have them; every distance check below is null-safe.
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 /**
@@ -46,7 +62,58 @@ const WEIGHTS = {
   sameCity: 12,
   intent: 40, // scaled by the 0..1 compatibility factor above
   recency: 8, // active in the last 48h
+  proximityPrimary: 30, // Just Vibing: distance is THE location signal -- see DISTANCE_RADIUS_KM
+  proximitySecondary: 10, // Something Real / Rishta Ready: a same-city tiebreaker, not a requirement
 };
+
+/**
+ * Per-intent location rules (see isEligibleCandidate and scoreCandidate).
+ *
+ * - JUST_VIBING: distance-only -- "closer the better" for a casual,
+ *   possibly-same-day hangout, so a same-city match on the far side of a
+ *   sprawling metro (Bengaluru, Delhi NCR) shouldn't count as "nearby"
+ *   just because the city string matches.
+ * - SOMETHING_REAL / RISHTA_READY: same city remains sufficient on its own
+ *   (unchanged from before this file supported distance at all), OR within
+ *   this radius for someone just outside the city label/boundary --
+ *   distance is additionally used as a smaller ranking tiebreaker within
+ *   an eligible pool (WEIGHTS.proximitySecondary), not a requirement.
+ *
+ * Tune these independently -- nothing else depends on them being equal.
+ */
+export const DISTANCE_RADIUS_KM: Record<IntentType, number> = {
+  JUST_VIBING: 25,
+  SOMETHING_REAL: 50,
+  RISHTA_READY: 50,
+};
+
+const EARTH_RADIUS_KM = 6371;
+
+function toRadians(deg: number): number {
+  return (deg * Math.PI) / 180;
+}
+
+/** Same haversine formula as lib/geo.ts -- see the file-level comment on why it's duplicated here. */
+function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const dLat = toRadians(bLat - aLat);
+  const dLng = toRadians(bLng - aLng);
+  const lat1 = toRadians(aLat);
+  const lat2 = toRadians(bLat);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/** Null when either side lacks resolvable coordinates (should be rare -- see MatchableProfile). */
+function distanceKmBetween(a: MatchableProfile, b: MatchableProfile): number | null {
+  if (a.latitude == null || a.longitude == null || b.latitude == null || b.longitude == null) return null;
+  return haversineKm(a.latitude, a.longitude, b.latitude, b.longitude);
+}
+
+/** 1 at zero distance, falling linearly to 0 at radiusKm and beyond; null distance scores 0. */
+function proximityFactor(distanceKm: number | null, radiusKm: number): number {
+  if (distanceKm === null) return 0;
+  return Math.max(0, 1 - distanceKm / radiusKm);
+}
 
 function mutualGenderMatch(a: MatchableProfile, b: MatchableProfile): boolean {
   return a.lookingFor.includes(b.gender) && b.lookingFor.includes(a.gender);
@@ -71,13 +138,35 @@ export function isEligibleCandidate(viewer: MatchableProfile, candidate: Matchab
   const compatibility = INTENT_COMPATIBILITY[viewer.intent][candidate.intent];
   if (compatibility <= 0) return false;
 
-  const sameCity = viewer.city === candidate.city;
-  // Circles used to offer a second path to eligibility here (share a
-  // circle even across cities); now that they're gone, same city is the
-  // only "there's a real path to meet" signal left.
-  if (!sameCity) return false;
+  return hasLocationPath(viewer, candidate);
+}
 
-  return true;
+/**
+ * The location leg of eligibility -- split out of isEligibleCandidate
+ * because the rule itself depends on the VIEWER's intent (which Discover
+ * tab/mode they're browsing in), not a single fixed rule for everyone. See
+ * DISTANCE_RADIUS_KM's doc comment for why each intent works the way it
+ * does.
+ *
+ * Note: this function itself has no notion of "the candidate pool only
+ * came from one city" -- that's a performance choice made one layer up, in
+ * app/api/discover/route.ts's getCityCandidatePool (reusing the per-city
+ * cache from the earlier discover-feed scale fix, since findmyVybe's
+ * supported cities are each hundreds of km apart, so a cross-city match
+ * within these radii essentially never arises with the current city list).
+ * isEligibleCandidate stays correct and general regardless of what pool
+ * it's handed.
+ */
+function hasLocationPath(viewer: MatchableProfile, candidate: MatchableProfile): boolean {
+  const sameCity = viewer.city === candidate.city;
+  const distance = distanceKmBetween(viewer, candidate);
+
+  if (viewer.intent === 'JUST_VIBING') {
+    return distance !== null && distance <= DISTANCE_RADIUS_KM.JUST_VIBING;
+  }
+
+  const radius = DISTANCE_RADIUS_KM[viewer.intent];
+  return sameCity || (distance !== null && distance <= radius);
 }
 
 export interface ScoredCandidate {
@@ -104,6 +193,20 @@ export function scoreCandidate(viewer: MatchableProfile, candidate: MatchablePro
   const compatibility = INTENT_COMPATIBILITY[viewer.intent][candidate.intent];
   score += compatibility * WEIGHTS.intent;
   if (compatibility === 1) reasons.push('same intent');
+
+  // Just Vibing: distance is the primary location signal, weighted heavily
+  // so closer candidates visibly outrank farther ones within the radius
+  // (see DISTANCE_RADIUS_KM). Something Real / Rishta Ready: a lighter
+  // tiebreaker on top of the sameCity bonus above, not a requirement.
+  const distance = distanceKmBetween(viewer, candidate);
+  const radius = DISTANCE_RADIUS_KM[viewer.intent];
+  const proximity = proximityFactor(distance, radius);
+  if (proximity > 0) {
+    const weight = viewer.intent === 'JUST_VIBING' ? WEIGHTS.proximityPrimary : WEIGHTS.proximitySecondary;
+    score += proximity * weight;
+    if (distance !== null && distance <= 2) reasons.push('right nearby');
+    else reasons.push('close by');
+  }
 
   const hoursSinceActive = (now.getTime() - candidate.lastActiveAt.getTime()) / 36e5;
   if (hoursSinceActive <= 48) {
