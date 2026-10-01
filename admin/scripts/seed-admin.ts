@@ -187,6 +187,22 @@ async function seedSampleContent(ctx: Awaited<ReturnType<typeof main>>) {
       ],
     });
   }
+  // Upserted on its own (not gated by the count===0 check above) so this
+  // specific row -- the one admin/app/api/cron/retention-purge and
+  // admin/lib/retentionEnforcement.ts actually read -- gets created or
+  // corrected on every seed run, including against a DB that already has
+  // the four rows above from before this policy existed.
+  await db.retentionPolicy.upsert({
+    where: { dataCategory: 'Deleted-account data (pre-anonymization hold)' },
+    create: {
+      dataCategory: 'Deleted-account data (pre-anonymization hold)',
+      retentionDays: 180,
+      legalBasis:
+        'IT (Intermediary Guidelines) Rules, 2021, Rule 3(1)(h): minimum retention of a deactivated/deleted account\'s records for investigation purposes before the account may be anonymized. NOT LEGAL ADVICE -- confirm with counsel. See app/api/me/delete/route.ts and app/privacy/page.tsx.',
+      autoDeleteEnabled: true,
+    },
+    update: {},
+  });
   if ((await db.processingActivity.count()) === 0) {
     await db.processingActivity.createMany({
       data: [

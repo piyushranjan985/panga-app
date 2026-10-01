@@ -6,6 +6,7 @@ import EmptyState from '@/components/EmptyState';
 import ConfirmActionButton from '@/components/ConfirmActionButton';
 import NewRetentionPolicyForm from '@/components/NewRetentionPolicyForm';
 import { hasPermission } from '@/lib/rbac';
+import { DELETION_RETENTION_CATEGORY } from '@/lib/retentionEnforcement';
 
 export default async function RetentionPage() {
   const admin = await requirePageAccess('privacy.view');
@@ -46,7 +47,13 @@ export default async function RetentionPage() {
                         <ConfirmActionButton
                           label={p.autoDeleteEnabled ? 'Switch to manual review' : 'Enable auto-delete'}
                           confirmTitle={p.autoDeleteEnabled ? 'Switch this category to manual review' : 'Enable auto-delete for this category'}
-                          confirmDescription={!p.autoDeleteEnabled ? 'No purge job runs yet -- this only flags intent for when one is built.' : undefined}
+                          confirmDescription={
+                            !p.autoDeleteEnabled
+                              ? p.dataCategory === DELETION_RETENTION_CATEGORY
+                                ? 'A scheduled job (admin/app/api/cron/retention-purge) checks this daily and completes any DPDP deletion request whose account has passed this many days since deletedAt -- turning this on lets it actually run.'
+                                : 'No purge job runs for this category yet -- this only flags intent for when one is built.'
+                              : undefined
+                          }
                           endpoint={`/api/privacy/retention/${p.id}`}
                           method="PATCH"
                           extraBody={{ autoDeleteEnabled: !p.autoDeleteEnabled }}

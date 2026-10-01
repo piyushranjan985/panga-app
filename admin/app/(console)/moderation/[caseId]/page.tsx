@@ -7,6 +7,7 @@ import PageHeader from '@/components/PageHeader';
 import Badge from '@/components/Badge';
 import ModerationCaseActions from '@/components/ModerationCaseActions';
 import ModerationNoteForm from '@/components/ModerationNoteForm';
+import ModerationCaseMessages from '@/components/ModerationCaseMessages';
 import { asPhotoEvidence, asIdentityEvidence, humanizePhotoReason, humanizeIdentityFailure } from '@/lib/moderationEvidence';
 
 export default async function ModerationCaseDetailPage({ params }: { params: Promise<{ caseId: string }> }) {
@@ -38,6 +39,7 @@ export default async function ModerationCaseDetailPage({ params }: { params: Pro
   });
 
   const canViewRisk = hasPermission(admin.role, 'moderation.viewRiskScore');
+  const canViewMessages = hasPermission(admin.role, 'moderation.viewMessages');
 
   return (
     <div>
@@ -143,6 +145,14 @@ export default async function ModerationCaseDetailPage({ params }: { params: Pro
               </p>
             )}
           </div>
+
+          {c.report && canViewMessages && (
+            <ModerationCaseMessages
+              caseId={c.id}
+              subjectUserId={c.subjectUserId}
+              reporterName={c.report.reporter.profile?.displayName ?? 'the reporter'}
+            />
+          )}
 
           <div className="rounded-card border border-border bg-surface p-5">
             <h2 className="mb-3 text-sm font-bold">Case notes</h2>

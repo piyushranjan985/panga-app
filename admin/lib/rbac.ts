@@ -21,6 +21,7 @@ export type Permission =
   | 'users.action.deleteAccount'
   | 'moderation.view'
   | 'moderation.viewRiskScore'
+  | 'moderation.viewMessages'
   | 'moderation.assign'
   | 'moderation.resolve'
   | 'moderation.appeals.review'
@@ -68,6 +69,7 @@ const ALL: Permission[] = [
   'users.action.deleteAccount',
   'moderation.view',
   'moderation.viewRiskScore',
+  'moderation.viewMessages',
   'moderation.assign',
   'moderation.resolve',
   'moderation.appeals.review',
@@ -155,6 +157,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
     'users.action.deleteAccount',
     'moderation.view',
     'moderation.viewRiskScore',
+    'moderation.viewMessages',
     'moderation.assign',
     'moderation.resolve',
     'moderation.appeals.review',
