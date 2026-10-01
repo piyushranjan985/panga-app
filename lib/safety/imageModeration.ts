@@ -1,4 +1,5 @@
 import type { ModerationSignals } from './policyEngine';
+import { isRealProductionDeployment } from '@/lib/env';
 
 /**
  * Provider-agnostic image analysis. Swapping providers (self-hosted ->
@@ -302,5 +303,5 @@ export function getImageModerationProvider(): ImageModerationProvider {
  * code either way.
  */
 export function isUnsafeProductionMock(provider: ImageModerationProvider): boolean {
-  return provider.name === mockImageModerationProvider.name && process.env.VERCEL_ENV === 'production';
+  return provider.name === mockImageModerationProvider.name && isRealProductionDeployment();
 }

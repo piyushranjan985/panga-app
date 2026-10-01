@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { createSession } from '@/lib/session';
 import { isBetaAllowed, BETA_LOCKED_MESSAGE } from '@/lib/auth/betaAllowlist';
 import { DELETED_ACCOUNT_MESSAGE } from '@/lib/accountEnforcement';
+import { isGoogleOAuthConfigured } from '@/lib/auth/googleOAuth';
 
 const bodySchema = z.object({
   email: z.string().trim().toLowerCase().email('Enter a valid email address'),
@@ -26,6 +27,18 @@ const bodySchema = z.object({
  * keep working with zero external setup.
  */
 export async function POST(req: Request) {
+  // Once real Google OAuth is configured, this stand-in has no reason to
+  // ever run again -- app/api/auth/google/route.ts already stops
+  // steering anyone here, but that's only a UI nicety (it redirects the
+  // button, it doesn't stop a direct POST to this route). Enforcing it
+  // here too means someone can't bypass real "Sign in with Google" --
+  // actual email ownership checked by Google -- with this zero-
+  // verification stand-in simply by calling the endpoint directly,
+  // claiming to be literally any email address.
+  if (isGoogleOAuthConfigured()) {
+    return NextResponse.json({ error: 'This sign-in method is no longer available.' }, { status: 403 });
+  }
+
   const json = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(json);
   if (!parsed.success) {

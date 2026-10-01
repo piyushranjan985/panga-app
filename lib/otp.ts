@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { db } from '@/lib/db';
+import { isRealProductionDeployment } from '@/lib/env';
 
 /**
  * Shared one-time-code logic used by both the phone flow and the email
@@ -32,7 +33,27 @@ export function hashOtp(code: string) {
   return crypto.createHash('sha256').update(code).digest('hex');
 }
 
-export type IssueOtpResult = { ok: true } | { ok: false; reason: 'rate_limited' };
+/**
+ * True when nothing stands between "anyone on earth" and "a session for
+ * any phone number or email" except this one fixed, hardcoded code --
+ * sitting in this file's source, not a secret in any real sense -- AND
+ * this is a real production deployment (see lib/env.ts), not a Preview
+ * or local build where the mock code is exactly the point.
+ *
+ * issueOtp() and consumeOtp() both refuse outright when this is true
+ * (fail CLOSED, not safe-degraded -- unlike imageModeration.ts's
+ * production guard, there's no reviewed-queue equivalent for "let
+ * someone in and check later": a login either is or isn't this person).
+ * The fix is the same shape as OTP_PROVIDER's .env.example comment
+ * already describes: wire up MSG91/Gupshup/Twilio Verify (phone) or
+ * Postmark/SES (email) and set OTP_PROVIDER to that real value in
+ * Vercel's Production environment.
+ */
+export function isMockOtpUnsafeInProduction(): boolean {
+  return (process.env.OTP_PROVIDER ?? 'mock') === 'mock' && isRealProductionDeployment();
+}
+
+export type IssueOtpResult = { ok: true } | { ok: false; reason: 'rate_limited' | 'provider_not_configured' };
 
 /**
  * Creates and stores a fresh OTP for a user. In dev/mock mode (the
@@ -46,6 +67,16 @@ export type IssueOtpResult = { ok: true } | { ok: false; reason: 'rate_limited' 
  * REQUEST_COOLDOWN_SECONDS for the same user.
  */
 export async function issueOtp(userId: string): Promise<IssueOtpResult> {
+  if (isMockOtpUnsafeInProduction()) {
+    console.error(
+      '[otp] SAFETY GUARD: OTP_PROVIDER is unset/mock on a production deployment ' +
+        '(VERCEL_ENV=production) -- refusing to issue a code. The fixed mock code would ' +
+        'otherwise authenticate as ANY phone number or email with zero real verification. ' +
+        'Set OTP_PROVIDER to a real provider in Vercel (Production) -- see .env.example.',
+    );
+    return { ok: false, reason: 'provider_not_configured' };
+  }
+
   const mostRecent = await db.otpCode.findFirst({
     where: { userId },
     orderBy: { createdAt: 'desc' },
@@ -73,7 +104,13 @@ export async function issueOtp(userId: string): Promise<IssueOtpResult> {
   return { ok: true };
 }
 
-export type OtpConsumeFailureReason = 'not_found' | 'already_used' | 'expired' | 'mismatch' | 'too_many_attempts';
+export type OtpConsumeFailureReason =
+  | 'not_found'
+  | 'already_used'
+  | 'expired'
+  | 'mismatch'
+  | 'too_many_attempts'
+  | 'provider_not_configured';
 
 export type OtpConsumeResult = { ok: true } | { ok: false; reason: OtpConsumeFailureReason };
 
@@ -105,6 +142,15 @@ export type OtpConsumeResult = { ok: true } | { ok: false; reason: OtpConsumeFai
  * counter, subject to issueOtp's cooldown.
  */
 export async function consumeOtp(userId: string, code: string): Promise<OtpConsumeResult> {
+  // Belt-and-suspenders alongside issueOtp()'s same check: if
+  // OTP_PROVIDER somehow flipped to mock mid-flight (a code issued while
+  // configured, then the env var reverted), a code already in the table
+  // still can't be consumed in real production either.
+  if (isMockOtpUnsafeInProduction()) {
+    console.error('[otp] SAFETY GUARD: refusing to verify a code -- see issueOtp\'s matching guard.');
+    return { ok: false, reason: 'provider_not_configured' };
+  }
+
   const latest = await db.otpCode.findFirst({
     where: { userId },
     orderBy: { createdAt: 'desc' },

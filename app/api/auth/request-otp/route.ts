@@ -36,6 +36,9 @@ export async function POST(req: Request) {
 
   const issued = await issueOtp(user.id);
   if (!issued.ok) {
+    if (issued.reason === 'provider_not_configured') {
+      return NextResponse.json({ error: 'Sign-in is temporarily unavailable — please try again shortly.' }, { status: 503 });
+    }
     return NextResponse.json({ error: 'A code was already sent recently — check your messages or wait a bit before requesting another.' }, { status: 429 });
   }
 

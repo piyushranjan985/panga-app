@@ -25,6 +25,9 @@ export async function POST(req: Request) {
 
   const result = await consumeOtp(user.id, code);
   if (!result.ok) {
+    if (result.reason === 'provider_not_configured') {
+      return NextResponse.json({ error: 'Sign-in is temporarily unavailable — please try again shortly.' }, { status: 503 });
+    }
     if (result.reason === 'too_many_attempts') {
       return NextResponse.json(
         { error: 'Too many wrong guesses for that code — request a new one.' },
