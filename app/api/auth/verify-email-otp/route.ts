@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Request a code first.' }, { status: 404 });
   }
 
-  const result = await consumeOtp(user.id, code);
+  const result = await consumeOtp(user.id, code, 'email');
   if (!result.ok) {
     if (result.reason === 'provider_not_configured') {
       return NextResponse.json({ error: 'Sign-in is temporarily unavailable — please try again shortly.' }, { status: 503 });

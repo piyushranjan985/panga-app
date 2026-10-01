@@ -229,7 +229,8 @@ async function upsertTestUser(
 
   // Dev-mode OTP is always 123456 by default (see lib/otp.ts), but insert
   // a long-lived one anyway -- matches prisma/seed.ts's demo accounts, and
-  // covers the case where OTP_PROVIDER is set to something other than mock.
+  // covers the case where a real MSG91/Brevo channel is configured (see
+  // lib/otp.ts's isChannelConfigured()).
   await db.otpCode.create({
     data: {
       userId: user.id,

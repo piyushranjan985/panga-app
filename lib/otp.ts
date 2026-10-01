@@ -1,6 +1,8 @@
 import crypto from 'node:crypto';
 import { db } from '@/lib/db';
 import { isRealProductionDeployment } from '@/lib/env';
+import { isMsg91Configured, sendOtpSms } from '@/lib/notifications/sms';
+import { isBrevoConfigured, sendTransactionalEmail } from '@/lib/notifications/email';
 
 /**
  * Shared one-time-code logic used by both the phone flow and the email
@@ -12,16 +14,13 @@ import { isRealProductionDeployment } from '@/lib/env';
  * there's no per-person allowlist on this path (see mock-google and
  * the real Google OAuth callback for the one place an
  * allowlist, lib/auth/betaAllowlist.ts, is still used). What gates entry
- * here is knowing MOCK_OTP, a fixed code that's never included in any
- * API response or UI. Two things keep that fixed code from being brute
- * forced: REQUEST_COOLDOWN_SECONDS caps how often a fresh OtpCode row can
- * be issued for a given user (so an attacker can't just keep resetting
- * the attempt counter), and MAX_ATTEMPTS caps wrong guesses against any
- * one row. Swap MOCK_OTP for a real per-request random code (the
- * `provider !== 'mock'` branch already does this) and wire up a real SMS/
- * email provider before this is a substitute for verifying someone
- * actually owns the number/address -- right now it only proves they know
- * the shared code.
+ * here used to be knowing MOCK_OTP alone (a fixed code never shown in
+ * any API response or UI) -- now it's whichever is true per channel:
+ * isChannelConfigured() true means a real MSG91 SMS / Brevo email with a
+ * fresh random code actually gets sent (lib/notifications/sms.ts,
+ * lib/notifications/email.ts); false means the fixed MOCK_OTP, same as
+ * before, for local/preview dev. REQUEST_COOLDOWN_SECONDS and
+ * MAX_ATTEMPTS below apply identically either way.
  */
 
 export const MOCK_OTP = '43364336';
@@ -29,50 +28,69 @@ const OTP_TTL_MINUTES = 5;
 const MAX_ATTEMPTS = 10;
 const REQUEST_COOLDOWN_SECONDS = 20;
 
+export type OtpChannel = 'phone' | 'email';
+
 export function hashOtp(code: string) {
   return crypto.createHash('sha256').update(code).digest('hex');
 }
 
 /**
- * True when nothing stands between "anyone on earth" and "a session for
- * any phone number or email" except this one fixed, hardcoded code --
- * sitting in this file's source, not a secret in any real sense -- AND
- * this is a real production deployment (see lib/env.ts), not a Preview
- * or local build where the mock code is exactly the point.
- *
- * issueOtp() and consumeOtp() both refuse outright when this is true
- * (fail CLOSED, not safe-degraded -- unlike imageModeration.ts's
- * production guard, there's no reviewed-queue equivalent for "let
- * someone in and check later": a login either is or isn't this person).
- * The fix is the same shape as OTP_PROVIDER's .env.example comment
- * already describes: wire up MSG91/Gupshup/Twilio Verify (phone) or
- * Postmark/SES (email) and set OTP_PROVIDER to that real value in
- * Vercel's Production environment.
+ * Whether this channel has a real provider wired up -- MSG91 for phone,
+ * Brevo for email (see lib/notifications/*.ts for setup). Mirrors the
+ * same "presence of real credentials, not a separate provider-name flag"
+ * pattern lib/auth/googleOAuth.ts's isGoogleOAuthConfigured() and
+ * lib/safety/identityVerification.ts's isDigilockerConfigured() already
+ * use elsewhere in this app, rather than this file's previous single
+ * OTP_PROVIDER string covering both channels at once (which couldn't
+ * express "email is live, phone isn't yet" or vice versa).
  */
-export function isMockOtpUnsafeInProduction(): boolean {
-  return (process.env.OTP_PROVIDER ?? 'mock') === 'mock' && isRealProductionDeployment();
+export function isChannelConfigured(channel: OtpChannel): boolean {
+  return channel === 'phone' ? isMsg91Configured() : isBrevoConfigured();
 }
 
-export type IssueOtpResult = { ok: true } | { ok: false; reason: 'rate_limited' | 'provider_not_configured' };
+/**
+ * True when nothing stands between "anyone on earth" and "a session for
+ * any phone number or email on THIS channel" except the fixed,
+ * hardcoded MOCK_OTP -- sitting in this file's source, not a secret in
+ * any real sense -- AND this is a real production deployment (see
+ * lib/env.ts), not a Preview or local build where the mock code is
+ * exactly the point.
+ *
+ * issueOtp() and consumeOtp() both refuse outright when this is true for
+ * the channel in play (fail CLOSED, not safe-degraded -- unlike
+ * imageModeration.ts's production guard, there's no reviewed-queue
+ * equivalent for "let someone in and check later": a login either is or
+ * isn't this person). The fix: configure that channel's real provider
+ * (see lib/notifications/sms.ts / email.ts's setup notes) in Vercel's
+ * Production environment.
+ */
+export function isMockOtpUnsafeInProduction(channel: OtpChannel): boolean {
+  return !isChannelConfigured(channel) && isRealProductionDeployment();
+}
+
+export type IssueOtpResult =
+  | { ok: true }
+  | { ok: false; reason: 'rate_limited' | 'provider_not_configured' | 'send_failed' };
 
 /**
- * Creates and stores a fresh OTP for a user. In dev/mock mode (the
- * default) this always issues the static code in MOCK_OTP and never
- * calls a real SMS/email provider — see .env.example. Swap the mock
- * branch for MSG91 / Gupshup / Twilio Verify (phone) or Postmark / SES
- * (email) before shipping to real users.
+ * Creates and stores a fresh OTP for a user, and -- when this channel's
+ * real provider is configured (isChannelConfigured()) -- actually sends
+ * it: a real random 6-digit code via MSG91 SMS or Brevo email. When it
+ * isn't configured, this always issues the static MOCK_OTP and never
+ * calls out to either provider, exactly like before (see .env.example).
  *
  * Refuses to issue a new code (and therefore reset the attempt counter
  * on the previous one — see consumeOtp) more than once every
  * REQUEST_COOLDOWN_SECONDS for the same user.
  */
-export async function issueOtp(userId: string): Promise<IssueOtpResult> {
-  if (isMockOtpUnsafeInProduction()) {
+export async function issueOtp(userId: string, destination: string, channel: OtpChannel): Promise<IssueOtpResult> {
+  if (isMockOtpUnsafeInProduction(channel)) {
     console.error(
-      '[otp] SAFETY GUARD: OTP_PROVIDER is unset/mock on a production deployment ' +
-        '(VERCEL_ENV=production) -- refusing to issue a code. The fixed mock code would ' +
-        'otherwise authenticate as ANY phone number or email with zero real verification. ' +
-        'Set OTP_PROVIDER to a real provider in Vercel (Production) -- see .env.example.',
+      `[otp] SAFETY GUARD: no real ${channel} provider is configured on a production deployment ` +
+        '(VERCEL_ENV=production) -- refusing to issue a code. The fixed mock code would otherwise ' +
+        'authenticate as ANY phone number or email with zero real verification. Configure ' +
+        `${channel === 'phone' ? 'MSG91 (lib/notifications/sms.ts)' : 'Brevo (lib/notifications/email.ts)'} ` +
+        'in Vercel (Production) -- see .env.example.',
     );
     return { ok: false, reason: 'provider_not_configured' };
   }
@@ -86,8 +104,8 @@ export async function issueOtp(userId: string): Promise<IssueOtpResult> {
     return { ok: false, reason: 'rate_limited' };
   }
 
-  const provider = process.env.OTP_PROVIDER ?? 'mock';
-  const code = provider === 'mock' ? MOCK_OTP : crypto.randomInt(100000, 999999).toString();
+  const useRealProvider = isChannelConfigured(channel);
+  const code = useRealProvider ? crypto.randomInt(100000, 999999).toString() : MOCK_OTP;
 
   await db.otpCode.create({
     data: {
@@ -97,8 +115,30 @@ export async function issueOtp(userId: string): Promise<IssueOtpResult> {
     },
   });
 
-  if (provider !== 'mock') {
-    // TODO: call the real SMS/email provider here with `code`.
+  if (useRealProvider) {
+    try {
+      if (channel === 'phone') {
+        await sendOtpSms(destination, code, OTP_TTL_MINUTES);
+      } else {
+        await sendTransactionalEmail({
+          to: destination,
+          subject: `${code} is your findmyVybe verification code`,
+          text: `Your findmyVybe verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.\n\nIf you didn't request this, you can safely ignore this email.`,
+          html: `<p>Your findmyVybe verification code is <strong style="font-size:1.2em;letter-spacing:0.1em">${code}</strong>.</p><p>It expires in ${OTP_TTL_MINUTES} minutes.</p><p style="color:#666;font-size:0.9em">If you didn't request this, you can safely ignore this email.</p>`,
+        });
+      }
+    } catch (err) {
+      // The OtpCode row above already exists -- a stuck row that can
+      // never be delivered isn't dangerous (it just expires unused,
+      // same as any code the user never typed in), but returning ok:true
+      // here would tell the caller "a code is on its way" when it isn't.
+      // Surfacing this as its own reason (rather than reusing
+      // rate_limited) lets the route give an honest "something went
+      // wrong sending that" message instead of the misleading cooldown
+      // one.
+      console.error(`[otp] ${channel} provider send failed`, err);
+      return { ok: false, reason: 'send_failed' };
+    }
   }
 
   return { ok: true };
@@ -141,12 +181,13 @@ export type OtpConsumeResult = { ok: true } | { ok: false; reason: OtpConsumeFai
  * guess still doesn't work) -- request a fresh code to get a fresh
  * counter, subject to issueOtp's cooldown.
  */
-export async function consumeOtp(userId: string, code: string): Promise<OtpConsumeResult> {
-  // Belt-and-suspenders alongside issueOtp()'s same check: if
-  // OTP_PROVIDER somehow flipped to mock mid-flight (a code issued while
-  // configured, then the env var reverted), a code already in the table
-  // still can't be consumed in real production either.
-  if (isMockOtpUnsafeInProduction()) {
+export async function consumeOtp(userId: string, code: string, channel: OtpChannel): Promise<OtpConsumeResult> {
+  // Belt-and-suspenders alongside issueOtp()'s same check: if this
+  // channel's provider somehow became unconfigured mid-flight (a code
+  // issued while configured, then the credentials got removed), a code
+  // already in the table still can't be consumed in real production
+  // either.
+  if (isMockOtpUnsafeInProduction(channel)) {
     console.error('[otp] SAFETY GUARD: refusing to verify a code -- see issueOtp\'s matching guard.');
     return { ok: false, reason: 'provider_not_configured' };
   }

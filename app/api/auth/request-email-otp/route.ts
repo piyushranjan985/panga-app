@@ -27,10 +27,13 @@ export async function POST(req: Request) {
   const user = existing ?? (await db.user.create({ data: { email } }));
   const alreadyHasProfile = Boolean(existing?.profile);
 
-  const issued = await issueOtp(user.id);
+  const issued = await issueOtp(user.id, email, 'email');
   if (!issued.ok) {
     if (issued.reason === 'provider_not_configured') {
       return NextResponse.json({ error: 'Sign-in is temporarily unavailable — please try again shortly.' }, { status: 503 });
+    }
+    if (issued.reason === 'send_failed') {
+      return NextResponse.json({ error: "We couldn't send that code — please try again in a moment." }, { status: 502 });
     }
     return NextResponse.json({ error: 'A code was already sent recently — check your inbox or wait a bit before requesting another.' }, { status: 429 });
   }
