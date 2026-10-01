@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { db } from '@/lib/db';
 import { isRealProductionDeployment } from '@/lib/env';
-import { isMsg91Configured, sendOtpSms } from '@/lib/notifications/sms';
+import { isSmsProviderConfigured, sendOtpSms } from '@/lib/notifications/sms';
 import { isBrevoConfigured, sendTransactionalEmail } from '@/lib/notifications/email';
 
 /**
@@ -16,7 +16,7 @@ import { isBrevoConfigured, sendTransactionalEmail } from '@/lib/notifications/e
  * allowlist, lib/auth/betaAllowlist.ts, is still used). What gates entry
  * here used to be knowing MOCK_OTP alone (a fixed code never shown in
  * any API response or UI) -- now it's whichever is true per channel:
- * isChannelConfigured() true means a real MSG91 SMS / Brevo email with a
+ * isChannelConfigured() true means a real SMS (StartMessaging/MSG91) or Brevo email with a
  * fresh random code actually gets sent (lib/notifications/sms.ts,
  * lib/notifications/email.ts); false means the fixed MOCK_OTP, same as
  * before, for local/preview dev. REQUEST_COOLDOWN_SECONDS and
@@ -45,7 +45,7 @@ export function hashOtp(code: string) {
  * express "email is live, phone isn't yet" or vice versa).
  */
 export function isChannelConfigured(channel: OtpChannel): boolean {
-  return channel === 'phone' ? isMsg91Configured() : isBrevoConfigured();
+  return channel === 'phone' ? isSmsProviderConfigured() : isBrevoConfigured();
 }
 
 /**
@@ -89,7 +89,7 @@ export async function issueOtp(userId: string, destination: string, channel: Otp
       `[otp] SAFETY GUARD: no real ${channel} provider is configured on a production deployment ` +
         '(VERCEL_ENV=production) -- refusing to issue a code. The fixed mock code would otherwise ' +
         'authenticate as ANY phone number or email with zero real verification. Configure ' +
-        `${channel === 'phone' ? 'MSG91 (lib/notifications/sms.ts)' : 'Brevo (lib/notifications/email.ts)'} ` +
+        `${channel === 'phone' ? 'StartMessaging or MSG91 (lib/notifications/sms.ts)' : 'Brevo (lib/notifications/email.ts)'} ` +
         'in Vercel (Production) -- see .env.example.',
     );
     return { ok: false, reason: 'provider_not_configured' };
