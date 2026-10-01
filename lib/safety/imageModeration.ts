@@ -281,3 +281,26 @@ export function getImageModerationProvider(): ImageModerationProvider {
   if (provider === 'self-hosted') return selfHostedImageModerationProvider;
   return mockImageModerationProvider;
 }
+
+/**
+ * True when the mock provider -- which never actually looks at the image,
+ * see mockImageModerationProvider above -- would otherwise be the thing
+ * deciding whether every photo on the platform (explicit content
+ * included) goes live unmoderated, on a REAL production deployment.
+ * VERCEL_ENV (set automatically by Vercel, unlike NODE_ENV which is also
+ * "production" for `next build` locally and for Preview deploys) is the
+ * one reliable signal for "this is the live site," not just any build.
+ *
+ * moderateAndUpload.ts's moderateImageBuffer() uses this to fail SAFE
+ * instead of fail open: see that file for what actually happens when
+ * this is true (every photo forced to MANUAL_REVIEW, never auto-approved,
+ * plus a loud console.error so it shows up in Vercel's logs). The fix,
+ * once noticed, is the one-line env change this guard exists to force
+ * someone to notice: set IMAGE_MODERATION_PROVIDER=self-hosted in Vercel
+ * (Production) and redeploy -- see selfHostedImageModerationProvider's
+ * doc comment above for the rest of that setup, which is already done in
+ * code either way.
+ */
+export function isUnsafeProductionMock(provider: ImageModerationProvider): boolean {
+  return provider.name === mockImageModerationProvider.name && process.env.VERCEL_ENV === 'production';
+}

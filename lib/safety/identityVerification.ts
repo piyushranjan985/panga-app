@@ -74,7 +74,18 @@ export function isDigilockerConfigured(): boolean {
  * one of those labels upgrades itself with no further code changes.
  */
 export function isRealIdentityCheck(): boolean {
-  return getVerificationProviderName() === 'digilocker';
+  // Checking the provider name alone isn't enough: VERIFICATION_PROVIDER
+  // could be set to "digilocker" on Vercel before DIGILOCKER_CLIENT_ID/
+  // SECRET are (e.g. mid-rollout, prepping for a real launch) -- see
+  // app/api/verification/route.ts's POST handler, which already fails
+  // loudly (500) for a real user hitting that exact state rather than
+  // silently falling back to mock. This function governs the PASSIVE
+  // labels instead (app/profile/page.tsx, app/api/preview/[userId]/route.ts,
+  // app/api/profile/route.ts) -- nothing there calls POST /api/verification,
+  // so without this check they'd keep showing "ID verified" based on the
+  // env var alone, for an account that was never actually checked against
+  // anything.
+  return getVerificationProviderName() === 'digilocker' && isDigilockerConfigured();
 }
 
 // --- OAuth state token -------------------------------------------------

@@ -1,6 +1,6 @@
 import { db } from '@/lib/db';
 import { evaluatePhoto, type PhotoModerationDecision } from './policyEngine';
-import { getImageModerationProvider, UndecodableImageError } from './imageModeration';
+import { getImageModerationProvider, isUnsafeProductionMock, UndecodableImageError } from './imageModeration';
 
 export interface ModerationOutcome {
   decision: PhotoModerationDecision;
@@ -93,9 +93,33 @@ export async function moderateImageBuffer(imageBuffer: Buffer): Promise<Moderati
   }
 
   const result = evaluatePhoto(signals);
+
+  // SAFETY GUARD: this is a real production deployment and nothing ever
+  // actually analyzed this image (IMAGE_MODERATION_PROVIDER is unset or
+  // misconfigured, so the mock provider ran instead -- see
+  // isUnsafeProductionMock's doc comment in imageModeration.ts). Rather
+  // than let that silently auto-approve every photo, fail SAFE: route it
+  // to the same human-reviewed MANUAL_REVIEW queue
+  // admin/app/(console)/moderation already serves (recordPhotoModeration
+  // opens a ModerationCase for anything short of APPROVED), and log this
+  // loudly every time so it's impossible to miss in Vercel's deploy
+  // logs. Never downgrades an already-REJECTED decision (e.g. no face
+  // detected) -- that's already the stricter, safe outcome.
+  const unsafe = isUnsafeProductionMock(provider);
+  if (unsafe) {
+    console.error(
+      '[moderateImageBuffer] SAFETY GUARD: IMAGE_MODERATION_PROVIDER is unset/mock on a production ' +
+        'deployment (VERCEL_ENV=production) -- no photo is being analyzed for explicit content. ' +
+        'Forcing this photo to MANUAL_REVIEW instead of auto-approval. Set ' +
+        'IMAGE_MODERATION_PROVIDER=self-hosted in Vercel (Production) and redeploy to fix.',
+    );
+  }
+  const decision = unsafe && result.decision !== 'REJECTED' ? 'MANUAL_REVIEW' : result.decision;
+  const reasons = unsafe && result.decision !== 'REJECTED' ? [...result.reasons, 'unmoderated_in_production'] : result.reasons;
+
   return {
-    decision: result.decision,
-    reasons: result.reasons,
+    decision,
+    reasons,
     provider: provider.name,
     modelVersion: provider.modelVersion,
     faceDetected: signals.faceCount > 0,
