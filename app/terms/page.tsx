@@ -193,10 +193,11 @@ export default function TermsOfServicePage() {
       <p className="mt-2 text-inkSoft">
         findmyVybe is an early-stage MVP, provided "as is" -- we're actively building it, which means features,
         matching quality, and availability can change, and things will occasionally break. We don't guarantee
-        you'll find a match, a relationship, or any particular outcome from using the app. To the extent the law
-        allows, we're not liable for indirect or consequential losses arising from your use of the app or your
-        interactions with other members -- this doesn't limit any liability that can't be excluded under Indian
-        law.
+        you'll find a match, a relationship, or any particular outcome from using the app. Distance and
+        nearby-match results depend on your device's location accuracy (or, if you haven't shared it, your
+        city's general area) and aren't guaranteed to be precise. To the extent the law allows, we're not liable
+        for indirect or consequential losses arising from your use of the app or your interactions with other
+        members -- this doesn't limit any liability that can't be excluded under Indian law.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">Governing law</h2>

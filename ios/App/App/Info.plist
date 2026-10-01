@@ -25,7 +25,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>findmyVybe uses your location to show how far away your matches are. Your exact location is never shared with other users -- only an approximate distance.</string>
+	<string>findmyVybe uses your location to find nearby matches (especially in Just Vibing mode) and to show how far away your matches are. Your exact location is never shared with other users -- only an approximate distance.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

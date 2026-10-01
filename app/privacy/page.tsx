@@ -46,8 +46,18 @@ export default function PrivacyPolicyPage() {
         <strong className="text-ink">Profile information.</strong> What you enter during onboarding and in your
         profile: display name, date of birth, gender and who you're looking for, city, bio, your stated intent
         (Just Vibing, Something Real, or Rishta Ready) and the intent-specific details that go with it
-        (interests, prompts, relationship style, tribes, values, or family/future-plans questions), and your
-        approximate location (used to show distance to other members and to find matches near you).
+        (interests, prompts, relationship style, tribes, values, or family/future-plans questions).
+      </p>
+      <p className="mt-2 text-inkSoft">
+        <strong className="text-ink">Location.</strong> Your city (set during onboarding) is always used to find
+        matches nearby. Sharing your device's precise location is optional and off by default — we only ask for
+        it when you explicitly tap "Share location" on your Profile, which triggers your browser's or phone's
+        own permission prompt; we never request it automatically, and we only ever ask for access while you're
+        using the app, never in the background. If you share it, we use it to show a rounded distance to other
+        members (e.g. "3 km away," never your exact coordinates) and, in Just Vibing mode specifically, to find
+        and rank nearby matches more precisely. If you don't share it, Just Vibing still works, using your
+        city's general area instead of your exact location. You can turn location sharing off at any time from
+        your Profile, which deletes the stored coordinates.
       </p>
       <p className="mt-2 text-inkSoft">
         <strong className="text-ink">Photos.</strong> Every photo you upload is automatically checked before it
@@ -101,6 +111,10 @@ export default function PrivacyPolicyPage() {
         </li>
         <li>
           <strong className="text-ink">Blocking &amp; reporting</strong> are available from any chat's "…" menu.
+        </li>
+        <li>
+          <strong className="text-ink">Location sharing</strong> can be turned on or off any time from your
+          Profile's Location section — turning it off deletes the stored coordinates immediately.
         </li>
         <li>
           <strong className="text-ink">Access or export your data:</strong> contact us (below) and we'll help.

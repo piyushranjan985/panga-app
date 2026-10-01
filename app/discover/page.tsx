@@ -5,6 +5,7 @@ import Navbar from '@/components/Navbar';
 import InactivityLogout from '@/components/InactivityLogout';
 import VibeCard, { type FeedProfile } from '@/components/VibeCard';
 import MatchModal from '@/components/MatchModal';
+import { getCurrentPosition } from '@/lib/native';
 
 interface MatchInfo {
   matchId: string;
@@ -13,16 +14,60 @@ interface MatchInfo {
   avatarHue: number;
 }
 
+interface DiscoverMeta {
+  intent: 'JUST_VIBING' | 'SOMETHING_REAL' | 'RISHTA_READY';
+  hasSharedLocation: boolean;
+}
+
 export default function DiscoverPage() {
   const [feed, setFeed] = useState<FeedProfile[] | null>(null);
+  const [meta, setMeta] = useState<DiscoverMeta | null>(null);
   const [index, setIndex] = useState(0);
   const [match, setMatch] = useState<MatchInfo | null>(null);
+  const [locationPromptDismissed, setLocationPromptDismissed] = useState(false);
+  const [locationBusy, setLocationBusy] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
-  useEffect(() => {
+  function loadFeed() {
     fetch('/api/discover')
       .then((r) => r.json())
-      .then((d) => setFeed(d.feed ?? []));
+      .then((d) => {
+        setFeed(d.feed ?? []);
+        setMeta(d.meta ?? null);
+      });
+  }
+
+  useEffect(() => {
+    loadFeed();
   }, []);
+
+  // Just Vibing is distance-based (see lib/matching.ts) -- without shared
+  // GPS it still works (falls back to the city's centroid, see
+  // lib/geo.ts), just less precisely, so this is a nudge, not a gate. Same
+  // explicit-tap-triggers-the-OS-prompt pattern as the Profile screen's
+  // Location section (see lib/native.ts) -- never requested automatically
+  // on page load.
+  async function shareLocationFromDiscover() {
+    setLocationBusy(true);
+    setLocationError(null);
+    try {
+      const { latitude, longitude } = await getCurrentPosition();
+      await fetch('/api/profile/location', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ latitude, longitude }),
+      });
+      setLocationPromptDismissed(true);
+      loadFeed(); // re-rank now that precise coordinates are available
+    } catch (err) {
+      setLocationError(err instanceof Error ? err.message : 'Could not get your location. Try again.');
+    } finally {
+      setLocationBusy(false);
+    }
+  }
+
+  const showLocationPrompt =
+    meta?.intent === 'JUST_VIBING' && !meta.hasSharedLocation && !locationPromptDismissed;
 
   async function swipe(action: 'PASS' | 'VYBE') {
     const current = feed?.[index];
@@ -62,6 +107,35 @@ export default function DiscoverPage() {
             otherAvatarHue={match.avatarHue}
             onClose={() => setMatch(null)}
           />
+        )}
+
+        {showLocationPrompt && (
+          <div className="mb-4 rounded-2xl border border-line bg-white p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-bold">📍 Just Vibing shows people near you first</p>
+                <p className="text-sm text-inkSoft">
+                  Share your location for closer, better matches — without it, we use your city's general area.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={shareLocationFromDiscover}
+                disabled={locationBusy}
+                className="gradient-btn shrink-0 rounded-full px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60"
+              >
+                {locationBusy ? 'Getting location…' : 'Share location'}
+              </button>
+            </div>
+            {locationError && <p className="mt-2 text-xs text-magenta">{locationError}</p>}
+            <button
+              type="button"
+              onClick={() => setLocationPromptDismissed(true)}
+              className="mt-2 text-[11px] font-semibold text-inkSoft/70 underline"
+            >
+              Not now
+            </button>
+          </div>
         )}
 
         {feed === null && <p className="text-sm text-inkSoft">Loading your feed...</p>}

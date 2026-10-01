@@ -222,5 +222,17 @@ export async function GET() {
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);
 
-  return NextResponse.json({ feed });
+  // Lets the Discover page show a contextual "share your location" prompt
+  // only when it actually matters: Just Vibing mode is distance-based (see
+  // lib/matching.ts), so a viewer without shared GPS is only getting
+  // city-centroid-level matching for it (see lib/geo.ts's effectiveCoords)
+  // -- not broken, just less precise. Something Real / Rishta Ready don't
+  // need this nudge, since same-city alone is still always sufficient
+  // there.
+  const meta = {
+    intent: viewerProfile.intent,
+    hasSharedLocation: viewerProfile.latitude != null,
+  };
+
+  return NextResponse.json({ feed, meta });
 }

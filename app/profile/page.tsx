@@ -670,8 +670,10 @@ export default function ProfilePage() {
               <p className="font-bold">📍 Location</p>
               <p className="text-sm text-inkSoft">
                 {profile.latitude != null
-                  ? 'Shared — lets matches see how far away you are.'
-                  : 'Off — matches won’t see a distance for you.'}
+                  ? 'Shared — lets matches see how far away you are, and powers closer, better Just Vibing matches.'
+                  : profile.intent === 'JUST_VIBING'
+                    ? 'Off — Just Vibing is distance-based, so we’re using your city’s general area instead of your real location.'
+                    : 'Off — matches won’t see a distance for you.'}
               </p>
             </div>
             {profile.latitude != null ? (
