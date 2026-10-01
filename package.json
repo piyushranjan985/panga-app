@@ -29,27 +29,29 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/geolocation": "^8.0.0",
+    "@capacitor/ios": "^8.0.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "@tensorflow/tfjs": "^4.22.0",
+    "@tensorflow/tfjs-backend-wasm": "^4.22.0",
+    "@upstash/redis": "^1.39.0",
     "@vercel/blob": "^2.8.0",
+    "@vladmandic/face-api": "^1.7.15",
+    "heic-convert": "^2.1.0",
     "jose": "^5.9.6",
     "next": "^16.3.4",
+    "nsfwjs": "^4.2.1",
     "pg": "^8.13.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "zod": "^3.23.8",
-    "@capacitor/core": "^8.0.0",
-    "@capacitor/ios": "^8.0.0",
-    "@capacitor/android": "^8.0.0",
-    "@capacitor/geolocation": "^8.0.0",
-    "nsfwjs": "^4.2.1",
-    "@vladmandic/face-api": "^1.7.15",
-    "@tensorflow/tfjs": "^4.22.0",
-    "@tensorflow/tfjs-backend-wasm": "^4.22.0",
     "sharp": "^0.33.5",
-    "heic-convert": "^2.1.0"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
     "@types/node": "^20.16.10",
     "@types/pg": "^8.11.10",
     "@types/react": "^19.0.0",
@@ -60,8 +62,7 @@
     "prisma": "^7.10.0",
     "tailwindcss": "^3.4.13",
     "tsx": "^4.19.1",
-    "typescript": "^5.6.2",
-    "@capacitor/cli": "^8.0.0"
+    "typescript": "^5.6.2"
   },
   "engines": {
     "node": ">=20"

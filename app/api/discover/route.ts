@@ -4,8 +4,28 @@ import { getSession } from '@/lib/session';
 import { rankCandidates, type MatchableProfile } from '@/lib/matching';
 import { distanceLabel } from '@/lib/geo';
 import { checkAccountActive } from '@/lib/accountEnforcement';
+import { cacheGet, cacheSet } from '@/lib/cache';
 
 const FEED_SIZE = 15;
+
+// Upper bound on how many eligible profiles in one city we rank per
+// request. Was already 500 before this file's scale fix -- the change here
+// is that it's now 500 *within the viewer's city*, not 500 out of a
+// nationwide pull that got discarded down to a same-city subset afterward
+// (see CANDIDATE_POOL_CACHE_TTL_SECONDS below for why that pull is cacheable
+// at all now that it's scoped this way).
+const CANDIDATE_POOL_LIMIT = 500;
+
+// Same-city eligible-candidate pool is identical for every viewer in that
+// city (it no longer depends on who's asking -- see getCityCandidatePool),
+// so it's cached per city rather than re-queried from Postgres on every
+// single /discover request. 45s is short enough that a newly active user
+// shows up in the feed almost immediately, long enough to absorb a burst of
+// concurrent requests from the same city with one DB round trip instead of
+// one-per-request. Falls back to querying the database directly if the
+// Upstash cache isn't configured (see lib/cache.ts) -- this file behaves
+// identically either way, just faster once the cache is on.
+const CANDIDATE_POOL_CACHE_TTL_SECONDS = 45;
 
 function toMatchable(p: {
   userId: string;
@@ -27,6 +47,66 @@ function toMatchable(p: {
     interestIds: p.interests.map((i) => i.id),
     lastActiveAt: p.user.lastActiveAt,
   };
+}
+
+/**
+ * City-scoped candidate pool, shared across every viewer in that city.
+ *
+ * This used to be a single nationwide query (`db.profile.findMany` with no
+ * city filter) run fresh on every /discover request, capped at 500 rows and
+ * relying on lib/matching.ts's isEligibleCandidate() same-city hard filter
+ * to throw most of those 500 away *after* fetching full photos/interests/
+ * answers for each of them. That's fine below a few thousand users; past
+ * that -- and especially once multiple cities are live at once -- most of
+ * the work done per request was wasted fetching and discarding other
+ * cities' profiles. city is pushed into the SQL WHERE clause here instead
+ * (using the existing @@index([city, intent, quietMode]) on Profile), which
+ * is a pure performance change, not a behavior change: isEligibleCandidate's
+ * same-city check was already unconditional (no cross-city path exists
+ * since Circles were removed), so nothing that used to appear in a feed
+ * stops appearing, and nothing that used to be excluded starts appearing.
+ *
+ * Deliberately returns a *lightweight* shape (select, not include) --
+ * exactly what lib/matching.ts needs to rank -- because full detail
+ * (photos/answers/interests for display) is only fetched afterward, for the
+ * FEED_SIZE winners, not for the whole pool. See the GET handler below.
+ */
+async function getCityCandidatePool(city: string): Promise<MatchableProfile[]> {
+  const cacheKey = `discover:pool:v1:${city}`;
+  const cached = await cacheGet<MatchableProfile[]>(cacheKey);
+  if (cached) {
+    // Round-tripping through JSON (cacheSet/cacheGet) turns Date fields into
+    // ISO strings -- scoreCandidate() in lib/matching.ts calls .getTime() on
+    // lastActiveAt, so this has to be a real Date again before use.
+    return cached.map((c) => ({ ...c, lastActiveAt: new Date(c.lastActiveAt) }));
+  }
+
+  const rows = await db.profile.findMany({
+    where: {
+      city,
+      quietMode: false, // isEligibleCandidate() excludes these unconditionally too -- safe to filter here
+      user: { status: 'ACTIVE', discoveryRestricted: false, profileHidden: false },
+    },
+    select: {
+      userId: true,
+      gender: true,
+      lookingFor: true,
+      city: true,
+      intent: true,
+      quietMode: true,
+      interests: { select: { id: true } },
+      user: { select: { lastActiveAt: true } },
+    },
+    // Most-recently-active first, so the 500-row cap (on a city large enough
+    // to hit it) favors people actually likely to respond over arbitrary DB
+    // order.
+    orderBy: { user: { lastActiveAt: 'desc' } },
+    take: CANDIDATE_POOL_LIMIT,
+  });
+
+  const pool = rows.map(toMatchable);
+  await cacheSet(cacheKey, pool, CANDIDATE_POOL_CACHE_TTL_SECONDS);
+  return pool;
 }
 
 /**
@@ -58,40 +138,7 @@ export async function GET() {
     db.swipe.findMany({ where: { fromUserId: session.userId }, select: { toUserId: true } }),
     db.block.findMany({ where: { blockerId: session.userId }, select: { blockedId: true } }),
     db.block.findMany({ where: { blockedId: session.userId }, select: { blockerId: true } }),
-    // MVP-scale candidate pool: everyone else with a profile. At real scale
-    // this becomes a geo-indexed query — pulling "everyone" is fine below a
-    // few thousand users, not beyond it.
-    db.profile.findMany({
-      // Trust & Safety enforcement -- a discoveryRestricted or
-      // profileHidden profile, or a non-ACTIVE account, never appears in
-      // anyone else's feed (see lib/accountEnforcement.ts).
-      where: {
-        userId: { not: session.userId },
-        // discoveryRestricted/profileHidden/status all live on User, not
-        // Profile -- nested under the `user` relation filter, not
-        // top-level (a prior version of this query put them at the top
-        // level by mistake, which Prisma's generated types reject).
-        user: { status: 'ACTIVE', discoveryRestricted: false, profileHidden: false },
-      },
-      include: {
-        interests: true,
-        user: { select: { lastActiveAt: true } },
-        answers: { include: { prompt: true }, take: 3 },
-        // Viewer-facing: moderationStatus: 'APPROVED' is required here, not
-        // just removedAt: null -- a MANUAL_REVIEW photo (borderline nudity
-        // score, or an unresolved multi-face shot, see policyEngine.ts) had a
-        // real Photo row and no filter here, so it was visible to every other
-        // user browsing /discover before a human ever looked at it -- exactly
-        // what schema.prisma's comment on Photo.moderationStatus promises
-        // never happens ("nothing becomes visible to other users before
-        // that"). This is the one signal that actually enforces it.
-        photos: { where: { removedAt: null, moderationStatus: 'APPROVED' }, orderBy: { position: 'asc' }, take: 1 },
-      },
-      // latitude/longitude/locationUpdatedAt come along for free (no
-      // `select` narrowing on this query) -- distanceLabel above reads
-      // them straight off each candidate row.
-      take: 500,
-    }),
+    getCityCandidatePool(viewerProfile.city),
   ]);
 
   // Blocking (see app/api/matches/[matchId]/block/route.ts) excludes both
@@ -103,30 +150,63 @@ export async function GET() {
     ...blockedMe.map((b) => b.blockerId),
   ]);
   const viewer = toMatchable({ ...viewerProfile, userId: viewerProfile.userId });
-  const candidates = candidatePool.map((c) => toMatchable({ ...c, userId: c.userId }));
 
-  const ranked = rankCandidates(viewer, candidates, excluded).slice(0, FEED_SIZE);
+  // isEligibleCandidate() already drops the viewer's own id (see
+  // lib/matching.ts), so getCityCandidatePool() -- shared across every
+  // viewer in the city -- doesn't need a per-viewer "not me" filter at the
+  // DB level; that's what makes it cacheable across viewers at all.
+  const ranked = rankCandidates(viewer, candidatePool, excluded).slice(0, FEED_SIZE);
+  const winnerIds = ranked.map((r) => r.userId);
 
-  const byId = new Map(candidatePool.map((c) => [c.userId, c]));
-  const feed = ranked.map((r) => {
-    const p = byId.get(r.userId)!;
-    return {
-      userId: p.userId,
-      displayName: p.displayName,
-      city: p.city,
-      intent: p.intent,
-      bio: p.bio,
-      avatarSeed: p.avatarSeed,
-      avatarHue: p.avatarHue,
-      photoUrl: p.photos[0]?.url ?? null,
-      verification: p.verification,
-      interests: p.interests.map((i) => ({ id: i.id, label: i.label, emoji: i.emoji, tagline: i.tagline })),
-      prompts: p.answers.map((a) => ({ id: a.promptId, text: a.prompt.text, emoji: a.prompt.emoji, answer: a.answer })),
-      matchScore: r.score,
-      matchReasons: r.reasons,
-      distance: distanceLabel(viewerProfile, p),
-    };
-  });
+  // Full detail (photos/interests/prompt answers) is fetched only for the
+  // FEED_SIZE winners, not the whole candidate pool -- and deliberately not
+  // cached, since photo moderation status needs to be current, not up to
+  // CANDIDATE_POOL_CACHE_TTL_SECONDS stale.
+  const winners = winnerIds.length
+    ? await db.profile.findMany({
+        where: { userId: { in: winnerIds } },
+        include: {
+          interests: true,
+          answers: { include: { prompt: true }, take: 3 },
+          // Viewer-facing: moderationStatus: 'APPROVED' is required here, not
+          // just removedAt: null -- a MANUAL_REVIEW photo (borderline nudity
+          // score, or an unresolved multi-face shot, see policyEngine.ts) had a
+          // real Photo row and no filter here, so it was visible to every other
+          // user browsing /discover before a human ever looked at it -- exactly
+          // what schema.prisma's comment on Photo.moderationStatus promises
+          // never happens ("nothing becomes visible to other users before
+          // that"). This is the one signal that actually enforces it.
+          photos: { where: { removedAt: null, moderationStatus: 'APPROVED' }, orderBy: { position: 'asc' }, take: 1 },
+        },
+      })
+    : [];
+
+  const byId = new Map(winners.map((p) => [p.userId, p]));
+  const feed = ranked
+    .map((r) => {
+      const p = byId.get(r.userId);
+      // Defensive only: the pool can be up to CANDIDATE_POOL_CACHE_TTL_SECONDS
+      // stale, so in the rare case a profile was deleted in that window, skip
+      // it rather than throw.
+      if (!p) return null;
+      return {
+        userId: p.userId,
+        displayName: p.displayName,
+        city: p.city,
+        intent: p.intent,
+        bio: p.bio,
+        avatarSeed: p.avatarSeed,
+        avatarHue: p.avatarHue,
+        photoUrl: p.photos[0]?.url ?? null,
+        verification: p.verification,
+        interests: p.interests.map((i) => ({ id: i.id, label: i.label, emoji: i.emoji, tagline: i.tagline })),
+        prompts: p.answers.map((a) => ({ id: a.promptId, text: a.prompt.text, emoji: a.prompt.emoji, answer: a.answer })),
+        matchScore: r.score,
+        matchReasons: r.reasons,
+        distance: distanceLabel(viewerProfile, p),
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
 
   return NextResponse.json({ feed });
 }
