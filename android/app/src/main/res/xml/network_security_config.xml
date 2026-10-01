@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Explicit, defense-in-depth statement of "HTTPS only, no exceptions" for
+  this app's network traffic, on top of capacitor.config.ts's
+  server.cleartext: false (which governs the webview's own navigation)
+  and android:usesCleartextTraffic="false" on the <application> tag below
+  (which is already the platform default at this app's targetSdkVersion
+  36 -- API 28+ defaults to cleartext-disabled -- this file just makes
+  that explicit and keeps it true even if targetSdkVersion ever drops).
+  cleartextTrafficPermitted="false" with no domain exceptions blocks
+  plain http:// for every domain, for every component in the app
+  (webview, any native HTTP client a future Capacitor plugin adds, OS
+  components like referrer tracking) -- not just the main page load.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

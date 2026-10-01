@@ -62,7 +62,79 @@ const nextConfig = {
     },
   },
   async headers() {
+    // SECURITY HEADERS -- applied to every response (source: '/(.*)'),
+    // Vercel edge static assets included, since Next's `headers()` is a
+    // build-time route-to-header mapping, not per-request middleware
+    // logic (keeping it here means it also applies to cached/static
+    // responses that never reach proxy.ts's runtime).
+    //
+    // Strict-Transport-Security is the actual "HTTPS only" instruction:
+    // Vercel already terminates TLS and redirects a bare http:// request
+    // to https:// for any custom domain, but that first redirect is
+    // still one plaintext round trip an attacker on the same network
+    // could intercept (SSL-stripping). HSTS tells the BROWSER to never
+    // even attempt http:// for this origin again, for the next two years
+    // (max-age=63072000), including subdomains (dev.findmyvybe.com,
+    // admin.findmyvybe.com) -- closing that gap rather than relying on
+    // the redirect alone. `preload` opts into Chrome/Firefox/Safari's
+    // built-in HSTS preload list (hstspreload.org) once this has run in
+    // production for a while -- submitting there is a manual step (and a
+    // slow-to-reverse one: don't submit before HTTPS is confirmed
+    // working on every subdomain), not something this header does by
+    // itself; the header alone still protects every return visit.
+    //
+    // Permissions-Policy explicitly allows geolocation (app/discover,
+    // app/profile, lib/native.ts's Capacitor bridge all use it -- see
+    // app/privacy/page.tsx's Location section) and denies every other
+    // sensor/capability this app has no feature that uses (camera,
+    // microphone: photo upload goes through a plain file input, not
+    // getUserMedia).
+    //
+    // Content-Security-Policy here is a pragmatic v1, not a maximal one:
+    // 'unsafe-inline' stays on script-src/style-src rather than wiring
+    // up per-request nonces (a bigger, riskier change to make blind,
+    // without being able to click through every page first) -- it still
+    // blocks the two things that matter most without it (loading a
+    // script from an attacker-controlled THIRD-PARTY origin, and framing
+    // this site inside someone else's page). img-src allows Vercel
+    // Blob's public photo-storage domain (lib/upload.ts) and Google
+    // Fonts' stylesheet/font origins (app/layout.tsx) -- everything else
+    // defaults to this origin only. Tighten further (nonce-based
+    // script-src, drop 'unsafe-inline') once this has been clicked
+    // through end-to-end on a Preview deployment.
+    const securityHeaders = [
+      { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
+      { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'X-Frame-Options', value: 'DENY' },
+      { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+      {
+        key: 'Permissions-Policy',
+        value:
+          'geolocation=(self), camera=(), microphone=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=(), interest-cohort=()',
+      },
+      {
+        key: 'Content-Security-Policy',
+        value: [
+          "default-src 'self'",
+          "script-src 'self' 'unsafe-inline'",
+          "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+          "font-src 'self' https://fonts.gstatic.com",
+          "img-src 'self' data: https://*.public.blob.vercel-storage.com",
+          "connect-src 'self'",
+          "frame-ancestors 'none'",
+          "base-uri 'self'",
+          "form-action 'self'",
+          "object-src 'none'",
+          'upgrade-insecure-requests',
+        ].join('; '),
+      },
+    ];
+
     return [
+      {
+        source: '/(.*)',
+        headers: securityHeaders,
+      },
       {
         // Allow the PWA manifest + service worker to be installed from any route.
         source: '/manifest.webmanifest',
