@@ -1,10 +1,12 @@
 # Vybe Vouch — Design Spec
 
-Status: **Design — pending product-owner sign-off before implementation**
+Status: **Decided — ready for implementation** (open questions resolved
+2026-10-02, see §6)
 Owner: Product / Platform
-Related: `lib/vibeMatch.ts`, `lib/matchAuthz.ts`, `app/api/preview/[userId]/route.ts`
-(Family Preview — the closest existing feature, see §0), `prisma/schema.prisma`
-(`FeatureFlag`, `Match`, `Profile.familyPreviewOn`)
+Related: `lib/matchSignals.ts`, `lib/vybeContent.ts`, `lib/matchAuthz.ts`,
+`app/api/preview/[userId]/route.ts` (Family Preview — the closest existing
+feature, see §0), `prisma/schema.prisma` (`FeatureFlag`, `Match`,
+`Profile.familyPreviewOn`)
 
 ## 0. What this is, in one paragraph
 
@@ -99,7 +101,7 @@ model VybeVouchResponse {
   id        String          @id @default(cuid())
   inviteId  String          @unique
   invite    VybeVouchInvite @relation(fields: [inviteId], references: [id], onDelete: Cascade)
-  reaction  String          // 'GOOD_VYBE' | 'ASK_MORE' | 'FLAGGED'
+  reaction  String          // 'GOOD_VYBE' | 'ASK_MORE' | 'NO_STRONG_OPINION' | 'FLAGGED'
   note      String          @default("") // optional, length-capped in the route handler
   createdAt DateTime        @default(now())
 }
@@ -158,25 +160,37 @@ their dating profile too):
     "verification": "VERIFIED",
     "verificationIsMock": false,
     "photoUrl": "...",
-    "intent": "SOMETHING_REAL",
+    "pairIntent": "SOMETHING_REAL",
     "vibeSummary": {
-      "percent": 0,
-      "sharedLine": "...",
-      "highlights": ["..."]
+      "matchExplanation": ["..."],
+      "noStrongSignalText": "You both liked each other. That's a pretty good start. 💚"
     }
   }
 }
 ```
 
-`vibeSummary` is built by calling the existing `lib/vibeMatch.ts` narrative
-generator with both profiles' data — reuse, not reimplementation. Everything
-else mirrors the fields `app/api/preview/[userId]/route.ts` already exposes,
-plus the `vibeSummary` which Family Preview deliberately omits (that route's
-own comment says "no Vybe Check prompt answers" for the public always-on
-link — correctly more conservative, since that link is unscoped/indefinite;
-a Vybe Vouch invite is one-shot, short-lived, and explicitly sent to one
-named trusted person by the inviter themselves, which is a different risk
-profile).
+**Correction made while writing this up:** the first draft of this spec
+said `vibeSummary` would reuse `lib/vibeMatch.ts`'s percent-based narrative
+("87% Vibe Match"). That generator is actually superseded —
+`lib/matchSignals.ts`'s own header comment says the product spec bans
+anything that reads as a manufactured compatibility score, and
+`app/api/matches/[matchId]/vibe/route.ts` already replaced it everywhere
+else. Fixed here before any code gets written: `vibeSummary` is built the
+same way that route builds it — `toSignalProfile()` on both profiles,
+`computeSharedSignals()` + `rankPositiveSignals()` from
+`lib/matchSignals.ts`, then `getMatchExplanation()` from
+`lib/vybeContent.ts` for the ready-to-render sentences (falling back to
+`NO_STRONG_SIGNAL_TEXT` when `matchExplanation` is null). `pairIntent`
+comes from that same file's `resolvePairIntent()` — see §9 for why that
+function in particular matters here. Reuse, not reimplementation, same
+principle as before, just pointed at the component that's actually live.
+Everything else mirrors the fields `app/api/preview/[userId]/route.ts`
+already exposes, plus `vibeSummary`, which Family Preview deliberately
+omits (that route's own comment says "no Vybe Check prompt answers" for
+the public always-on link — correctly more conservative, since that link
+is unscoped/indefinite; a Vybe Vouch invite is one-shot, short-lived, and
+explicitly sent to one named trusted person by the inviter themselves,
+which is a different risk profile).
 
 **Deliberately excluded**, same reasoning as Family Preview: bio free text,
 full photo grid (one photo only), chat history, contact info, exact match
@@ -184,7 +198,7 @@ date.
 
 ### 3c. `POST /api/vouch/[token]` — submit a reaction
 
-Unauthenticated. Body: `{ reaction: 'GOOD_VYBE' | 'ASK_MORE' | 'FLAGGED', note?: string }`
+Unauthenticated. Body: `{ reaction: 'GOOD_VYBE' | 'ASK_MORE' | 'NO_STRONG_OPINION' | 'FLAGGED', note?: string }`
 (`note` length-capped, e.g. 200 chars). Fails with the same generic
 "unavailable" response if the invite is missing/expired/revoked/already
 consumed. On success: creates `VybeVouchResponse`, sets `consumedAt`, returns
@@ -196,7 +210,7 @@ static "you've already answered this" page instead of the form.
 - `app/vouch/[token]/page.tsx` — new, unauthenticated, outside-the-app page
   shell, directly mirroring `app/preview/[userId]/page.tsx`'s existing
   pattern (same "no login, works for anyone with the link" shape). Shows the
-  safe summary, the three reaction buttons, optional note field, submit.
+  safe summary, the four reaction buttons, optional note field, submit.
 - No new admin page for MVP (see §7) — invite/response data is low-risk,
   ephemeral, and user-initiated, unlike `ModerationCase`/`Report` records
   which genuinely need admin review surfaces.
@@ -222,41 +236,40 @@ not a push alert. A future notification pass (if/when one gets built for the
 app generally) would cover this for free rather than needing its own
 one-off mechanism.
 
-## 6. Open questions for PKR (need an answer before implementation starts)
+## 6. Decisions (confirmed by PKR, 2026-10-02)
 
-1. **Which intents get this first?** Recommendation: Rishta Ready only at
-   launch (cultural fit is strongest there, user base is smallest while
-   rough edges get found), expanding to Something Real and then Just Vibing
-   once usage looks healthy. Uses the existing `FeatureFlag` model
-   (`rolloutPercent` + a flag per intent, or one flag gated by a server-side
-   intent check) — no new flagging infrastructure needed.
-2. **Invite expiry window** — proposing 7 days. Long enough that someone can
-   realistically get their friend/parent to look at it, short enough that a
-   stale, forgotten link isn't sitting around indefinitely.
-3. **Per-match invite cap** — proposing max 3 *pending* invites at once per
-   person per match, to bound the rate-limit design in §3a without being so
-   strict it blocks the obvious legitimate case (one to a best friend, maybe
-   a separate one to a parent).
-4. **Exact reaction set/copy** — proposing 👍 Good vibe / 🤔 Ask more / 🚩
-   Something feels off, but the copy and whether a fourth "no strong
-   opinion" option is worth adding is a product-feel call, not an
-   engineering one.
-5. **Does a 🚩 FLAGGED response do anything beyond showing the inviter a
-   private note?** Current design: no — purely advisory, per §1's
-   guardrails. Worth explicitly confirming this stays true even under
-   pressure to "do more with it" later, since that's the exact slope that
-   would turn this into the shaadi-site dynamic the product avoids.
+1. **Which intents get this first:** Something Real **and** Rishta Ready
+   both launch together (not Rishta Ready alone as originally proposed) —
+   Just Vibing stays excluded at launch. Uses the existing `FeatureFlag`
+   model (`rolloutPercent` + a per-intent check) — no new flagging
+   infrastructure needed. See §9 for how this interacts with a match
+   whose participants' intents don't match the launch set, or change
+   after the match already exists.
+2. **Invite expiry window:** 7 days — confirmed as proposed.
+3. **Per-match invite cap:** 3 pending invites at once per person per
+   match — confirmed as proposed.
+4. **Reaction set:** four options, not three — 👍 Good vibe / 🤔 Ask more /
+   😐 No strong opinion / 🚩 Something feels off. `NO_STRONG_OPINION` added
+   to the enum in §2 and §3c. (Exact emoji/copy still placeholder-level —
+   fine to bikeshed at build time, doesn't change the data model.)
+5. **🚩 FLAGGED stays advisory-only, permanently:** confirmed. It does
+   nothing beyond showing the inviter a private note — not now, not as a
+   later addition. This is the guardrail in §1 that the rest of the
+   feature's positioning depends on; treat any future proposal to make a
+   flag "do more" as a proposal to change what this feature fundamentally
+   is, not a small follow-up.
 
 ## 7. Rollout (phased, same approach as identity verification)
 
 - **Phase 1** — schema migration + both API routes + the unauthenticated
   page, shipped behind a `FeatureFlag` defaulted off. Exercised end-to-end
   with PKR's own test accounts before anyone else sees it.
-- **Phase 2** — chat-screen entry point + response card, turned on for one
-  intent (recommendation: Rishta Ready, see §6.1) at a low `rolloutPercent`.
-- **Phase 3** — expand to the remaining intents once invites are actually
-  getting answered and nothing's come through the existing `Report` model
-  that traces back to this feature.
+- **Phase 2** — chat-screen entry point + response card, turned on for
+  Something Real and Rishta Ready matches (see §6.1) at a low
+  `rolloutPercent`.
+- **Phase 3** — expand to Just Vibing once invites are actually getting
+  answered and nothing's come through the existing `Report` model that
+  traces back to this feature.
 
 ## 8. Web + native
 
@@ -268,3 +281,94 @@ to date. The one native-adjacent touchpoint, sharing the invite link, uses
 the standard Web Share API, which Capacitor's WebView already supports
 without any plugin — no new dependency, no App Store/Play Store review
 surface to worry about.
+
+## 9. What happens to a match when someone's intent changes
+
+Raised by PKR alongside the decisions in §6, and genuinely relevant to Vybe
+Vouch's intent-gating (§6.1) rather than a tangent: once intent determines
+which matches are even eligible for this feature, "what if intent changes
+after the match already exists" stops being optional to think through.
+
+**The short version: nothing breaks, and most of this already works today
+with zero new code — there's one real gap worth closing.**
+
+**An existing match is never dissolved, hidden, or unmatched by an intent
+change.** `Match` has no `intent` column at all (confirmed in
+`prisma/schema.prisma`) — intent lives only on `Profile`, read fresh at
+request time. Someone editing their intent is exactly as disruptive to an
+existing match as editing their bio: the match row itself is completely
+untouched. This should stay true — a match two people already invested time
+in should never evaporate because of a profile edit.
+
+**The post-match "why you two click" layer already recomputes live, including
+for a changed intent, with no new work needed.** `app/api/matches/[matchId]/vibe/route.ts`
+calls `db.profile.findUnique` fresh on every request for both participants —
+nothing about a match's signals or copy is snapshotted at match time. And
+`lib/matchSignals.ts`'s `resolvePairIntent()` already has an explicit rule
+for two different intents on one match: default to the MORE serious of the
+two (`JUST_VIBING < SOMETHING_REAL < RISHTA_READY`), specifically so — per
+that function's own comment — "nobody who set Marriage intent gets flirty
+casual-intent copy." That rule was written for same-session mismatches
+(discovery mostly pairs same-intent people, but not always), but it applies
+identically to a mismatch created by one side changing intent after the
+fact. So: two people match while both are Just Vibing; six weeks later one
+of them changes to Something Real; the next time either opens the Shared
+Vybe tab, `pairIntent` resolves to `SOMETHING_REAL` and the copy/tone
+shifts accordingly — automatically, already-working behavior, not something
+this feature needs to build.
+
+**The one real gap: intent-specific onboarding fields don't backfill.**
+`RelationshipStyle` answers only exist for people who onboarded (or
+re-onboarded) as Something Real; the future-vibe fields (`futureHome`,
+`futureFamily`, `futureCareer`, `futureMoney`, `children`, `valuesTags`)
+only exist for Rishta Ready; `dateVibeTags`/`tonightTags` only exist for
+Just Vibing (all per `lib/matchSignals.ts`'s tier comments). Someone who
+jumps Just Vibing → Rishta Ready keeps every signal they already had
+(shared interests/tribes/Vybe-prompt answers are intent-agnostic), but
+contributes nothing to Tier 5 until they actually answer the Rishta Ready
+-specific questions — so an existing match's signal set would quietly get
+thinner on their side rather than richer, which is the wrong direction for
+someone who just signaled they're getting more serious.
+
+**Recommendation:** when a user changes `Profile.intent`, immediately
+prompt them (once, right then — not a forced full re-onboarding) to answer
+the new intent's incremental extra questions only. This is additive to
+onboarding, not a new system: the same question set that intent already
+asks new signups, just triggered by an intent change on an existing
+profile instead of only at signup. Keeps existing matches' "why you click"
+signals getting richer on an upgrade (Just Vibing → Something Real →
+Rishta Ready) instead of silently going sparse, and costs no new
+infrastructure — it's the existing onboarding questions, re-entered through
+a different trigger.
+
+**No special notification when a match partner's intent changes.** Explicit
+"they changed their mind" announcements turn an ordinary profile edit into
+a broadcast event, and this app has no push notifications yet anyway (see
+§5's note on `Match.mutedAAt`). The live-recompute already surfaces the
+change gracefully and in-context — present when someone actually opens the
+Shared Vybe tab, not pushed at them — which is the right amount of
+visibility here, consistent with how the rest of this feature (and this
+app generally) handles state changes.
+
+**Vybe Vouch itself: gate by current live intent, not intent-at-match-time.**
+Since nothing about intent is snapshotted anywhere else in this codebase,
+Vybe Vouch shouldn't be the first thing to start snapshotting it. §3a's
+eligibility check (is this match's `resolvePairIntent()` result Something
+Real or Rishta Ready — see §6.1) should run against each participant's
+*current* `Profile.intent` at the moment someone taps "Get a Vybe Vouch,"
+not a value captured when the match was created. Consequence, and it's the
+right one: a match formed while both people were Just Vibing automatically
+becomes Vybe-Vouch-eligible the moment either side's current intent crosses
+into Something Real or Rishta Ready — no backfill, no special-casing, no
+"this match predates the feature" edge case to handle. The existing
+live-everything architecture just does the right thing here for free.
+
+**Not addressed here, flagged for later only if it becomes a real problem:**
+rate-limiting how often someone can change intent at all. No cooldown is
+proposed — most people will change it rarely and sincerely (casual →
+serious is a real life update), and a cooldown is a solution to a gaming
+problem (e.g., bouncing intent to keep re-entering fresh discovery pools,
+or to toggle Vybe-Vouch eligibility) that hasn't been observed yet. Worth
+revisiting only if abuse actually shows up, the same "don't pre-build for a
+problem you don't have evidence of" instinct already applied to Vybe
+Vouch's own invite rate-limit in §3a.
