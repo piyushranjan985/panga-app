@@ -232,6 +232,24 @@ async function seedSampleContent(ctx: Awaited<ReturnType<typeof main>>) {
       ],
     });
   }
+  // The 5 push triggers from docs/PUSH_NOTIFICATIONS.md §4/§7 -- upserted
+  // individually (not inside the count()===0 guard above) so they land
+  // even on a database that was already seeded before push notifications
+  // existed. See lib/notifications/push.ts's fillTemplate() for the
+  // {{placeholder}} substitution these rely on, and each trigger site
+  // (app/api/swipe, app/api/matches/[matchId]/messages, app/api/vouch/
+  // [token], lib/safety/identityVerification.ts, app/api/cron/
+  // date-feedback-nudge) for what vars it passes.
+  const pushTemplates = [
+    { key: 'push.match', channel: 'push', subject: 'New match! 💛', body: 'You and {{name}} just matched on findmyVybe.' },
+    { key: 'push.message', channel: 'push', subject: '{{name}}', body: 'Sent you a message.' },
+    { key: 'push.vouch_response', channel: 'push', subject: 'Vybe Vouch', body: '{{vetterLabel}} shared their read on your match.' },
+    { key: 'push.identity_verification', channel: 'push', subject: 'Identity verification', body: 'Your identity verification was {{outcome}}.' },
+    { key: 'push.date_feedback_nudge', channel: 'push', subject: "How'd it go?", body: 'Tap to share how your date with {{name}} went.' },
+  ];
+  for (const t of pushTemplates) {
+    await db.notificationTemplate.upsert({ where: { key: t.key }, create: t, update: {} });
+  }
 
   console.log('Seeding one acknowledged Ops alert (for the Notifications page\'s "recently acknowledged" section)...');
   if ((await db.opsAlert.count()) === 0) {

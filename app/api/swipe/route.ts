@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { checkAccountActive } from '@/lib/accountEnforcement';
+import { isPushCategoryEnabled, sendPushToUser } from '@/lib/notifications/push';
 
 const bodySchema = z.object({
   toUserId: z.string(),
@@ -54,6 +55,31 @@ export async function POST(req: Request) {
       });
       matched = true;
       matchId = match.id;
+
+      // New-match push to both sides -- see docs/PUSH_NOTIFICATIONS.md §4.
+      // Awaited, not fire-and-forget (see the messages route's new-message
+      // trigger for why); sendPushToUser() never throws, so a missing
+      // Firebase setup can't fail the swipe/match itself.
+      try {
+        const [meProfile, otherProfile] = await Promise.all([
+          db.profile.findUnique({ where: { userId: session.userId }, select: { displayName: true } }),
+          db.profile.findUnique({ where: { userId: toUserId }, select: { displayName: true } }),
+        ]);
+        const [meEnabled, otherEnabled] = await Promise.all([
+          isPushCategoryEnabled(session.userId, 'matchesMessages'),
+          isPushCategoryEnabled(toUserId, 'matchesMessages'),
+        ]);
+        await Promise.all([
+          meEnabled
+            ? sendPushToUser(session.userId, 'push.match', { name: otherProfile?.displayName ?? 'Someone' })
+            : Promise.resolve(),
+          otherEnabled
+            ? sendPushToUser(toUserId, 'push.match', { name: meProfile?.displayName ?? 'Someone' })
+            : Promise.resolve(),
+        ]);
+      } catch (err) {
+        console.error('[push] new-match trigger failed', err);
+      }
     }
   }
 

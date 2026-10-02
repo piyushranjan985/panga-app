@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { VOUCH_NOTE_MAX_LEN, VOUCH_REACTIONS, buildVouchSummary } from '@/lib/vybeVouch';
+import { isPushCategoryEnabled, sendPushToUser } from '@/lib/notifications/push';
 
 const UNAVAILABLE = { error: "This link isn't available." } as const;
 
@@ -61,6 +62,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     }),
     db.vybeVouchInvite.update({ where: { id: invite.id }, data: { consumedAt: new Date() } }),
   ]);
+
+  // Push to the inviter -- generic copy, no reaction/note content in the
+  // push itself (per docs/PUSH_NOTIFICATIONS.md §7's decision), own
+  // settings toggle. Awaited for the same reason as every other trigger
+  // here (see the messages route); never fails the reaction submission
+  // itself.
+  try {
+    if (await isPushCategoryEnabled(invite.inviterUserId, 'vybeVouch')) {
+      await sendPushToUser(invite.inviterUserId, 'push.vouch_response', { vetterLabel: invite.vetterLabel });
+    }
+  } catch (err) {
+    console.error('[push] vouch-response trigger failed', err);
+  }
 
   return NextResponse.json({ ok: true });
 }

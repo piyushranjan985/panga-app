@@ -307,6 +307,10 @@ const patchSchema = z.object({
   intent: intentEnum.optional(),
   quietMode: z.boolean().optional(),
   familyPreviewOn: z.boolean().optional(),
+  // Push-notification category toggles -- see docs/PUSH_NOTIFICATIONS.md §5.
+  notifyMatchesMessages: z.boolean().optional(),
+  notifyVybeVouch: z.boolean().optional(),
+  notifyReminders: z.boolean().optional(),
   bio: z.string().trim().max(280).optional(),
   interestIds: z.array(z.string()).max(8).optional(),
   tribeIds: z.array(z.string()).max(5).optional(),

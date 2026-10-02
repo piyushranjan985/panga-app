@@ -242,29 +242,98 @@ immediately instead of everything blocking on that round-trip.
    pattern as `admin/app/api/cron/retention-purge/route.ts`), not an
    instant event-trigger like the other four — see §8 Phase 2.
 
-## 8. Rollout — status: building now (2026-10-02)
+## 8. Rollout — status: built (2026-10-02), awaiting PKR's manual setup
 
-Combined build per §7.4 — Vybe Vouch and Push Notifications ship together,
-not staggered. All four phases are being built in this pass; only Phase 4's
-actual store submission is PKR's own manual step (new Firebase project,
-APNs key, Xcode/Android Studio build, App Store/Play Store review — the
-same category of PKR-only step as creating the MSG91/Brevo/StartMessaging
-accounts earlier, not something the code side can do on its own).
+Built in this pass, in the same combined sweep as Vybe Vouch (§7.4):
 
-- **Phase 1** — Vybe Vouch's schema (`VybeVouchInvite`/`VybeVouchResponse`),
-  API routes, and unauthenticated page (`docs/VYBE_VOUCH.md` §2-4), behind
-  its own `FeatureFlag`, exercised with PKR's own test accounts.
-- **Phase 2** — `DeviceToken` schema, `lib/notifications/push.ts` (FCM
-  send, reusing the provider-facade pattern from `lib/notifications/sms.ts`),
-  the `'push'` `NotificationTemplate` channel, the daily cron scan for the
-  date-feedback nudge (§4.5), and **web push only** (Android Chrome /
-  desktop) for all five triggers — ships with a normal Vercel deploy, no
-  store review needed, behind its own `FeatureFlag`.
-- **Phase 3** — chat-screen entry points for both features (Vybe Vouch's
-  "Get a Vybe Vouch" action, push permission prompting, the 3 settings
-  toggles from §5), still web-only, still no store review.
-- **Phase 4** — `@capacitor/push-notifications` dependency and native
-  permission-request code path added to this codebase; the actual Firebase
-  project, APNs key, native build, and store submission are PKR's to do
-  (see note above) — the one phase that actually needs the store-review
-  round-trip (see §6).
+- **Schema** — `DeviceToken`, `Profile.notifyMatchesMessages` /
+  `notifyVybeVouch` / `notifyReminders`, `Match.chatOpenAAt` /
+  `chatOpenBAt`, `NotificationTemplate.channel` extended to include
+  `'push'`. Migrated to the dev database (see the Vybe Vouch schema
+  commit) -- production still needs `prisma migrate deploy`.
+- **Send facade** — `lib/notifications/push.ts`: FCM HTTP v1 API via a
+  service-account JWT (signed with `jose`, no `firebase-admin`
+  dependency), `isPushCategoryEnabled()` + `isChatOpenRecently()` gating
+  helpers, stale-token cleanup.
+- **5 triggers, wired and live in the code path** (not just designed):
+  match (`app/api/swipe/route.ts`), message (`app/api/matches/[matchId]/
+  messages/route.ts`, suppressed via the new heartbeat route when the
+  recipient's chat is open), Vybe Vouch response (`app/api/vouch/[token]/
+  route.ts`), identity verification result (`lib/safety/
+  identityVerification.ts`'s `finalizeIdentityVerification`, the one
+  chokepoint both the mock and DigiLocker paths already went through),
+  and the date-feedback nudge (`app/api/cron/date-feedback-nudge/route.ts`,
+  scheduled daily via the new root `vercel.json`). Their 5
+  `NotificationTemplate` rows are seeded (`push.match`, `push.message`,
+  `push.vouch_response`, `push.identity_verification`,
+  `push.date_feedback_nudge`) -- edit the copy anytime from the admin
+  Configuration page, same as any other template.
+- **Device registration + web push client** — `POST /api/push/register`
+  (+ `DELETE` to unregister), `lib/notifications/pushClient.ts` (Firebase
+  Web SDK, dynamically imported so the plain web bundle doesn't pay for
+  it until someone taps "Turn on"), `public/firebase-messaging-sw.js`
+  (background push handler, Firebase config passed via query string --
+  see that file's comment for why). Android Chrome + desktop browsers
+  only, by design (§3).
+- **Profile settings** — a Notifications section on `/profile` with a
+  "Turn on" control and the 3 category toggles from §5, all wired to the
+  real PATCH endpoint.
+- **Native plugin dependency** — `@capacitor/push-notifications` added
+  to `package.json`, `lib/native.ts`'s `requestPushPermission()` branches
+  to it on-device (real native permission dialog, same pattern as
+  `getCurrentPosition`), and `npx cap sync` has already run -- both
+  `ios/App/CapApp-SPM/Package.swift` and `android/capacitor.settings.gradle`
+  /`android/app/capacitor.build.gradle` reference the plugin now.
+
+**What's left — all of it genuinely needs PKR's own accounts/hardware,
+not more code:**
+
+1. **Create the Firebase project** (console.firebase.google.com, free).
+   Add Web, iOS, and Android apps to it under Project settings.
+2. **Web config** — from the Web app's settings, set these on Vercel
+   (both the dev and prod environments, since they differ per `appId`):
+   `NEXT_PUBLIC_FIREBASE_API_KEY`, `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`,
+   `NEXT_PUBLIC_FIREBASE_PROJECT_ID`, `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`,
+   `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`, `NEXT_PUBLIC_FIREBASE_APP_ID`.
+   Under Project settings > Cloud Messaging > Web configuration, generate
+   a VAPID key pair and set `NEXT_PUBLIC_FIREBASE_VAPID_KEY`.
+3. **Server config** — Project settings > Service accounts > Generate new
+   private key, downloads a JSON file. Set its *entire contents* as
+   `FIREBASE_SERVICE_ACCOUNT_JSON` on Vercel (one line, valid JSON) --
+   never commit that file. Also set `CRON_SECRET` to any random string
+   (used by `app/api/cron/date-feedback-nudge`) and add it in Vercel's
+   Project Settings so the cron's `Authorization: Bearer` header matches
+   -- Vercel sets this automatically for its own Cron Jobs once
+   `CRON_SECRET` exists as an env var, nothing else to wire up there.
+4. **Android** — download `google-services.json` from the Firebase
+   Android app and place it at `android/app/google-services.json`. Add
+   the Google Services Gradle plugin (`com.google.gms.google-services`)
+   to `android/build.gradle` and `android/app/build.gradle` -- deliberately
+   NOT added by this pass, since that plugin hard-fails the Gradle build
+   the moment it's applied without a real `google-services.json` present,
+   and this repo doesn't have PKR's yet. `@capacitor/push-notifications`'
+   own README has the exact two-line snippet.
+5. **iOS** — download `GoogleService-Info.plist` from the Firebase iOS
+   app and add it to the `App` target in Xcode (drag into
+   `ios/App/App/`, check "Copy items if needed"). In Xcode's Signing &
+   Capabilities tab for the App target, add the **Push Notifications**
+   capability and the **Background Modes** capability with "Remote
+   notifications" checked -- this writes an entitlements file and updates
+   the project's provisioning, which needs Xcode itself (hand-editing
+   `.pbxproj` for this is fragile enough that it's not worth the risk;
+   deliberately left for Xcode's GUI rather than attempted here). Needs
+   an active Apple Developer account with Push Notifications enabled for
+   this App ID. Then in the Firebase project's Cloud Messaging settings,
+   upload an APNs authentication key (or certificate) from
+   developer.apple.com.
+6. **Rebuild and resubmit** — after 4-5, `npx cap sync ios && npx cap sync
+   android`, then a normal Xcode/Android Studio archive + App Store
+   Connect / Play Console submission. This is the one feature in this
+   whole pass that needs the store-review round-trip (§6) -- everything
+   else (Vybe Vouch entirely, and push's web half) is already live the
+   moment it's deployed, same as any other change to this app.
+
+Until step 1-3 are done, `isPushConfigured()` returns false and every
+trigger site's `sendPushToUser()` call silently no-ops -- the rest of the
+app behaves exactly as it does today, nothing breaks or blocks waiting on
+push. Vybe Vouch has no such dependency and works the moment this deploys.

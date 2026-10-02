@@ -259,17 +259,31 @@ one-off mechanism.
    flag "do more" as a proposal to change what this feature fundamentally
    is, not a small follow-up.
 
-## 7. Rollout (phased, same approach as identity verification)
+## 7. Rollout — status: built (2026-10-02)
 
-- **Phase 1** — schema migration + both API routes + the unauthenticated
-  page, shipped behind a `FeatureFlag` defaulted off. Exercised end-to-end
-  with PKR's own test accounts before anyone else sees it.
-- **Phase 2** — chat-screen entry point + response card, turned on for
-  Something Real and Rishta Ready matches (see §6.1) at a low
-  `rolloutPercent`.
-- **Phase 3** — expand to Just Vibing once invites are actually getting
-  answered and nothing's come through the existing `Report` model that
-  traces back to this feature.
+Schema, both API routes, the unauthenticated vetter page, and the
+chat-screen entry point + response card are all live in the codebase now
+(see `lib/vybeVouch.ts`, `app/api/matches/[matchId]/vouch/route.ts`,
+`app/api/vouch/[token]/route.ts`, `app/vouch/[token]/page.tsx`,
+`app/matches/[matchId]/page.tsx`'s `'vouch'` panel) -- no separate
+staged rollout mechanism. Revised from the original phased plan below:
+`FeatureFlag` rows exist in the schema (and the admin Configuration page
+can edit them), but nothing in the consumer app actually reads a
+`FeatureFlag` at request time anywhere yet -- `NotificationTemplate` was
+the same story until this very pass wired it in for push (see
+`docs/PUSH_NOTIFICATIONS.md` §8). Gating this behind a flag would mean
+building that read-path for the first time just for this feature, which
+wasn't asked for; the real, already-working gate is the live-intent check
+in §6.1/§9 (Something Real + Rishta Ready only). Expanding to Just Vibing
+later, if that's ever wanted, is a one-line change to
+`VOUCH_INTENTS` in `lib/vybeVouch.ts`.
+
+Original phased plan, for reference (superseded by the above):
+- ~~Phase 1 — ship behind a `FeatureFlag` defaulted off, exercised with
+  PKR's own test accounts.~~
+- ~~Phase 2 — turn on for Something Real + Rishta Ready at a low
+  `rolloutPercent`.~~
+- ~~Phase 3 — expand to Just Vibing once invites are getting answered.~~
 
 ## 8. Web + native
 

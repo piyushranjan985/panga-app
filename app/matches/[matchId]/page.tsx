@@ -158,6 +158,11 @@ export default function ChatPage() {
     const [meRes, msgRes] = await Promise.all([
       fetch('/api/me').then((r) => r.json()),
       fetch(`/api/matches/${params.matchId}/messages`).then((r) => r.json()),
+      // Piggybacks on this existing 4s poll rather than a dedicated timer --
+      // see app/api/matches/[matchId]/heartbeat/route.ts. Fire-and-forget:
+      // a missed beat just means a push arrives that could've been
+      // suppressed, never a broken chat.
+      fetch(`/api/matches/${params.matchId}/heartbeat`, { method: 'POST' }).catch(() => {}),
     ]);
     setMyUserId(meRes.userId ?? null);
     setMessages(msgRes.messages ?? []);

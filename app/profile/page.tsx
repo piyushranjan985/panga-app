@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import InactivityLogout from '@/components/InactivityLogout';
 import IntentBadge from '@/components/IntentBadge';
-import { getCurrentPosition } from '@/lib/native';
+import { getCurrentPosition, requestPushPermission } from '@/lib/native';
 import {
   DATE_VIBES,
   TONIGHT_OPTIONS,
@@ -31,6 +31,9 @@ interface ProfileData {
   intent: string;
   quietMode: boolean;
   familyPreviewOn: boolean;
+  notifyMatchesMessages: boolean;
+  notifyVybeVouch: boolean;
+  notifyReminders: boolean;
   verification: string;
   avatarSeed: string;
   photos: Photo[];
@@ -337,7 +340,11 @@ export default function ProfilePage() {
     });
   }
 
-  async function patch(update: Partial<Pick<ProfileData, 'quietMode' | 'familyPreviewOn'>>) {
+  async function patch(
+    update: Partial<
+      Pick<ProfileData, 'quietMode' | 'familyPreviewOn' | 'notifyMatchesMessages' | 'notifyVybeVouch' | 'notifyReminders'>
+    >
+  ) {
     setProfile((p) => (p ? { ...p, ...update } : p));
     await fetch('/api/profile', {
       method: 'PATCH',
@@ -348,6 +355,31 @@ export default function ProfilePage() {
 
   const [locationBusy, setLocationBusy] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+  const [pushEnabled, setPushEnabled] = useState(false);
+
+  // "Turn on notifications" -- see docs/PUSH_NOTIFICATIONS.md §5. Goes
+  // through lib/native.ts's native/web branching (real OS permission
+  // dialog either way) and registers this device server-side on success.
+  // There's no stored "is this exact device registered" flag to read back
+  // on load (a user may have several devices, each independently
+  // registered) -- pushEnabled only reflects *this page load's* attempt,
+  // same spirit as shareLocation() below not trying to detect a prior grant.
+  async function enablePush() {
+    setPushBusy(true);
+    setPushError(null);
+    try {
+      const ok = await requestPushPermission();
+      if (ok) setPushEnabled(true);
+      else setPushError('Push notifications aren’t supported in this browser.');
+    } catch (err) {
+      setPushError(err instanceof Error ? err.message : 'Could not turn on notifications.');
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
   // Opt-in only -- the browser's own permission prompt is the consent UI,
   // triggered only by this explicit tap, never on page load. Raw
@@ -662,6 +694,54 @@ export default function ProfilePage() {
               }`}
             />
           </button>
+        </section>
+
+        <section className="mt-3 rounded-2xl border border-line bg-white p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="font-bold">🔔 Notifications</p>
+              <p className="text-sm text-inkSoft">Get a push when something happens, even when the app's closed.</p>
+            </div>
+            <button
+              type="button"
+              onClick={enablePush}
+              disabled={pushBusy}
+              className="gradient-btn shrink-0 rounded-full px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60"
+            >
+              {pushBusy ? 'Turning on…' : pushEnabled ? 'On for this device' : 'Turn on'}
+            </button>
+          </div>
+          {pushError && <p className="mt-2 text-xs text-magenta">{pushError}</p>}
+
+          <div className="mt-3 flex flex-col gap-2.5 border-t border-line pt-3">
+            {(
+              [
+                ['notifyMatchesMessages', 'Matches & messages', 'New matches and new messages (muted while you have that chat open).'],
+                ['notifyVybeVouch', 'Vybe Vouch', 'When someone you looped in shares their read on a match.'],
+                ['notifyReminders', 'Reminders', 'Identity verification results and the occasional "how did your date go?" nudge.'],
+              ] as const
+            ).map(([field, label, desc]) => (
+              <div key={field} className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">{label}</p>
+                  <p className="text-xs text-inkSoft">{desc}</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={profile[field]}
+                  onClick={() => patch({ [field]: !profile[field] })}
+                  className={`h-6 w-11 flex-none rounded-full transition ${profile[field] ? 'bg-mint' : 'bg-line'}`}
+                >
+                  <span
+                    className={`block h-4 w-4 translate-x-1 rounded-full bg-white shadow transition-transform ${
+                      profile[field] ? 'translate-x-5' : ''
+                    }`}
+                  />
+                </button>
+              </div>
+            ))}
+          </div>
         </section>
 
         <section className="mt-3 rounded-2xl border border-line bg-white p-4">

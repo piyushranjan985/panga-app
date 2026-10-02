@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import type { Prisma } from '@prisma/client';
 import { getSession } from '@/lib/session';
-import { assertParticipant } from '@/lib/matchAuthz';
+import { assertParticipant, otherUserId } from '@/lib/matchAuthz';
 import { checkMessagingAllowed } from '@/lib/accountEnforcement';
+import { isChatOpenRecently, isPushCategoryEnabled, sendPushToUser } from '@/lib/notifications/push';
 
 // Most-recent messages returned, not the full history. A chat with months
 // of real back-and-forth has no natural cap otherwise -- this used to
@@ -123,6 +124,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ matchId
 
   if (parsed.data.noGhostClose) {
     await db.match.update({ where: { id: matchId }, data: { unmatchedAt: new Date() } });
+  }
+
+  // New-message push -- see docs/PUSH_NOTIFICATIONS.md §4/§7. Generic
+  // copy (no content preview, per §7's trigger-list decision), suppressed
+  // when the recipient's own chat screen is currently open (their side's
+  // chatOpenAAt/BAt was bumped recently by the heartbeat route), and
+  // gated on their notifyMatchesMessages toggle. Awaited (not fire-and-
+  // forget) -- a Vercel serverless function can be frozen right after it
+  // returns a response, so an un-awaited send here could just never
+  // happen; sendPushToUser() itself never throws on a send failure or a
+  // missing Firebase setup, so this can't turn into a 500 for the
+  // message itself, just a little added latency.
+  const recipientId = otherUserId(match, session.userId);
+  const recipientChatOpenAt = match.userAId === recipientId ? match.chatOpenAAt : match.chatOpenBAt;
+  if (!isChatOpenRecently(recipientChatOpenAt)) {
+    try {
+      if (await isPushCategoryEnabled(recipientId, 'matchesMessages')) {
+        const sender = await db.profile.findUnique({ where: { userId: session.userId }, select: { displayName: true } });
+        await sendPushToUser(recipientId, 'push.message', { name: sender?.displayName ?? 'Someone' });
+      }
+    } catch (err) {
+      console.error('[push] new-message trigger failed', err);
+    }
   }
 
   return NextResponse.json({ ok: true, message });

@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/date-feedback-nudge",
+      "schedule": "0 12 * * *"
+    }
+  ]
+}

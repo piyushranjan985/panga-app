@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { db } from '@/lib/db';
 import { hashDocumentReference, checkDuplicateIdentity } from './duplicateIdentity';
+import { isPushCategoryEnabled, sendPushToUser } from '@/lib/notifications/push';
 
 /**
  * DigiLocker (India's government-run digital document locker, run under
@@ -463,6 +464,26 @@ export async function finalizeIdentityVerification(params: {
   });
 
   await db.profile.update({ where: { userId }, data: { verification: decision.status } });
+
+  // Identity-verification-result push -- see docs/PUSH_NOTIFICATIONS.md
+  // §4/§7. Only for a genuinely resolved outcome (VERIFIED/REJECTED), not
+  // MANUAL_REVIEW -- that's still pending, nothing for the user to act on
+  // yet (an admin resolving a ModerationCase later doesn't currently
+  // re-run this function, so MANUAL_REVIEW's eventual resolution isn't
+  // covered here; that's the same gap noted for admin-side verification
+  // actions generally, not something this trigger alone can close).
+  // Awaited, same reasoning as every other trigger site; never throws.
+  if (decision.status === 'VERIFIED' || decision.status === 'REJECTED') {
+    try {
+      if (await isPushCategoryEnabled(userId, 'reminders')) {
+        await sendPushToUser(userId, 'push.identity_verification', {
+          outcome: decision.status === 'VERIFIED' ? 'verified' : 'not verified',
+        });
+      }
+    } catch (err) {
+      console.error('[push] identity-verification trigger failed', err);
+    }
+  }
 
   return decision;
 }
