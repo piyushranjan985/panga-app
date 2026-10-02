@@ -72,6 +72,26 @@ interface Partner {
   distance: string | null;
 }
 
+interface VouchInvite {
+  id: string;
+  vetterLabel: string;
+  shareUrl: string;
+  expiresAt: string;
+  consumedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  response: { reaction: string; note: string; createdAt: string } | null;
+}
+
+const VOUCH_REACTION_COPY: Record<string, { emoji: string; label: string }> = {
+  GOOD_VYBE: { emoji: '💚', label: 'Good vybe' },
+  ASK_MORE: { emoji: '🤔', label: 'Ask more questions first' },
+  NO_STRONG_OPINION: { emoji: '😐', label: 'No strong opinion' },
+  // Advisory only, same as every other reaction here -- a flag never
+  // gates or blocks anything in the match itself. See docs/VYBE_VOUCH.md §1.
+  FLAGGED: { emoji: '🚩', label: 'Flagged a concern' },
+};
+
 const REPORT_REASONS = ['Inappropriate messages', 'Fake profile', 'Harassment', 'Spam or scam', 'Other'] as const;
 
 // A small curated emoji set for the composer's picker -- no external
@@ -117,7 +137,7 @@ export default function ChatPage() {
   // post-match experience simple" true here too: nothing stacks on top of
   // anything else.
   const [panel, setPanel] = useState<
-    'none' | 'menu' | 'profile' | 'askAbout' | 'plan' | 'report' | 'safety' | 'dateFeedback'
+    'none' | 'menu' | 'profile' | 'askAbout' | 'plan' | 'report' | 'safety' | 'dateFeedback' | 'vouch'
   >('none');
   const [planStepIndex, setPlanStepIndex] = useState(0);
   const [planAnswers, setPlanAnswers] = useState<Record<string, PlanOption>>({});
@@ -125,6 +145,14 @@ export default function ChatPage() {
   const [reportReason, setReportReason] = useState<(typeof REPORT_REASONS)[number]>(REPORT_REASONS[0]);
   const [reportDetails, setReportDetails] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Vybe Vouch -- see docs/VYBE_VOUCH.md. vouchInvites is the inviter's
+  // own invite history for this match (never the other participant's --
+  // the vetted person is never shown any of this), refetched whenever the
+  // panel opens and again right after creating a new invite.
+  const [vouchInvites, setVouchInvites] = useState<VouchInvite[]>([]);
+  const [vetterLabel, setVetterLabel] = useState('');
+  const [vouchFeedback, setVouchFeedback] = useState<string | null>(null);
 
   async function load() {
     const [meRes, msgRes] = await Promise.all([
@@ -375,6 +403,59 @@ export default function ChatPage() {
     setPanel('none');
   }
 
+  // Vybe Vouch -- see docs/VYBE_VOUCH.md §5. Invite history is only ever
+  // the caller's own (app/api/matches/[matchId]/vouch's GET already
+  // scopes to the authenticated inviter), so this is safe to refetch
+  // freely without leaking anything to the other participant.
+  async function loadVouchInvites() {
+    const d = await fetch(`/api/matches/${params.matchId}/vouch`).then((r) => r.json());
+    setVouchInvites(d.invites ?? []);
+  }
+
+  useEffect(() => {
+    if (panel === 'vouch') {
+      setVouchFeedback(null);
+      loadVouchInvites();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panel]);
+
+  // Creates the invite, then hands the link straight to the share sheet
+  // (WhatsApp is exactly the right channel for this, and needs zero new
+  // integration work) with a copy-to-clipboard fallback for browsers
+  // without the Web Share API.
+  async function createVouchInvite() {
+    if (busy || !vetterLabel.trim()) return;
+    setBusy(true);
+    setVouchFeedback(null);
+    const res = await fetch(`/api/matches/${params.matchId}/vouch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vetterLabel: vetterLabel.trim() }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setVouchFeedback(d.error ?? "Couldn't create that invite right now.");
+      setBusy(false);
+      return;
+    }
+    const shareText = "I matched with someone on findmyVybe -- would love your read on them. No account needed, just tap the link:";
+    try {
+      if (navigator.share) {
+        await navigator.share({ text: shareText, url: d.shareUrl });
+      } else {
+        await navigator.clipboard.writeText(d.shareUrl);
+        setVouchFeedback('Link copied -- paste it to them however you normally would.');
+      }
+    } catch {
+      // User dismissed the share sheet, or clipboard write failed -- the
+      // invite still exists and shows up in the list below either way.
+    }
+    setVetterLabel('');
+    setBusy(false);
+    await loadVouchInvites();
+  }
+
   const hasExchanged = messages.some((m) => m.senderId === myUserId) && messages.some((m) => m.senderId === partner?.userId);
   const planUnlocked = PLAN_UNLOCK_AFTER_EXCHANGE ? hasExchanged : true;
   const hasPlanMessage = messages.some((m) => m.kind === 'PLAN');
@@ -384,6 +465,11 @@ export default function ChatPage() {
   const showReadyOfflineNudge =
     !readyOfflineDismissed && hasExchanged && !hasPlanMessage && messages.length >= READY_TO_MEET_MESSAGE_COUNT;
   const showDateFeedbackCard = hasPlanMessage && dateFeedbackSubmitted === false;
+  // Vybe Vouch only launches for Something Real + Rishta Ready, gated on
+  // the CURRENT live pairIntent -- see docs/VYBE_VOUCH.md §6/§9. Hiding
+  // the menu entry for Just Vibing matches keeps the UI honest about
+  // this; the route enforces the same check server-side regardless.
+  const vouchEligible = signals ? signals.pairIntent !== 'JUST_VIBING' : false;
 
   return (
     <div className="flex h-screen flex-col">
@@ -902,6 +988,15 @@ export default function ChatPage() {
             >
               🛡️ Safety
             </button>
+            {vouchEligible && (
+              <button
+                type="button"
+                onClick={() => setPanel('vouch')}
+                className="block w-full rounded-xl px-4 py-3 text-left text-sm font-semibold"
+              >
+                💌 Vybe Vouch
+              </button>
+            )}
             <button
               type="button"
               onClick={toggleMute}
@@ -1220,6 +1315,80 @@ export default function ChatPage() {
                 Submit
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {panel === 'vouch' && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-ink/60 px-0 backdrop-blur-sm sm:items-center sm:px-4"
+          onClick={() => setPanel('none')}
+        >
+          <div
+            className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-t-card bg-white p-5 sm:rounded-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="font-display text-lg font-extrabold">💌 Vybe Vouch</p>
+            <p className="mt-1 text-sm text-inkSoft">
+              Loop in one trusted person for their read on this match. They&apos;ll see a short, privacy-safe
+              summary -- no account, no chat history, no contact info -- and can share a reaction. It&apos;s
+              just another opinion for you to weigh, never anything that affects this match.
+            </p>
+
+            <div className="mt-4 flex flex-col gap-2">
+              <input
+                value={vetterLabel}
+                onChange={(e) => setVetterLabel(e.target.value)}
+                placeholder="Who's this for? (e.g. Best friend Rhea)"
+                maxLength={40}
+                className="w-full rounded-xl border border-line px-3 py-2.5 text-sm"
+              />
+              <p className="text-xs text-inkSoft">Only you see this label -- it's never shown to them or your match.</p>
+              <button
+                type="button"
+                onClick={createVouchInvite}
+                disabled={busy || !vetterLabel.trim()}
+                className="gradient-btn rounded-full px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+              >
+                Get link to share
+              </button>
+              {vouchFeedback && <p className="text-center text-xs font-semibold text-inkSoft">{vouchFeedback}</p>}
+            </div>
+
+            {vouchInvites.length > 0 && (
+              <div className="mt-5 flex flex-col gap-2 border-t border-line pt-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-inkSoft/60">Sent invites</p>
+                {vouchInvites.map((inv) => {
+                  const reaction = inv.response ? VOUCH_REACTION_COPY[inv.response.reaction] : null;
+                  const expired = !inv.consumedAt && !inv.revokedAt && new Date(inv.expiresAt).getTime() < Date.now();
+                  return (
+                    <div key={inv.id} className="rounded-xl bg-paper p-3">
+                      <p className="text-sm font-semibold">{inv.vetterLabel}</p>
+                      {inv.response && reaction ? (
+                        <>
+                          <p className="mt-1 text-sm">
+                            {reaction.emoji} {reaction.label}
+                          </p>
+                          {inv.response.note && <p className="mt-1 text-sm text-inkSoft">&ldquo;{inv.response.note}&rdquo;</p>}
+                        </>
+                      ) : (
+                        <p className="mt-1 text-xs text-inkSoft">
+                          {inv.revokedAt ? 'Cancelled' : expired ? 'Expired, no response' : 'Waiting on their response…'}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setPanel('none')}
+              className="mt-5 block w-full text-center text-sm font-semibold text-inkSoft"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
