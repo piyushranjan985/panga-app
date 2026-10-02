@@ -150,18 +150,20 @@ model User {
 
   profile Profile?
 
-  otpCodes        OtpCode[]
-  swipesSent      Swipe[]        @relation("SwipesBySender")
-  swipesReceived  Swipe[]        @relation("SwipesByTarget")
-  matchesAsUserA  Match[]        @relation("MatchUserA")
-  matchesAsUserB  Match[]        @relation("MatchUserB")
-  messagesSent    Message[]      @relation("MessagesBySender")
-  reportsFiled    Report[]       @relation("ReportsByReporter")
-  reportsReceived Report[]       @relation("ReportsAboutUser")
-  blocksMade      Block[]        @relation("BlocksByBlocker")
-  blocksReceived  Block[]        @relation("BlocksByBlocked")
-  dateFeedback    DateFeedback[]
-  messageLikes    MessageLike[]
+  otpCodes             OtpCode[]
+  swipesSent           Swipe[]           @relation("SwipesBySender")
+  swipesReceived       Swipe[]           @relation("SwipesByTarget")
+  matchesAsUserA       Match[]           @relation("MatchUserA")
+  matchesAsUserB       Match[]           @relation("MatchUserB")
+  messagesSent         Message[]         @relation("MessagesBySender")
+  reportsFiled         Report[]          @relation("ReportsByReporter")
+  reportsReceived      Report[]          @relation("ReportsAboutUser")
+  blocksMade           Block[]           @relation("BlocksByBlocker")
+  blocksReceived       Block[]           @relation("BlocksByBlocked")
+  dateFeedback         DateFeedback[]
+  messageLikes         MessageLike[]
+  vybeVouchInvitesSent VybeVouchInvite[]
+  deviceTokens         DeviceToken[]
 
   // --- Admin Portal: relations from the admin-domain models below ---------
   moderationCases       ModerationCase[]       @relation("ModerationCasesAboutUser")
@@ -193,6 +195,16 @@ model Profile {
   quietMode       Boolean            @default(false) // paused from discovery, profile kept
   verification    VerificationStatus @default(UNVERIFIED)
   familyPreviewOn Boolean            @default(false) // Rishta Ready: optional shareable preview
+
+  // Push notification preferences (docs/PUSH_NOTIFICATIONS.md §5) -- three
+  // categories, not a per-trigger-event toggle; all default true since the
+  // OS/browser permission prompt (requested separately, see DeviceToken) is
+  // already the real opt-in gate. Matches & Messages covers triggers 1-2;
+  // Vybe Vouch covers trigger 3 (kept separate on purpose, see the doc);
+  // Reminders covers triggers 4-5 (identity verification, date-feedback).
+  notifyMatchesMessages Boolean @default(true)
+  notifyVybeVouch       Boolean @default(true)
+  notifyReminders       Boolean @default(true)
 
   avatarSeed String @default("A") // fallback glyph shown only if a profile somehow has no photos
   avatarHue  Int    @default(1) // 1..6, picks the fallback gradient behind that glyph
@@ -466,18 +478,70 @@ model Match {
   // per-viewer row to hang a single flag off of.
   hiddenAAt   DateTime?
   hiddenBAt   DateTime?
-  // "Mute" (see the ... safety menu) -- per side, suppresses nothing more
-  // than a "new message" affordance client-side; this MVP has no push
-  // notifications yet, so today this only silences the in-app unread
-  // treatment, not a real notification.
+  // "Mute" -- per side, suppresses the in-app unread treatment AND (see
+  // docs/PUSH_NOTIFICATIONS.md) push notifications for new messages in
+  // this match.
   mutedAAt    DateTime?
   mutedBAt    DateTime?
+  // Bumped (not just set once) while that side's chat screen is actively
+  // mounted/visible -- NOT a simple open/closed boolean, since a tab that
+  // closes without a clean unmount would otherwise get stuck "open"
+  // forever. A message-send checks whether the recipient's timestamp here
+  // is recent (see lib/notifications/push.ts's chat-open check) to decide
+  // whether a push notification would be redundant. Lives on Match, not a
+  // separate table, for the same reason hiddenAAt/mutedAAt do -- one row
+  // per side is enough, no per-viewer table needed.
+  chatOpenAAt DateTime?
+  chatOpenBAt DateTime?
 
-  messages     Message[]
-  dateFeedback DateFeedback[]
+  messages         Message[]
+  dateFeedback     DateFeedback[]
+  vybeVouchInvites VybeVouchInvite[]
 
   @@unique([userAId, userBId])
   @@index([userBId])
+}
+
+// =============================================================================
+// VYBE VOUCH -- see docs/VYBE_VOUCH.md for the full design
+// -----------------------------------------------------------------------------
+// A per-match, opt-in, one-shot invite: either match participant can loop
+// in one trusted person (no account needed) to react to a privacy-safe
+// summary of that specific match. Advisory only, by design -- see the doc's
+// §1 guardrails -- never gates messaging/matching/discovery.
+// =============================================================================
+
+model VybeVouchInvite {
+  id            String    @id @default(cuid())
+  matchId       String
+  match         Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  inviterUserId String
+  inviter       User      @relation(fields: [inviterUserId], references: [id], onDelete: Cascade)
+  // Opaque, unguessable -- the link itself is the credential, no account
+  // needed by the vetter.
+  token         String    @unique @default(cuid())
+  // Inviter's own free-text label for who this is going to ("Best friend
+  // Rhea", "Mom") -- shown ONLY to the inviter, never to the vetter or the
+  // match. Length-capped (40 chars) in the route handler, not here.
+  vetterLabel   String
+  expiresAt     DateTime
+  consumedAt    DateTime? // set the moment a response is submitted
+  revokedAt     DateTime? // inviter can cancel an unused invite
+  createdAt     DateTime  @default(now())
+
+  response VybeVouchResponse?
+
+  @@index([matchId])
+  @@index([inviterUserId])
+}
+
+model VybeVouchResponse {
+  id        String          @id @default(cuid())
+  inviteId  String          @unique
+  invite    VybeVouchInvite @relation(fields: [inviteId], references: [id], onDelete: Cascade)
+  reaction  String // 'GOOD_VYBE' | 'ASK_MORE' | 'NO_STRONG_OPINION' | 'FLAGGED'
+  note      String          @default("") // optional, length-capped (200 chars) in the route handler
+  createdAt DateTime        @default(now())
 }
 
 model Message {
@@ -1199,15 +1263,32 @@ model AppConfigChange {
 model NotificationTemplate {
   id      String  @id @default(cuid())
   key     String  @unique // e.g. "account.suspended", "privacy.deletion.completed"
-  channel String // 'email' | 'sms' | 'in_app'
-  subject String?
-  body    String
+  channel String // 'email' | 'sms' | 'in_app' | 'push'
+  subject String? // push: used as the notification title
+  body    String // push: used as the notification body; {{placeholders}} filled in by the caller
 
   updatedById String?
   updatedBy   AdminUser? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// =============================================================================
+// PUSH NOTIFICATIONS -- see docs/PUSH_NOTIFICATIONS.md for the full design
+// =============================================================================
+
+model DeviceToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String    @unique // the FCM registration token itself
+  platform   String // 'ios' | 'android' | 'web'
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now()) // bumped on each app/tab open, not each send
+  revokedAt  DateTime? // FCM returned "not registered" on a send -- stale, stop sending to it
+
+  @@index([userId])
 }
 
 enum OpsAlertSeverity {
