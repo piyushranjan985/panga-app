@@ -1,0 +1,68 @@
+{
+  "project_info": {
+    "project_number": "532978864014",
+    "project_id": "prj-findmyvybe",
+    "storage_bucket": "prj-findmyvybe.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:532978864014:android:3957e1fd3ca8aa733e9edf",
+        "android_client_info": {
+          "package_name": "app.findmyvybe.mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "532978864014-jnn223gde42530tlflgtt98tv56ju22s.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDlUNflOLkVj-WnfK9mKGV573sWmR8-ZHs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "532978864014-jnn223gde42530tlflgtt98tv56ju22s.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:532978864014:android:a62af3fff7e7d8353e9edf",
+        "android_client_info": {
+          "package_name": "app.findmyvybe.mobile.dev"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "532978864014-jnn223gde42530tlflgtt98tv56ju22s.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDlUNflOLkVj-WnfK9mKGV573sWmR8-ZHs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "532978864014-jnn223gde42530tlflgtt98tv56ju22s.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
