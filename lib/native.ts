@@ -89,35 +89,29 @@ export type PushPlatform = 'ios' | 'android' | 'web';
  * user-facing message on denial/failure; callers (the Profile settings
  * toggles) catch and show it rather than silently failing.
  *
- * @capacitor/push-notifications is an optional peer-ish dependency the
+ * @capacitor-firebase/messaging is an optional peer-ish dependency the
  * same way @capacitor/geolocation is above -- dynamic import keeps the
- * plain web build from needing it resolved.
+ * plain web build from needing it resolved. It wraps the native Firebase
+ * Messaging SDK on both platforms (not just Android's auto-wired one),
+ * so getToken() hands back a real FCM registration token on iOS too --
+ * plain @capacitor/push-notifications would only give the raw APNs
+ * device token there, which lib/notifications/push.ts's FCM-for-all-3-
+ * platforms sender can't use (see docs/PUSH_NOTIFICATIONS.md §2).
  */
 export async function requestPushPermission(): Promise<boolean> {
   if (await isNativeApp()) {
     const { Capacitor } = await import('@capacitor/core');
-    const { PushNotifications } = await import('@capacitor/push-notifications');
+    const { FirebaseMessaging } = await import('@capacitor-firebase/messaging');
 
-    const permission = await PushNotifications.checkPermissions();
+    const permission = await FirebaseMessaging.checkPermissions();
     if (permission.receive !== 'granted') {
-      const requested = await PushNotifications.requestPermissions();
+      const requested = await FirebaseMessaging.requestPermissions();
       if (requested.receive !== 'granted') {
         throw new Error('Notification permission was denied — enable it in your phone’s Settings for findmyVybe.');
       }
     }
 
-    const token = await new Promise<string>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Registering for notifications timed out — try again.')), 15000);
-      PushNotifications.addListener('registration', (t) => {
-        clearTimeout(timeout);
-        resolve(t.value);
-      });
-      PushNotifications.addListener('registrationError', (err) => {
-        clearTimeout(timeout);
-        reject(new Error(err.error || 'Could not register this device for notifications.'));
-      });
-      PushNotifications.register();
-    });
+    const { token } = await FirebaseMessaging.getToken();
 
     const platform = Capacitor.getPlatform() as PushPlatform; // 'ios' | 'android' when native
     await fetch('/api/push/register', {

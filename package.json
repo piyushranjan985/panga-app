@@ -29,11 +29,11 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@capacitor-firebase/messaging": "^8.5.2",
     "@capacitor/android": "^8.0.0",
     "@capacitor/core": "^8.0.0",
     "@capacitor/geolocation": "^8.0.0",
     "@capacitor/ios": "^8.0.0",
-    "@capacitor/push-notifications": "^8.1.2",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "@tensorflow/tfjs": "^4.22.0",

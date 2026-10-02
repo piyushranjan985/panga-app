@@ -10,7 +10,7 @@
  * docs/PUSH_NOTIFICATIONS.md §3): Apple only allows web push after the
  * site is added to the home screen as a PWA, which is a confusing extra
  * step most users won't take, and the native iOS app (via
- * @capacitor/push-notifications, see lib/native.ts) already covers iOS
+ * @capacitor-firebase/messaging, see lib/native.ts) already covers iOS
  * properly. isWebPushSupported() reflects that -- it checks for the
  * standard Push API rather than trying to special-case Safari versions.
  */

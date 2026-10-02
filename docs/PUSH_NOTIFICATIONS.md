@@ -128,7 +128,9 @@ for fine-tuning after that, not a second permission gate.
 
 ## 6. The one implementation consequence worth sequencing around
 
-Adding `@capacitor/push-notifications` is native code, not a web change —
+Adding a native push plugin (`@capacitor-firebase/messaging`, swapped in
+from the originally-planned `@capacitor/push-notifications` — see the
+end-of-doc addendum) is native code, not a web change —
 it requires `npx cap sync`, a new Xcode/Android Studio build, and a new
 App Store / Play Store submission, same one-time cost any native plugin
 addition has (see `docs/VYBE_VOUCH.md`'s §8 for why everything *else* in
@@ -278,12 +280,14 @@ Built in this pass, in the same combined sweep as Vybe Vouch (§7.4):
 - **Profile settings** — a Notifications section on `/profile` with a
   "Turn on" control and the 3 category toggles from §5, all wired to the
   real PATCH endpoint.
-- **Native plugin dependency** — `@capacitor/push-notifications` added
-  to `package.json`, `lib/native.ts`'s `requestPushPermission()` branches
-  to it on-device (real native permission dialog, same pattern as
-  `getCurrentPosition`), and `npx cap sync` has already run -- both
-  `ios/App/CapApp-SPM/Package.swift` and `android/capacitor.settings.gradle`
-  /`android/app/capacitor.build.gradle` reference the plugin now.
+- **Native plugin dependency** — `@capacitor-firebase/messaging` added
+  to `package.json` (swapped in for the originally-planned
+  `@capacitor/push-notifications` -- see the end-of-doc addendum for why),
+  `lib/native.ts`'s `requestPushPermission()` branches to it on-device
+  (real native permission dialog, same pattern as `getCurrentPosition`),
+  and `npx cap sync` has already run -- both `ios/App/CapApp-SPM/Package.swift`
+  and `android/capacitor.settings.gradle`/`android/app/capacitor.build.gradle`
+  reference the plugin now.
 
 **What's left — all of it genuinely needs PKR's own accounts/hardware,
 not more code:**
@@ -337,3 +341,72 @@ Until step 1-3 are done, `isPushConfigured()` returns false and every
 trigger site's `sendPushToUser()` call silently no-ops -- the rest of the
 app behaves exactly as it does today, nothing breaks or blocks waiting on
 push. Vybe Vouch has no such dependency and works the moment this deploys.
+
+## 8. Status update (Oct 2026) — supersedes the numbered list in §7
+
+Steps 1-3 above are done: the Firebase project exists, Web config is set
+on Vercel, `FIREBASE_SERVICE_ACCOUNT_JSON` is set, `isPushConfigured()`
+is true in production.
+
+Step 4 (Android) is done: `android/app/google-services.json` is committed
+(a combined file covering both `app.findmyvybe.mobile` and
+`app.findmyvybe.mobile.dev`, so one file serves prod and dev builds — the
+Google Services Gradle plugin auto-selects by `applicationId`), and
+`android/app/build.gradle` already applies `com.google.gms.google-services`
+guarded in a try/catch that no-ops if the file is missing, so there was
+never actually a hard-fail risk here — that plugin line was already
+Capacitor's own template, nothing added by hand.
+
+Step 5 (iOS) is done by script, not by hand in Xcode: `ios/App/App/GoogleService-Info.plist`
+is committed (the prod-bundle-ID variant — iOS's plist format only
+supports one bundle ID per file, unlike Android's combined json), and
+`ios/App/App.xcodeproj/project.pbxproj` was modified with the
+`xcodeproj` Ruby gem (not hand-edited text) to: add the plist to the
+App target's Resources build phase, create `ios/App/App/App.entitlements`
+with `aps-environment: development`, wire `CODE_SIGN_ENTITLEMENTS` into
+both Debug and Release build settings, add `UIBackgroundModes:
+remote-notification` to `Info.plist`, and mark the Push Notifications +
+Background Modes capabilities as enabled in the project file. Re-parsed
+and validated after writing — this is real project-file state, not a
+to-do for Xcode's GUI.
+
+**The plugin swap**: originally `@capacitor/push-notifications` was
+planned (see §6/§7's bullet). That plugin's `'registration'` event gives
+a real FCM token on Android (where Google's own SDK auto-wires FCM via
+`google-services.json`) but only the *raw APNs device token* on iOS,
+because it talks to APNs directly with no Firebase SDK involved — and
+`lib/notifications/push.ts`'s FCM-v1-for-all-3-platforms sender rejects a
+raw APNs token (`INVALID_ARGUMENT`, auto-revoked). Fixed by swapping to
+`@capacitor-firebase/messaging`, which wraps the native Firebase
+Messaging SDK on both platforms and mints a real FCM token via
+`getToken()` on iOS too. This needed: the npm swap, `lib/native.ts`'s
+`requestPushPermission()` rewritten to the new plugin's simpler
+`getToken()` call (no more manual registration-event/timeout plumbing),
+`ios/App/App/AppDelegate.swift` updated to `import FirebaseCore` and call
+`FirebaseApp.configure()` in `didFinishLaunchingWithOptions` (required
+before any Firebase API call — reads `GoogleService-Info.plist`
+automatically), and `npx cap sync` re-run, which regenerated
+`ios/App/CapApp-SPM/Package.swift` and
+`android/app/capacitor.build.gradle` to reference
+`CapacitorFirebaseMessaging`/`capacitor-firebase-messaging` instead of
+the old plugin. `npx tsc --noEmit` passes clean after the swap.
+
+**What's genuinely still outstanding** (needs PKR's own Apple/Google
+accounts — not more code):
+
+1. Sign into an Apple Developer account in Xcode (Settings > Accounts) —
+   the App ID's Push Notifications capability is what Xcode's "Automatically
+   manage signing" wires up against Apple's servers once signed in.
+2. developer.apple.com > Certificates, IDs & Profiles > Keys — create an
+   APNs Authentication Key (`.p8`), note its Key ID and the account's
+   Team ID.
+3. Firebase console > Project settings > Cloud Messaging tab > Apple app
+   configuration > APNs Authentication Key > upload the `.p8`, Key ID,
+   Team ID.
+4. Xcode: Product > Archive > Distribute App > App Store Connect, then
+   submit for review there. Android Studio: Generate Signed Bundle, then
+   upload the `.aab` in Play Console and submit.
+
+Until 1-3 are done, iOS push tokens will register but sends to them will
+fail (no valid APNs credential on Firebase's side yet) — same
+fails-silently behavior as before, nothing else in the app is affected.
