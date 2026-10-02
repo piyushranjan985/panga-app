@@ -1,7 +1,7 @@
 # Push Notifications — Design Spec
 
-Status: **Design — proposed defaults below, open questions in §7 before
-implementation starts**
+Status: **Design — 3 of 4 open questions decided 2026-10-02 (see §7);
+§7.1 (trigger list) still needs an answer before implementation starts**
 Owner: Product / Platform
 Related: `prisma/schema.prisma` (`NotificationTemplate`), `admin/lib/configApproval.ts`
 (already flags `NotificationTemplate` as "not read by the consumer app yet —
@@ -135,32 +135,101 @@ one piece that has to wait on a store review cycle (Apple's review in
 particular can take a few days) — so Phase 1 below gets real value live
 immediately instead of everything blocking on that round-trip.
 
-## 7. Open questions before implementation starts
+## 7. Decisions and open items
 
-1. **Trigger list** — is §4's list (match, message, Vybe Vouch response)
-   the right starting set, or should it be narrower/broader for launch?
-2. **Message notifications while actively chatting** — suppress a push for
-   a message in a chat the recipient currently has open (needs a cheap
-   "is this match's chat currently open" signal, e.g. a short-lived flag
-   set on chat-page mount) or just always send and accept the minor
-   redundancy for MVP simplicity?
-3. **Settings granularity** — §5's three categories, or should Vybe Vouch
-   responses just fall under "Matches & Messages" rather than being its
-   own toggle?
-4. **Timing** — build this now, or after Vybe Vouch ships (since §4 lists
-   a Vybe Vouch trigger, but push doesn't have to launch with every
-   trigger it'll eventually support — could ship Phase 1 with just
-   match/message and add the Vybe Vouch trigger once both features exist)?
+2. **Message notifications while actively chatting — DECIDED: suppress.**
+   A push for a message in a chat the recipient currently has open gets
+   suppressed, not sent. Needs a cheap "is this match's chat currently
+   open" signal — e.g. the chat page marks itself open on mount/visible
+   and closed on unmount/background, written somewhere short-lived
+   (in-memory per server instance is wrong for a multi-instance Vercel
+   deployment — use a `lastOpenedAt`-style timestamp on a row keyed by
+   `(userId, matchId)`, checked for recency at send time, rather than a
+   literal open/closed boolean that could get stuck "open" if a tab closes
+   without a clean unmount).
+3. **Settings granularity — DECIDED: Vybe Vouch keeps its own toggle.**
+   Confirms §5's original three categories (Matches & Messages / Vybe
+   Vouch / Reminders) as proposed — not folded into "Matches & Messages."
+4. **Timing — DECIDED: build together.** Vybe Vouch (`docs/VYBE_VOUCH.md`,
+   currently spec-only, no schema/code yet) and Push Notifications get
+   implemented as one combined build rather than staggered, so the Vybe
+   Vouch response trigger ships from day one instead of being bolted on
+   later. Practical build order (Vybe Vouch's data has to exist before
+   push can trigger off it, not a reordering of priority): Vybe Vouch's
+   schema + API routes + page first, then `DeviceToken` + `lib/notifications/push.ts`
+   + the `'push'` template channel, then the chat-screen entry point and
+   notification triggers for both features together. §8 below reflects
+   this combined order.
+
+1. **Trigger list — still open, clarifying what this question actually
+   means before you answer it.** "Trigger list" means: which app events
+   get an admin-authored `NotificationTemplate` and fire a push the
+   moment they happen. Concretely, for the three already proposed:
+
+   - **New match** — fires once, to both participants, the moment a
+     `Match` row is created. Something like *"You and {{name}} matched! 💕"*.
+   - **New message** — fires to the recipient when a `Message` is
+     created, unless §7.2's suppression applies. Privacy question buried
+     in this one: does the push preview show the message text (*"{{name}}:
+     {{messageText}}"* — richer, but that text then sits on someone's lock
+     screen, possibly in front of family) or stay generic (*"New message
+     from {{name}}"* — safer default, matches how this app already treats
+     photos/identity conservatively elsewhere). Proposing generic as the
+     default unless you want richer previews.
+   - **Vybe Vouch response** — fires to the inviter only, when a
+     `VybeVouchResponse` is created. Also proposing generic copy here on
+     purpose (*"{{vetterLabel}} responded to your Vybe Vouch"*, not the
+     reaction itself) — the reaction/note are meant to be seen inside the
+     app in a private panel (`docs/VYBE_VOUCH.md` §5), not broadcast onto
+     a lock screen.
+
+   That's the proposed starting set. Candidates I deliberately left OUT,
+   worth an explicit yes/no each rather than assuming:
+
+   - **Someone swiped right on you (before a mutual match)** — most
+     dating apps intentionally do NOT notify on a one-sided like, to keep
+     the "it's mutual!" moment of a match as the actual payoff and avoid
+     the anxiety/pressure of "someone's waiting on me." Proposing to leave
+     this out.
+   - **You got unmatched** — no proposed notification; there's no version
+     of this that helps the person receiving it.
+   - **Identity verification result** (DigiLocker check approved/failed) —
+     a real candidate for inclusion, account-lifecycle rather than
+     social — currently NOT in the proposed list, could be added.
+   - **Date-feedback nudge** (a day or two after a planned meetup,
+     prompting the existing `DateFeedback` flow) — a real candidate,
+     currently NOT in the proposed list.
+   - **Re-engagement / growth nudges** ("3 new people joined in Bangalore
+     this week," "you haven't opened the app in a while") — a genuinely
+     different category from the others above: those are all "something
+     happened that involves you specifically," this is marketing-flavored
+     and more likely to feel spammy if overdone. Currently NOT proposed,
+     and if you want this eventually, I'd suggest treating it as its own
+     later decision (maybe its own §5 toggle, defaulted OFF rather than
+     ON) rather than folding it into this round.
+
+   So the actual decision: keep the 3-item proposed set as-is, add one or
+   both of identity-verification/date-feedback, or something else
+   entirely — and separately, confirm the generic-not-content-preview
+   default for message/Vybe-Vouch copy.
 
 ## 8. Rollout
 
-- **Phase 1** — `DeviceToken` schema, `lib/notifications/push.ts`
-  (FCM send, reusing the provider-facade pattern from `lib/notifications/sms.ts`),
+Combined build per §7.4 — Vybe Vouch and Push Notifications ship together,
+not staggered:
+
+- **Phase 1** — Vybe Vouch's schema (`VybeVouchInvite`/`VybeVouchResponse`),
+  API routes, and unauthenticated page (`docs/VYBE_VOUCH.md` §2-4), behind
+  its own `FeatureFlag`, exercised with PKR's own test accounts.
+- **Phase 2** — `DeviceToken` schema, `lib/notifications/push.ts` (FCM
+  send, reusing the provider-facade pattern from `lib/notifications/sms.ts`),
   the `'push'` `NotificationTemplate` channel, and **web push only**
-  (Android Chrome / desktop) — ships with a normal Vercel deploy, no store
-  review needed, behind a `FeatureFlag`.
-- **Phase 2** — `@capacitor/push-notifications` added, Firebase iOS/Android
-  config wired in, permission-request UX added to the native apps, new
-  builds submitted to both stores.
-- **Phase 3** — expand trigger coverage per §7.1, add Vybe Vouch's trigger
-  once that feature is live.
+  (Android Chrome / desktop) for whichever trigger list §7.1 settles on —
+  ships with a normal Vercel deploy, no store review needed, behind its
+  own `FeatureFlag`.
+- **Phase 3** — chat-screen entry points for both features (Vybe Vouch's
+  "Get a Vybe Vouch" action, push permission prompting), still web-only,
+  still no store review.
+- **Phase 4** — `@capacitor/push-notifications` added, Firebase iOS/Android
+  config wired in, new builds submitted to both stores — the one phase
+  that actually needs the store-review round-trip (see §6).
