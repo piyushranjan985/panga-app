@@ -1,7 +1,7 @@
 # Push Notifications — Design Spec
 
-Status: **Design — 3 of 4 open questions decided 2026-10-02 (see §7);
-§7.1 (trigger list) still needs an answer before implementation starts**
+Status: **Decided — ready for implementation** (all open questions
+resolved 2026-10-02, see §7)
 Owner: Product / Platform
 Related: `prisma/schema.prisma` (`NotificationTemplate`), `admin/lib/configApproval.ts`
 (already flags `NotificationTemplate` as "not read by the consumer app yet —
@@ -93,17 +93,22 @@ already exists and already works better. So the proposal is: **native push
 Chrome and desktop browser visitors only** — not a gap, a deliberate scope
 cut that costs nothing real.
 
-## 4. What triggers a notification (proposed, not exhaustive — see §7)
+## 4. What triggers a notification — final list, see §7 for how this was decided
 
-Reusing events this app already has, no new signal needed:
+1. New match (`Match` created)
+2. New message, when the recipient isn't actively viewing that chat (§7.2)
+3. A Vybe Vouch response comes back (see `docs/VYBE_VOUCH.md` §5 — this was
+   already flagged there as "a future notification pass... would cover this
+   for free")
+4. Identity verification resolves (`IdentityVerification.status` ->
+   `VERIFIED` or a terminal failure)
+5. A date-feedback nudge, ~2 days after the most recent `PLAN`-kind
+   message in a match with no `DateFeedback` yet (§7.1's design note —
+   this one runs off a daily cron scan, not an instant event, since
+   there's no stored meetup date to hook an instant trigger to)
 
-- New match (`Match` created)
-- New message, when the recipient isn't actively viewing that chat
-- A Vybe Vouch response comes back (see `docs/VYBE_VOUCH.md` §5 — this was
-  already flagged there as "a future notification pass... would cover this
-  for free")
-- Optionally, later: a `DateFeedback` nudge a day or two after a planned
-  meetup, an identity-verification result
+Explicitly excluded: one-sided swipes/likes, unmatches, growth/
+re-engagement nudges (§7.1).
 
 Each needs a `NotificationTemplate` row (title/body, with simple
 placeholders like `{{name}}`) so copy can be tuned from the admin portal
@@ -208,28 +213,58 @@ immediately instead of everything blocking on that round-trip.
      later decision (maybe its own §5 toggle, defaulted OFF rather than
      ON) rather than folding it into this round.
 
-   So the actual decision: keep the 3-item proposed set as-is, add one or
-   both of identity-verification/date-feedback, or something else
-   entirely — and separately, confirm the generic-not-content-preview
-   default for message/Vybe-Vouch copy.
+   **DECIDED (2026-10-02):** one-sided swipe and unmatch stay excluded.
+   Growth/re-engagement nudges stay excluded for now (revisit as its own
+   later decision). Identity verification result and the date-feedback
+   nudge are BOTH added. Generic (not content-preview) copy confirmed for
+   message and Vybe Vouch pushes. Final trigger list, five items:
 
-## 8. Rollout
+   1. New match
+   2. New message (generic copy, suppressed per §7.2 when that chat is open)
+   3. Vybe Vouch response (generic copy)
+   4. Identity verification result — fires when `IdentityVerification.status`
+      resolves to `VERIFIED` or a terminal failure state. *"You're
+      verified! ✅"* / a softer failure message pointing back to the
+      verification flow rather than naming the specific reason (that detail
+      stays in-app, same conservative instinct as message-preview copy).
+   5. Date-feedback nudge — see the note below, since this one needed a
+      real design decision of its own, not just a yes/no.
+
+   **Design note on the date-feedback nudge:** there's no stored "planned
+   meetup date" anywhere in this schema — `getPlanFlow()`
+   (`lib/vybeContent.ts`) and the `PLAN`-kind `Message.meta` it produces
+   capture *that* two people picked an activity together, not *when*
+   they're doing it. Adding a real date/time field would be a bigger
+   change than this spec's scope. Proposed proxy, grounded in what
+   actually exists: trigger ~2 days after the most recent `PLAN`-kind
+   message in a match, IF that match has no `DateFeedback` row yet for
+   either participant by then. Needs a daily scan (Vercel Cron, same
+   pattern as `admin/app/api/cron/retention-purge/route.ts`), not an
+   instant event-trigger like the other four — see §8 Phase 2.
+
+## 8. Rollout — status: building now (2026-10-02)
 
 Combined build per §7.4 — Vybe Vouch and Push Notifications ship together,
-not staggered:
+not staggered. All four phases are being built in this pass; only Phase 4's
+actual store submission is PKR's own manual step (new Firebase project,
+APNs key, Xcode/Android Studio build, App Store/Play Store review — the
+same category of PKR-only step as creating the MSG91/Brevo/StartMessaging
+accounts earlier, not something the code side can do on its own).
 
 - **Phase 1** — Vybe Vouch's schema (`VybeVouchInvite`/`VybeVouchResponse`),
   API routes, and unauthenticated page (`docs/VYBE_VOUCH.md` §2-4), behind
   its own `FeatureFlag`, exercised with PKR's own test accounts.
 - **Phase 2** — `DeviceToken` schema, `lib/notifications/push.ts` (FCM
   send, reusing the provider-facade pattern from `lib/notifications/sms.ts`),
-  the `'push'` `NotificationTemplate` channel, and **web push only**
-  (Android Chrome / desktop) for whichever trigger list §7.1 settles on —
-  ships with a normal Vercel deploy, no store review needed, behind its
-  own `FeatureFlag`.
+  the `'push'` `NotificationTemplate` channel, the daily cron scan for the
+  date-feedback nudge (§4.5), and **web push only** (Android Chrome /
+  desktop) for all five triggers — ships with a normal Vercel deploy, no
+  store review needed, behind its own `FeatureFlag`.
 - **Phase 3** — chat-screen entry points for both features (Vybe Vouch's
-  "Get a Vybe Vouch" action, push permission prompting), still web-only,
-  still no store review.
-- **Phase 4** — `@capacitor/push-notifications` added, Firebase iOS/Android
-  config wired in, new builds submitted to both stores — the one phase
-  that actually needs the store-review round-trip (see §6).
+  "Get a Vybe Vouch" action, push permission prompting, the 3 settings
+  toggles from §5), still web-only, still no store review.
+- **Phase 4** — `@capacitor/push-notifications` dependency and native
+  permission-request code path added to this codebase; the actual Firebase
+  project, APNs key, native build, and store submission are PKR's to do
+  (see note above) — the one phase that actually needs the store-review
+  round-trip (see §6).
