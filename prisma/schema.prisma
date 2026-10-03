@@ -55,6 +55,19 @@ enum VerificationStatus {
   REJECTED
 }
 
+// Mystery Match -- see docs/MYSTERY_MATCH.md. A standing daily preference
+// (not a one-off action), so it lives as a plain enum field on Profile
+// rather than a separate per-day table. OPTED_OUT is reachable only by the
+// user's own explicit choice -- never the default on a new profile, and
+// never something the 7-day inactivity auto-rotation (see
+// Profile.mysteryCategorySetAt below) rotates a stale selection into.
+enum MysteryCategory {
+  MYSTERY_MATCH
+  VYBE_FLIP
+  NO_LABELS
+  OPTED_OUT
+}
+
 enum PhotoModerationDecision {
   APPROVED
   REJECTED
@@ -150,20 +163,22 @@ model User {
 
   profile Profile?
 
-  otpCodes             OtpCode[]
-  swipesSent           Swipe[]           @relation("SwipesBySender")
-  swipesReceived       Swipe[]           @relation("SwipesByTarget")
-  matchesAsUserA       Match[]           @relation("MatchUserA")
-  matchesAsUserB       Match[]           @relation("MatchUserB")
-  messagesSent         Message[]         @relation("MessagesBySender")
-  reportsFiled         Report[]          @relation("ReportsByReporter")
-  reportsReceived      Report[]          @relation("ReportsAboutUser")
-  blocksMade           Block[]           @relation("BlocksByBlocker")
-  blocksReceived       Block[]           @relation("BlocksByBlocked")
-  dateFeedback         DateFeedback[]
-  messageLikes         MessageLike[]
-  vybeVouchInvitesSent VybeVouchInvite[]
-  deviceTokens         DeviceToken[]
+  otpCodes              OtpCode[]
+  swipesSent            Swipe[]               @relation("SwipesBySender")
+  swipesReceived        Swipe[]               @relation("SwipesByTarget")
+  matchesAsUserA        Match[]               @relation("MatchUserA")
+  matchesAsUserB        Match[]               @relation("MatchUserB")
+  mysteryHistoryAsUserA MysteryMatchHistory[] @relation("MysteryHistoryUserA")
+  mysteryHistoryAsUserB MysteryMatchHistory[] @relation("MysteryHistoryUserB")
+  messagesSent          Message[]             @relation("MessagesBySender")
+  reportsFiled          Report[]              @relation("ReportsByReporter")
+  reportsReceived       Report[]              @relation("ReportsAboutUser")
+  blocksMade            Block[]               @relation("BlocksByBlocker")
+  blocksReceived        Block[]               @relation("BlocksByBlocked")
+  dateFeedback          DateFeedback[]
+  messageLikes          MessageLike[]
+  vybeVouchInvitesSent  VybeVouchInvite[]
+  deviceTokens          DeviceToken[]
 
   // --- Admin Portal: relations from the admin-domain models below ---------
   moderationCases       ModerationCase[]       @relation("ModerationCasesAboutUser")
@@ -205,6 +220,22 @@ model Profile {
   notifyMatchesMessages Boolean @default(true)
   notifyVybeVouch       Boolean @default(true)
   notifyReminders       Boolean @default(true)
+
+  // Mystery Match -- see docs/MYSTERY_MATCH.md. Defaults to MYSTERY_MATCH
+  // (never OPTED_OUT) on a new profile, same as every other opt-in-by-
+  // default discovery surface in this app. mysteryCategorySetAt is bumped
+  // only when the value actually changes (see app/api/profile/route.ts's
+  // PATCH handler) -- it's what the weekly cron (app/api/cron/
+  // mystery-match) uses to auto-rotate a selection nobody has touched in
+  // 7 days to the next category in the MYSTERY_MATCH -> VYBE_FLIP ->
+  // NO_LABELS -> MYSTERY_MATCH cycle, skipping OPTED_OUT entirely in both
+  // directions. mysteryNoLabelsAckAt is set once, the first time someone
+  // selects No-Labels Match, after they've seen the one-time explainer
+  // (see the Profile screen) -- never reset, so it's a "seen it" marker,
+  // not a re-confirmable consent each time.
+  mysteryCategory      MysteryCategory @default(MYSTERY_MATCH)
+  mysteryCategorySetAt DateTime        @default(now())
+  mysteryNoLabelsAckAt DateTime?
 
   avatarSeed String @default("A") // fallback glyph shown only if a profile somehow has no photos
   avatarHue  Int    @default(1) // 1..6, picks the fallback gradient behind that glyph
@@ -497,6 +528,32 @@ model Match {
   messages         Message[]
   dateFeedback     DateFeedback[]
   vybeVouchInvites VybeVouchInvite[]
+
+  @@unique([userAId, userBId])
+  @@index([userBId])
+}
+
+// =============================================================================
+// MYSTERY MATCH -- see docs/MYSTERY_MATCH.md for the full design
+// -----------------------------------------------------------------------------
+// One row per pair ever algorithmically paired by the daily cron (any of
+// the 3 categories), forever -- this is the entire enforcement mechanism
+// behind "you'll never see the same mystery person twice": the cron
+// excludes any pair with a row here, in either column order, from every
+// future day's pool, in every category, not just the one they met under.
+// Ordered the same way Match is ([userAId, userBId] with A < B, see
+// orderedPair() in app/api/cron/mystery-match/route.ts) so there's exactly
+// one row per pair to check, never two.
+// =============================================================================
+model MysteryMatchHistory {
+  id        String          @id @default(cuid())
+  userAId   String
+  userBId   String
+  userA     User            @relation("MysteryHistoryUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB     User            @relation("MysteryHistoryUserB", fields: [userBId], references: [id], onDelete: Cascade)
+  category  MysteryCategory
+  matchId   String? // the real Match row this pairing created
+  matchedAt DateTime        @default(now())
 
   @@unique([userAId, userBId])
   @@index([userBId])

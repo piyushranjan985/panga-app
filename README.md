@@ -67,6 +67,7 @@ components/             VibeCard, IntentBadge, Navbar
 prisma/schema.prisma    Full data model
 prisma/seed.ts          Demo circles, interests, prompts, and 5 demo users
 scripts/verify-matching.ts  Standalone test for lib/matching.ts (no DB, no framework)
+scripts/verify-mystery-match.ts  Standalone test for lib/mysteryMatch.ts (no DB, no framework)
 ```
 
 ## How the product mechanics map to code

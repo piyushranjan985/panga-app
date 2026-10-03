@@ -36,6 +36,7 @@ const futureMoneyEnum = futureVibeEnum('money');
 
 const genderEnum = z.enum(['WOMAN', 'MAN', 'NON_BINARY', 'OTHER']);
 const intentEnum = z.enum(['JUST_VIBING', 'SOMETHING_REAL', 'RISHTA_READY']);
+const mysteryCategoryEnum = z.enum(['MYSTERY_MATCH', 'VYBE_FLIP', 'NO_LABELS', 'OPTED_OUT']);
 
 const upsertSchema = z.object({
   displayName: z.string().trim().min(2).max(40),
@@ -307,6 +308,13 @@ const patchSchema = z.object({
   intent: intentEnum.optional(),
   quietMode: z.boolean().optional(),
   familyPreviewOn: z.boolean().optional(),
+  // Mystery Match -- see docs/MYSTERY_MATCH.md. mysteryNoLabelsAck lets
+  // the client confirm the one-time No-Labels explainer in the SAME
+  // request that selects it, rather than a separate round trip -- true
+  // is the only value ever sent (the PATCH handler below turns it into
+  // mysteryNoLabelsAckAt, and never un-sets it once set).
+  mysteryCategory: mysteryCategoryEnum.optional(),
+  mysteryNoLabelsAck: z.literal(true).optional(),
   // Push-notification category toggles -- see docs/PUSH_NOTIFICATIONS.md §5.
   notifyMatchesMessages: z.boolean().optional(),
   notifyVybeVouch: z.boolean().optional(),
@@ -350,12 +358,30 @@ export async function PATCH(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid update' }, { status: 400 });
   }
-  const { interestIds, tribeIds, subCommunityIds, relationshipStyleIds, promptAnswers, ...scalarUpdates } = parsed.data;
+  const { interestIds, tribeIds, subCommunityIds, relationshipStyleIds, promptAnswers, mysteryCategory, mysteryNoLabelsAck, ...scalarUpdates } =
+    parsed.data;
+
+  // mysteryCategorySetAt only bumps when the category actually changes --
+  // re-saving the same value (e.g. a client re-sending state) must never
+  // reset the 7-day auto-rotation clock (see app/api/cron/mystery-match
+  // and docs/MYSTERY_MATCH.md). Needs the current value first, so this is
+  // a separate query rather than folding into the update's data object.
+  let mysteryUpdate: { mysteryCategory?: typeof mysteryCategory; mysteryCategorySetAt?: Date; mysteryNoLabelsAckAt?: Date } = {};
+  if (mysteryCategory !== undefined) {
+    const current = await db.profile.findUnique({ where: { userId: session.userId }, select: { mysteryCategory: true } });
+    if (current && current.mysteryCategory !== mysteryCategory) {
+      mysteryUpdate = { mysteryCategory, mysteryCategorySetAt: new Date() };
+    }
+  }
+  if (mysteryNoLabelsAck) {
+    mysteryUpdate.mysteryNoLabelsAckAt = new Date();
+  }
 
   const profile = await db.profile.update({
     where: { userId: session.userId },
     data: {
       ...scalarUpdates,
+      ...mysteryUpdate,
       ...(interestIds !== undefined ? { interests: { set: interestIds.map((id) => ({ id })) } } : {}),
       ...(tribeIds !== undefined ? { tribes: { set: tribeIds.map((id) => ({ id })) } } : {}),
       ...(subCommunityIds !== undefined ? { subCommunities: { set: subCommunityIds.map((id) => ({ id })) } } : {}),

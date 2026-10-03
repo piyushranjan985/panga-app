@@ -18,6 +18,7 @@
     "db:smoke-test": "tsx prisma/smoke-test-match.ts",
     "db:studio": "prisma studio",
     "verify:matching": "tsx scripts/verify-matching.ts",
+    "verify:mystery-match": "tsx scripts/verify-mystery-match.ts",
     "cap:sync": "npx cap sync",
     "cap:sync:dev": "CAP_ENV=dev npx cap sync",
     "cap:ios": "npx cap open ios",

@@ -57,6 +57,9 @@ interface ProfileData {
   latitude: number | null;
   longitude: number | null;
   locationUpdatedAt: string | null;
+  // Mystery Match -- see docs/MYSTERY_MATCH.md.
+  mysteryCategory: 'MYSTERY_MATCH' | 'VYBE_FLIP' | 'NO_LABELS' | 'OPTED_OUT';
+  mysteryNoLabelsAckAt: string | null;
 }
 
 // Reference catalogs (with real DB ids) for the inline "edit here" pickers
@@ -342,15 +345,39 @@ export default function ProfilePage() {
 
   async function patch(
     update: Partial<
-      Pick<ProfileData, 'quietMode' | 'familyPreviewOn' | 'notifyMatchesMessages' | 'notifyVybeVouch' | 'notifyReminders'>
-    >
+      Pick<ProfileData, 'quietMode' | 'familyPreviewOn' | 'notifyMatchesMessages' | 'notifyVybeVouch' | 'notifyReminders' | 'mysteryCategory'>
+    > & { mysteryNoLabelsAck?: true }
   ) {
-    setProfile((p) => (p ? { ...p, ...update } : p));
+    const { mysteryNoLabelsAck, ...profileFields } = update;
+    setProfile((p) =>
+      p
+        ? { ...p, ...profileFields, ...(mysteryNoLabelsAck ? { mysteryNoLabelsAckAt: new Date().toISOString() } : {}) }
+        : p
+    );
     await fetch('/api/profile', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(update),
     });
+  }
+
+  // Mystery Match -- see docs/MYSTERY_MATCH.md. No-Labels gets a one-time
+  // explainer (nobody has acknowledged it yet, per mysteryNoLabelsAckAt)
+  // before it's ever selected for the first time; every other pick saves
+  // immediately, same as the toggles above.
+  const [showNoLabelsExplainer, setShowNoLabelsExplainer] = useState(false);
+
+  function selectMysteryCategory(category: ProfileData['mysteryCategory']) {
+    if (category === 'NO_LABELS' && profile && !profile.mysteryNoLabelsAckAt) {
+      setShowNoLabelsExplainer(true);
+      return;
+    }
+    patch({ mysteryCategory: category });
+  }
+
+  function confirmNoLabelsExplainer() {
+    setShowNoLabelsExplainer(false);
+    patch({ mysteryCategory: 'NO_LABELS', mysteryNoLabelsAck: true });
   }
 
   const [locationBusy, setLocationBusy] = useState(false);
@@ -743,6 +770,69 @@ export default function ProfilePage() {
             ))}
           </div>
         </section>
+
+        <section className="mt-3 rounded-2xl border border-line bg-white p-4">
+          <p className="font-bold">🎭 Mystery Match</p>
+          <p className="text-sm text-inkSoft">
+            One blind, no-photo pick a day, 8pm. Pick how today's is chosen -- change your mind any time, or opt out.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {(
+              [
+                ['MYSTERY_MATCH', 'Mystery Match', 'A new person, your usual intent.'],
+                ['VYBE_FLIP', 'Vybe Flip', 'Someone with almost nothing in common with you.'],
+                ['NO_LABELS', 'No-Labels Match', 'Crosses Just Vibing / Something Real / Rishta Ready.'],
+                ['OPTED_OUT', 'Opt out', 'No daily mystery pick.'],
+              ] as const
+            ).map(([value, label, desc]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => selectMysteryCategory(value)}
+                className={`rounded-xl border p-2.5 text-left transition ${
+                  profile.mysteryCategory === value ? 'border-mint bg-mint/10' : 'border-line bg-white'
+                }`}
+              >
+                <p className="text-sm font-semibold">{label}</p>
+                <p className="text-xs text-inkSoft">{desc}</p>
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-inkSoft">
+            Left on its own for 7 days, your pick moves to the next one in the list (never to Opt out) -- so this never goes
+            stale without you noticing.
+          </p>
+        </section>
+
+        {showNoLabelsExplainer && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 px-4 backdrop-blur-sm">
+            <div className="w-full max-w-sm rounded-3xl bg-white p-5">
+              <p className="text-lg font-bold">About No-Labels Match</p>
+              <p className="mt-2 text-sm text-inkSoft">
+                This picks you a Mystery Match from OUTSIDE your usual intent -- you might get matched with someone looking
+                for something quite different from you (casual vs. serious vs. marriage-minded). It's meant as a fun,
+                low-stakes one-off, not a signal about what either of you is looking for long-term. Go in with an open mind,
+                and no specific expectations.
+              </p>
+              <div className="mt-4 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowNoLabelsExplainer(false)}
+                  className="flex-1 rounded-full border border-line px-3 py-2 text-sm font-semibold"
+                >
+                  Not now
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmNoLabelsExplainer}
+                  className="gradient-btn flex-1 rounded-full px-3 py-2 text-sm font-bold text-white"
+                >
+                  Got it, let's try it
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <section className="mt-3 rounded-2xl border border-line bg-white p-4">
           <div className="flex items-center justify-between gap-3">

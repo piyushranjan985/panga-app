@@ -232,7 +232,8 @@ async function seedSampleContent(ctx: Awaited<ReturnType<typeof main>>) {
       ],
     });
   }
-  // The 5 push triggers from docs/PUSH_NOTIFICATIONS.md §4/§7 -- upserted
+  // The push triggers from docs/PUSH_NOTIFICATIONS.md §4/§7 and
+  // docs/MYSTERY_MATCH.md -- upserted
   // individually (not inside the count()===0 guard above) so they land
   // even on a database that was already seeded before push notifications
   // existed. See lib/notifications/push.ts's fillTemplate() for the
@@ -246,6 +247,7 @@ async function seedSampleContent(ctx: Awaited<ReturnType<typeof main>>) {
     { key: 'push.vouch_response', channel: 'push', subject: 'Vybe Vouch', body: '{{vetterLabel}} shared their read on your match.' },
     { key: 'push.identity_verification', channel: 'push', subject: 'Identity verification', body: 'Your identity verification was {{outcome}}.' },
     { key: 'push.date_feedback_nudge', channel: 'push', subject: "How'd it go?", body: 'Tap to share how your date with {{name}} went.' },
+    { key: 'push.mystery_match', channel: 'push', subject: 'Your Mystery Match is here 🎭', body: 'Say hi to {{name}} -- today\'s Mystery Match pick.' },
   ];
   for (const t of pushTemplates) {
     await db.notificationTemplate.upsert({ where: { key: t.key }, create: t, update: {} });
