@@ -50,6 +50,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ matchId
   const ageMs = Date.now() - profile.dateOfBirth.getTime();
   const age = Math.floor(ageMs / (365.25 * 24 * 60 * 60 * 1000));
 
+  // Blind reveal -- see docs/MYSTERY_MATCH.md and
+  // prisma/schema.prisma's comment on Match.revealedAAt/revealedBAt.
+  // Ordinary matches always have isMysteryMatch === false, so this is a
+  // no-op for everyone except an unrevealed Mystery Match pairing.
+  const iRevealed = isUserA ? Boolean(match.revealedAAt) : Boolean(match.revealedBAt);
+  const partnerRevealed = isUserA ? Boolean(match.revealedBAt) : Boolean(match.revealedAAt);
+  const fullyRevealed = iRevealed && partnerRevealed;
+  const stillMysterious = match.isMysteryMatch && !fullyRevealed;
+
   const futureVibe =
     profile.intent === 'RISHTA_READY'
       ? FUTURE_VIBE_QUESTIONS.map((q) => {
@@ -62,14 +71,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ matchId
   return NextResponse.json({
     partner: {
       userId: profile.userId,
-      displayName: profile.displayName,
-      age,
+      // Masked while this Mystery Match pairing is still unrevealed --
+      // see the stillMysterious note above and photoUrl's own note below.
+      // avatarSeed/avatarHue are left as-is -- they're not identifying on
+      // their own (a letter + a hue), and the client needs them to render
+      // the placeholder glyph.
+      displayName: stillMysterious ? 'Mystery Match' : profile.displayName,
+      age: stillMysterious ? null : age,
       city: profile.city,
       intent: profile.intent,
       avatarSeed: profile.avatarSeed,
       avatarHue: profile.avatarHue,
       verification: profile.verification,
-      photoUrl: profile.photos[0]?.url ?? null,
+      // Masked the same way as displayName/age -- without this, the real
+      // photo URL would reach the client (and be visible in a network
+      // inspector) before mutual reveal, even though the chat UI itself
+      // never renders it until then. See docs/MYSTERY_MATCH.md §8.
+      photoUrl: stillMysterious ? null : profile.photos[0]?.url ?? null,
       interests: profile.interests.map((i) => ({ id: i.id, label: i.label, emoji: i.emoji })),
       tribes: profile.tribes.map((t) => ({ id: t.id, slug: t.slug, label: t.label, emoji: t.emoji, personaLabel: t.personaLabel })),
       relationshipStyles: profile.relationshipStyles.map((r) => ({ id: r.id, label: r.label, emoji: r.emoji })),
@@ -83,6 +101,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ matchId
     },
     matchMeta: {
       isMuted: isUserA ? Boolean(match.mutedAAt) : Boolean(match.mutedBAt),
+    },
+    revealStatus: {
+      isMysteryMatch: match.isMysteryMatch,
+      myRevealed: iRevealed,
+      partnerRevealed,
+      fullyRevealed,
     },
   });
 }

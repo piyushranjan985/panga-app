@@ -177,31 +177,73 @@ early on, in one city, some days will have nobody to pair for them.
   time, right after confirming the explainer).
 - No new read endpoint — `GET /api/profile` already returns the whole
   profile, `mysteryCategory`/`mysteryNoLabelsAckAt` included.
-- The reveal itself needs no new endpoint either: pairing already creates a
-  normal `Match`, so it shows up in the existing matches list/chat exactly
-  like any other match. The mutual-photo-reveal-before-full-profile
-  mechanic (blurred/no photo until both tap Reveal) is a chat-UI follow-up,
-  not yet built — see §8.
+- `POST /api/matches/[matchId]/reveal` — the blind-reveal mechanic itself
+  (see §8). One-way: sets the caller's own `Match.revealedAAt`/`revealedBAt`
+  if not already set, never un-sets it. 400s on a match where
+  `isMysteryMatch` is false. Returns the pair's `revealStatus`.
+- `GET /api/matches/[matchId]/partner` and `GET /api/matches` both now also
+  return `revealStatus` (`isMysteryMatch`/`myRevealed`/`partnerRevealed`/
+  `fullyRevealed`), and mask `displayName`/`age` to `"Mystery Match"`/`null`
+  for an unrevealed Mystery Match pairing — see §8.
 
 ## 7. Where this shows up in the product
 
 One new card on the Profile screen ("🎭 Mystery Match"), four buttons in a
 2×2 grid, active selection highlighted, changeable any time. The one-time
 No-Labels explainer is a modal, same visual pattern as `MatchModal`
-(`fixed inset-0 ... bg-ink/60 backdrop-blur-sm`). The actual reveal is a
-push notification at 8pm — "Your Mystery Match is here 🎭 — Say hi to
-{{name}}" — landing exactly like any other new-match push, opening straight
-into the new match's chat.
+(`fixed inset-0 ... bg-ink/60 backdrop-blur-sm`). The pairing notification
+at 8pm — "Your Mystery Match is here 🎭 — Say hi to {{name}}" — lands
+exactly like any other new-match push, opening straight into the new
+match's chat, where the blind-reveal banner (see §8) is now the first
+thing shown.
 
-## 8. What's explicitly deferred, not forgotten
+## 8. The blind reveal mechanic (built)
 
-- **Blind reveal mechanic in chat** — showing the fallback avatar
-  glyph/initial instead of real photo+name until both people tap Reveal.
-  Right now a Mystery Match creates an ordinary `Match`, which shows full
-  profile info immediately in chat like any other match — the actual
-  "blind" part of Blind Date's original pitch isn't wired up yet. This is
-  the biggest remaining piece of the original concept and should be built
-  before this ships to real users, not treated as optional polish.
+The part that actually makes a Mystery Match "blind," not just a
+differently-sourced ordinary match.
+
+- **Schema** — `Match` gained `isMysteryMatch` (set once, at creation, by
+  the daily batch; always `false` for an ordinary swipe match and never
+  changed afterward), `mysteryCategory` (display only — which category
+  produced it), and `revealedAAt`/`revealedBAt` (one nullable timestamp per
+  side). A match is "fully revealed" the moment both are non-null.
+- **Reveal action** — `POST /api/matches/[matchId]/reveal` (see §6). Each
+  side taps "👀 Reveal" independently; tapping only ever moves *your own*
+  timestamp from null to `now()` — there's no un-reveal, and no way to see
+  it coming back. Idempotent: tapping twice, or after you've already
+  revealed, is a no-op.
+- **Masking rule** — while `isMysteryMatch` is true and the pair isn't
+  fully revealed, `GET /api/matches/[matchId]/partner` masks
+  `displayName` to `"Mystery Match"`, `age` to `null`, AND `photoUrl` to
+  `null` -- all three, server-side, not just hidden in the UI, so the
+  real values never reach the client (and can't be read out of a network
+  inspector) before mutual reveal. `GET /api/matches` masks `displayName`
+  the same way for the matches list (it never selected photos to begin
+  with). `avatarSeed`/`avatarHue` are left alone either way -- a letter
+  and a hue aren't identifying, and the client needs them to draw the
+  placeholder glyph.
+- **Where the photo actually turns on** — the chat header and Match
+  Profile panel always render the `avatarSeed`/`avatarHue` glyph for an
+  ordinary match (a pre-existing, unrelated simplification -- only the
+  pre-match discover card renders a real `<img>` there). For a Mystery
+  Match pairing specifically, the glyph IS the blind-reveal placeholder:
+  the client only swaps it for the real photo once `revealStatus.
+  fullyRevealed` is true AND `partner.photoUrl` is non-null (which it
+  only ever is, for this pairing, once revealed).
+- **Chat UI** — a banner at the top of the message list, shown only while
+  `revealStatus.isMysteryMatch && !revealStatus.fullyRevealed`, with
+  state-dependent copy ("hidden until you both choose to reveal" / "you've
+  revealed, waiting for them" / "they're ready, tap to reveal too") and a
+  "👀 Reveal" button when this side hasn't tapped it yet.
+- **Notification on mutual reveal** — `push.mystery_reveal` fires to BOTH
+  sides, but only the instant `fullyRevealed` flips from false to true
+  (i.e. only on the *second* tap, never the first). A one-sided reveal
+  notifies no one — deliberately, so revealing first can never telegraph
+  to the other person that they're "being waited on," which would turn a
+  mutual, pressure-free choice into a one-sided nudge.
+
+## 9. What's explicitly deferred, not forgotten
+
 - A curated per-city "safe public venue" suggestion list.
 - A Vybe-Vouch-style trusted-contact check-in extension for a Mystery Match
   specifically ("heads up, meeting someone Friday, [neighborhood]" +
@@ -209,7 +251,7 @@ into the new match's chat.
 - Any monetization lever (more than one pick a day, unlocking a category as
   a paid perk) — deliberately not considered until there's real usage data.
 
-## 9. Decision trail (chat, 2026-10-03)
+## 10. Decision trail (chat, 2026-10-03)
 
 - Names: **Mystery Match**, **Vybe Flip**, **No-Labels Match** (over
   Chalk & Cheese Match, Wildcard Match, Curveball Match — kept for the
@@ -226,3 +268,7 @@ into the new match's chat.
   conservative draft that excluded it) — justified by the consent model in
   §2 once the design moved from "default-ish exposure" to "both sides
   actively chose this pool today."
+- Blind reveal is one-way and mutual-only: tapping Reveal can't be undone,
+  and the push notification fires only once both sides have revealed —
+  never on a one-sided tap — specifically so revealing first never signals
+  to the other person that they're expected to reciprocate.

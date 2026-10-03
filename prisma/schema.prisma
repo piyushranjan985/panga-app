@@ -525,6 +525,25 @@ model Match {
   chatOpenAAt DateTime?
   chatOpenBAt DateTime?
 
+  // Mystery Match -- see docs/MYSTERY_MATCH.md. Set once, at creation, by
+  // app/api/cron/mystery-match -- never true for an ordinary swipe match,
+  // and never changed afterward. mysteryCategory records WHICH category
+  // produced it (display only -- "this was a Vybe Flip match"); the
+  // pairing-eligibility rule that category enforced already did its job
+  // before this row existed, so nothing here re-checks it.
+  //
+  // revealedAAt/revealedBAt are the entire blind-reveal mechanic: each
+  // side sets their own when they tap Reveal (app/api/matches/[matchId]/
+  // reveal), one-way (never un-set), and the match is "fully revealed" --
+  // real photo and name shown instead of the mystery placeholder -- the
+  // moment BOTH are non-null. Always null for an ordinary match, which
+  // is indistinguishable from "already revealed" wherever the UI checks
+  // isMysteryMatch first (see app/api/matches/[matchId]/partner).
+  isMysteryMatch  Boolean          @default(false)
+  mysteryCategory MysteryCategory?
+  revealedAAt     DateTime?
+  revealedBAt     DateTime?
+
   messages         Message[]
   dateFeedback     DateFeedback[]
   vybeVouchInvites VybeVouchInvite[]

@@ -248,6 +248,7 @@ async function seedSampleContent(ctx: Awaited<ReturnType<typeof main>>) {
     { key: 'push.identity_verification', channel: 'push', subject: 'Identity verification', body: 'Your identity verification was {{outcome}}.' },
     { key: 'push.date_feedback_nudge', channel: 'push', subject: "How'd it go?", body: 'Tap to share how your date with {{name}} went.' },
     { key: 'push.mystery_match', channel: 'push', subject: 'Your Mystery Match is here 🎭', body: 'Say hi to {{name}} -- today\'s Mystery Match pick.' },
+    { key: 'push.mystery_reveal', channel: 'push', subject: 'Fully revealed! 🎭➡️💛', body: 'You and {{name}} both revealed -- say hi to the real them.' },
   ];
   for (const t of pushTemplates) {
     await db.notificationTemplate.upsert({ where: { key: t.key }, create: t, update: {} });

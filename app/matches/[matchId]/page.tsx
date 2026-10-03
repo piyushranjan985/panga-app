@@ -57,7 +57,7 @@ interface SignalsData {
 interface Partner {
   userId: string;
   displayName: string;
-  age: number;
+  age: number | null;
   city: string;
   intent: string;
   avatarSeed: string;
@@ -70,6 +70,16 @@ interface Partner {
   futureVibe: { question: string; slug: string; label: string; emoji: string }[];
   children: { slug: string; label: string; emoji: string } | null;
   distance: string | null;
+}
+
+// Blind reveal -- see docs/MYSTERY_MATCH.md. Absent/isMysteryMatch ===
+// false for every ordinary match; only a Mystery Match pairing ever has
+// this be meaningfully unrevealed.
+interface RevealStatus {
+  isMysteryMatch: boolean;
+  myRevealed: boolean;
+  partnerRevealed: boolean;
+  fullyRevealed: boolean;
 }
 
 interface VouchInvite {
@@ -122,6 +132,8 @@ export default function ChatPage() {
   const [sending, setSending] = useState(false);
   const [signals, setSignals] = useState<SignalsData | null>(null);
   const [partner, setPartner] = useState<Partner | null>(null);
+  const [revealStatus, setRevealStatus] = useState<RevealStatus | null>(null);
+  const [revealing, setRevealing] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [usedVybeSources, setUsedVybeSources] = useState<string[]>([]);
   const [sharedVybeOpen, setSharedVybeOpen] = useState(false);
@@ -154,6 +166,17 @@ export default function ChatPage() {
   const [vetterLabel, setVetterLabel] = useState('');
   const [vouchFeedback, setVouchFeedback] = useState<string | null>(null);
 
+  // Also re-fetched by this 4s poll (not just once on mount) -- unlike
+  // the signal engine's output below, a Mystery Match's reveal status can
+  // change at any moment the OTHER side taps Reveal while this chat stays
+  // open, and the banner/name-mask need to catch up without a refresh.
+  async function loadPartner() {
+    const d = await fetch(`/api/matches/${params.matchId}/partner`).then((r) => r.json());
+    setPartner(d.partner ?? null);
+    setIsMuted(Boolean(d.matchMeta?.isMuted));
+    setRevealStatus(d.revealStatus ?? null);
+  }
+
   async function load() {
     const [meRes, msgRes] = await Promise.all([
       fetch('/api/me').then((r) => r.json()),
@@ -163,6 +186,7 @@ export default function ChatPage() {
       // a missed beat just means a push arrives that could've been
       // suppressed, never a broken chat.
       fetch(`/api/matches/${params.matchId}/heartbeat`, { method: 'POST' }).catch(() => {}),
+      loadPartner(),
     ]);
     setMyUserId(meRes.userId ?? null);
     setMessages(msgRes.messages ?? []);
@@ -195,12 +219,7 @@ export default function ChatPage() {
           sharedTribeSlugs: d.sharedTribeSlugs ?? [],
         })
       );
-    fetch(`/api/matches/${params.matchId}/partner`)
-      .then((r) => r.json())
-      .then((d) => {
-        setPartner(d.partner ?? null);
-        setIsMuted(Boolean(d.matchMeta?.isMuted));
-      });
+    loadPartner();
     fetch(`/api/matches/${params.matchId}/date-feedback`)
       .then((r) => r.json())
       .then((d) => setDateFeedbackSubmitted(Boolean(d.submitted)))
@@ -242,6 +261,19 @@ export default function ChatPage() {
     if (busy) return;
     await fetch(`/api/matches/${params.matchId}/messages/${messageId}/like`, { method: 'POST' });
     await load();
+  }
+
+  // One-way: a tap here can only move this side's reveal from not-yet to
+  // revealed, never back -- see app/api/matches/[matchId]/reveal's
+  // comment. Re-fetches partner immediately (rather than waiting for the
+  // next 4s poll) so tapping Reveal feels instant for the tapper, even
+  // though nothing changes for the OTHER side until they tap too.
+  async function revealMatch() {
+    if (revealing || revealStatus?.myRevealed) return;
+    setRevealing(true);
+    await fetch(`/api/matches/${params.matchId}/reveal`, { method: 'POST' }).catch(() => {});
+    await loadPartner();
+    setRevealing(false);
   }
 
   // "⚡ Vybe" -- the signature mechanic: post a fresh tap-to-answer
@@ -475,6 +507,14 @@ export default function ChatPage() {
   // the menu entry for Just Vibing matches keeps the UI honest about
   // this; the route enforces the same check server-side regardless.
   const vouchEligible = signals ? signals.pairIntent !== 'JUST_VIBING' : false;
+  // The one place a real photo is ever allowed to render in chat --
+  // ordinary matches keep the always-glyph treatment unchanged (that's a
+  // pre-existing, unrelated chat-UI simplification, not part of Mystery
+  // Match). A Mystery Match pairing is the exception: the glyph IS the
+  // blind-reveal placeholder, so once fullyRevealed flips true, the real
+  // photo (if the partner has one) takes over from it -- see
+  // docs/MYSTERY_MATCH.md §8.
+  const showRealPhoto = Boolean(partner?.photoUrl) && (!revealStatus?.isMysteryMatch || revealStatus.fullyRevealed);
 
   return (
     <div className="flex h-screen flex-col">
@@ -488,16 +528,25 @@ export default function ChatPage() {
           onClick={() => setPanel('profile')}
           className="flex min-w-0 flex-1 items-center justify-center gap-2"
         >
-          <span
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-full font-display text-xs font-bold text-white"
-            style={{
-              background: `linear-gradient(150deg, hsl(${partner?.avatarHue ?? 320}, 80%, 55%), hsl(${
-                (partner?.avatarHue ?? 320) + 40
-              }, 80%, 55%))`,
-            }}
-          >
-            {partner?.avatarSeed ?? '·'}
-          </span>
+          {showRealPhoto ? (
+            // eslint-disable-next-line @next/next/no-img-element -- external/Blob URLs, no next/image domain config needed (same as components/VibeCard.tsx)
+            <img
+              src={partner!.photoUrl!}
+              alt={partner?.displayName ?? 'Partner'}
+              className="h-8 w-8 shrink-0 rounded-full object-cover"
+            />
+          ) : (
+            <span
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full font-display text-xs font-bold text-white"
+              style={{
+                background: `linear-gradient(150deg, hsl(${partner?.avatarHue ?? 320}, 80%, 55%), hsl(${
+                  (partner?.avatarHue ?? 320) + 40
+                }, 80%, 55%))`,
+              }}
+            >
+              {partner?.avatarSeed ?? '·'}
+            </span>
+          )}
           <span className="truncate text-sm font-bold">
             {partner?.displayName ?? 'Loading…'}
             {isMuted && <span className="ml-1 text-xs text-inkSoft">🔕</span>}
@@ -514,6 +563,33 @@ export default function ChatPage() {
       </header>
 
       <div className="flex-1 space-y-2 overflow-y-auto px-4 py-4">
+        {/* 🎭 Mystery Match blind-reveal banner -- see
+            docs/MYSTERY_MATCH.md. Only ever shown for a Mystery Match
+            pairing that isn't fully revealed yet; disappears for good
+            (not just hidden) the moment both sides have revealed. */}
+        {revealStatus?.isMysteryMatch && !revealStatus.fullyRevealed && (
+          <div className="mb-2 rounded-2xl border border-line bg-gradient-to-br from-marigold/10 via-white to-magenta/10 p-4 text-center">
+            <p className="font-display text-sm font-extrabold">🎭 This is a Mystery Match</p>
+            <p className="mt-1 text-sm text-inkSoft">
+              {revealStatus.myRevealed
+                ? "You've revealed — waiting for them to reveal too."
+                : revealStatus.partnerRevealed
+                  ? "They're ready to reveal — tap to reveal yourself too."
+                  : 'Their name and photo stay hidden until you both choose to reveal.'}
+            </p>
+            {!revealStatus.myRevealed && (
+              <button
+                type="button"
+                onClick={revealMatch}
+                disabled={revealing}
+                className="gradient-btn mt-3 rounded-full px-5 py-2 text-sm font-bold text-white disabled:opacity-60"
+              >
+                👀 Reveal
+              </button>
+            )}
+          </div>
+        )}
+
         {/* "⚡ Shared Vybe" -- an expandable tab, not a permanent block
             eating chat space: ranked natural-language signals plus, on
             tap, one interesting difference to talk through (see the
@@ -900,18 +976,23 @@ export default function ChatPage() {
             </div>
 
             <div className="mt-4 flex flex-col items-center text-center">
-              <span
-                className="grid h-16 w-16 place-items-center rounded-full font-display text-xl font-bold text-white"
-                style={{
-                  background: `linear-gradient(150deg, hsl(${partner.avatarHue}, 80%, 55%), hsl(${
-                    partner.avatarHue + 40
-                  }, 80%, 55%))`,
-                }}
-              >
-                {partner.avatarSeed}
-              </span>
+              {showRealPhoto ? (
+                // eslint-disable-next-line @next/next/no-img-element -- external/Blob URLs, no next/image domain config needed (same as components/VibeCard.tsx)
+                <img src={partner.photoUrl!} alt={partner.displayName} className="h-16 w-16 rounded-full object-cover" />
+              ) : (
+                <span
+                  className="grid h-16 w-16 place-items-center rounded-full font-display text-xl font-bold text-white"
+                  style={{
+                    background: `linear-gradient(150deg, hsl(${partner.avatarHue}, 80%, 55%), hsl(${
+                      partner.avatarHue + 40
+                    }, 80%, 55%))`,
+                  }}
+                >
+                  {partner.avatarSeed}
+                </span>
+              )}
               <p className="mt-2 font-display text-xl font-extrabold">
-                {partner.displayName}, {partner.age}
+                {partner.age !== null ? `${partner.displayName}, ${partner.age}` : partner.displayName}
               </p>
               <p className="text-sm text-inkSoft">
                 {partner.city}

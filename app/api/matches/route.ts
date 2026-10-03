@@ -29,6 +29,12 @@ export async function GET() {
       createdAt: true,
       userAId: true,
       userBId: true,
+      // Blind reveal -- see docs/MYSTERY_MATCH.md. Ordinary matches are
+      // always isMysteryMatch === false with both reveal timestamps
+      // null, so this select costs nothing for the common case.
+      isMysteryMatch: true,
+      revealedAAt: true,
+      revealedBAt: true,
       // select, not include -- the full User+Profile models carry dozens
       // of fields (onboarding tags, verification internals, etc.) this
       // list view never uses; only one side of each pair is even shown
@@ -44,13 +50,20 @@ export async function GET() {
   });
 
   const shaped = matches.map((m) => {
-    const other = m.userAId === session.userId ? m.userB : m.userA;
+    const isUserA = m.userAId === session.userId;
+    const other = isUserA ? m.userB : m.userA;
+    const iRevealed = isUserA ? Boolean(m.revealedAAt) : Boolean(m.revealedBAt);
+    const partnerRevealed = isUserA ? Boolean(m.revealedBAt) : Boolean(m.revealedAAt);
+    const stillMysterious = m.isMysteryMatch && !(iRevealed && partnerRevealed);
     return {
       matchId: m.id,
       createdAt: m.createdAt,
       other: {
         userId: other.id,
-        displayName: other.profile?.displayName ?? 'findmyVybe user',
+        // Masked until mutual reveal -- see app/api/matches/[matchId]/partner's
+        // matching note; the list screen gets the same treatment so a
+        // Mystery Match pairing doesn't give away the name there instead.
+        displayName: stillMysterious ? 'Mystery Match' : other.profile?.displayName ?? 'findmyVybe user',
         avatarSeed: other.profile?.avatarSeed ?? 'P',
         avatarHue: other.profile?.avatarHue ?? 1,
         intent: other.profile?.intent ?? 'SOMETHING_REAL',

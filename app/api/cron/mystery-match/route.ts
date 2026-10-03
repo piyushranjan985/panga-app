@@ -139,7 +139,7 @@ export async function GET(req: Request) {
       const match = await db.match.upsert({
         where: { userAId_userBId: { userAId, userBId } },
         update: {},
-        create: { userAId, userBId },
+        create: { userAId, userBId, isMysteryMatch: true, mysteryCategory: category },
       });
       await db.mysteryMatchHistory.upsert({
         where: { userAId_userBId: { userAId, userBId } },
