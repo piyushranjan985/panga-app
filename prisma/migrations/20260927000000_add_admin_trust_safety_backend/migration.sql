@@ -544,11 +544,14 @@ CREATE INDEX "LoginEvent_userId_createdAt_idx" ON "LoginEvent"("userId", "create
 -- CreateIndex
 CREATE INDEX "User_status_idx" ON "User"("status");
 
+-- Moved here from 20260926120000_identity_verification_and_photo_moderation
+-- (fixed 2026-10-03): both reference "ModerationCase", which this
+-- migration creates above -- it doesn't exist yet at the point the prior
+-- migration runs, so a from-scratch replay of full migration history
+-- (e.g. prisma migrate dev's shadow database) failed on these exact two
+-- lines before this fix.
 -- AddForeignKey
 ALTER TABLE "IdentityVerification" ADD CONSTRAINT "IdentityVerification_moderationCaseId_fkey" FOREIGN KEY ("moderationCaseId") REFERENCES "ModerationCase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "PhotoModerationResult" ADD CONSTRAINT "PhotoModerationResult_photoId_fkey" FOREIGN KEY ("photoId") REFERENCES "Photo"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "PhotoModerationResult" ADD CONSTRAINT "PhotoModerationResult_moderationCaseId_fkey" FOREIGN KEY ("moderationCaseId") REFERENCES "ModerationCase"("id") ON DELETE SET NULL ON UPDATE CASCADE;

@@ -75,10 +75,14 @@ CREATE INDEX "PhotoModerationResult_photoId_createdAt_idx" ON "PhotoModerationRe
 ALTER TABLE "IdentityVerification" ADD CONSTRAINT "IdentityVerification_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "IdentityVerification" ADD CONSTRAINT "IdentityVerification_moderationCaseId_fkey" FOREIGN KEY ("moderationCaseId") REFERENCES "ModerationCase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
--- AddForeignKey
 ALTER TABLE "PhotoModerationResult" ADD CONSTRAINT "PhotoModerationResult_photoId_fkey" FOREIGN KEY ("photoId") REFERENCES "Photo"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- AddForeignKey
-ALTER TABLE "PhotoModerationResult" ADD CONSTRAINT "PhotoModerationResult_moderationCaseId_fkey" FOREIGN KEY ("moderationCaseId") REFERENCES "ModerationCase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+-- NOTE: the two FKs to "ModerationCase" (IdentityVerification.moderationCaseId,
+-- PhotoModerationResult.moderationCaseId) are added in the NEXT migration
+-- (20260927000000_add_admin_trust_safety_backend), right after it creates
+-- that table -- not here, since ModerationCase doesn't exist yet at this
+-- point in migration history. Fixed 2026-10-03: this migration originally
+-- (and incorrectly) added them here, which broke a from-scratch replay of
+-- the full migration history (e.g. prisma migrate dev's shadow database) --
+-- see docs/MYSTERY_MATCH.md's note on this if that doc still mentions it,
+-- or the commit message for this fix.
