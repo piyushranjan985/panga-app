@@ -21,6 +21,17 @@ import { isBrevoConfigured, sendTransactionalEmail } from '@/lib/notifications/e
  * lib/notifications/email.ts); false means the fixed MOCK_OTP, same as
  * before, for local/preview dev. REQUEST_COOLDOWN_SECONDS and
  * MAX_ATTEMPTS below apply identically either way.
+ *
+ * MOCK_MODE_PHONE / MOCK_MODE_EMAIL (see isMockModeForced below) are a
+ * separate, explicit override on top of all that: set either to "true"
+ * and that channel issues the fixed MOCK_OTP unconditionally, even
+ * though a real provider IS configured -- for deliberately testing the
+ * sign-in flow (including in a real production deployment) without
+ * burning real SMS/email sends. This is intentionally independent of
+ * isChannelConfigured()'s auto-detection -- flip it in Vercel's
+ * Environment Variables (then redeploy) or in your local .env, and flip
+ * it back the same way when you're done. Google sign-in has no
+ * equivalent override -- it's untouched by this.
  */
 
 export const MOCK_OTP = '43364336';
@@ -46,6 +57,21 @@ export function hashOtp(code: string) {
  */
 export function isChannelConfigured(channel: OtpChannel): boolean {
   return channel === 'phone' ? isSmsProviderConfigured() : isBrevoConfigured();
+}
+
+/**
+ * Explicit, deliberate override: MOCK_MODE_PHONE="true" / MOCK_MODE_EMAIL="true"
+ * force that channel's fixed MOCK_OTP regardless of isChannelConfigured() --
+ * including when a real provider is fully configured and this is a real
+ * production deployment. There's no equivalent for Google sign-in by
+ * design (see this file's top doc comment).
+ *
+ * Anything other than exactly "true" (unset, "false", a typo) is
+ * treated as off -- this never silently defaults to mock.
+ */
+export function isMockModeForced(channel: OtpChannel): boolean {
+  const raw = channel === 'phone' ? process.env.MOCK_MODE_PHONE : process.env.MOCK_MODE_EMAIL;
+  return raw === 'true';
 }
 
 /**
@@ -104,7 +130,19 @@ export async function issueOtp(userId: string, destination: string, channel: Otp
     return { ok: false, reason: 'rate_limited' };
   }
 
-  const useRealProvider = isChannelConfigured(channel);
+  const forced = isMockModeForced(channel);
+  if (forced && isRealProductionDeployment()) {
+    // Loud and visible in Vercel's logs on purpose -- this means ANY
+    // phone number or email can sign in as itself using the fixed
+    // MOCK_OTP on a real production deployment right now. Never meant
+    // to be silent.
+    console.warn(
+      `[otp] MOCK MODE FORCED for ${channel} on a real production deployment -- ` +
+        `issuing the fixed MOCK_OTP (${MOCK_OTP}) instead of a real code. ` +
+        `Unset MOCK_MODE_${channel.toUpperCase()} in Vercel (and redeploy) to go back to real codes.`,
+    );
+  }
+  const useRealProvider = isChannelConfigured(channel) && !forced;
   const code = useRealProvider ? crypto.randomInt(100000, 999999).toString() : MOCK_OTP;
 
   await db.otpCode.create({
