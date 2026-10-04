@@ -18,6 +18,10 @@ export interface FeedProfile {
   matchScore: number;
   matchReasons: string[];
   distance: string | null;
+  // Wild Card (see docs/WILD_CARD.md) -- absent/false for every ordinary
+  // Discover card. Changes only the badge + "why" framing below; the
+  // swipe mechanics are identical either way.
+  isWildCard?: boolean;
 }
 
 const HUE_GRADIENTS: Record<number, string> = {
@@ -56,6 +60,11 @@ export default function VibeCard({
         <div className="absolute left-3 right-3 top-3 h-1.5 overflow-hidden rounded-full bg-white/30">
           <div className="h-full rounded-full bg-white transition-all" style={{ width: `${Math.max(pct, 6)}%` }} />
         </div>
+        {profile.isWildCard && (
+          <span className="absolute right-3 top-6 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-bold text-white">
+            🃏 Wild Card
+          </span>
+        )}
         <div
           className="absolute inset-0 transition-[filter] duration-500"
           style={{ filter: `blur(${blur}px) saturate(.9)` }}
@@ -86,7 +95,8 @@ export default function VibeCard({
           {profile.bio && <p className="mt-2 text-sm opacity-90">{profile.bio}</p>}
           {profile.matchReasons.length > 0 && (
             <p className="mt-2 text-[11px] uppercase tracking-wide opacity-75">
-              Why you might click: {profile.matchReasons.join(' · ')}
+              {profile.isWildCard ? 'Why this is your Wild Card: ' : 'Why you might click: '}
+              {profile.matchReasons.join(' · ')}
             </p>
           )}
         </div>

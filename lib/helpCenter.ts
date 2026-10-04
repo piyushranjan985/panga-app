@@ -326,6 +326,22 @@ export const HELP_ENTRIES: HelpEntry[] = [
       "Yes -- change it any time from the Profile screen; it only affects who you're pooled with at the next daily pairing (8:00pm IST), not any existing Mystery Match matches. Choosing No-Labels Match for the first time shows a one-time explainer, since it can pair you with someone looking for something different than you are -- after that it's remembered and won't ask again. Opting out simply excludes you from that day's pairing.",
     keywords: ['turn off mystery match', 'change mystery preference', 'opt out mystery match'],
   },
+  {
+    id: 'di-wild-card-what',
+    category: 'discover',
+    question: 'What is the Wild Card button on Discover?',
+    answer:
+      "A button above your regular feed that pulls one card on demand, right now -- same city, same dating intent as always, but picked for having the LEAST in common with you on paper, not the most. It's a \"see what happens\" detour from your ranked feed, not a replacement for it: the card drops into your normal swipe stack, and swiping it works exactly the same as any other profile. You get up to 2 a day, resetting at 8:00pm IST (the same daily reset Mystery Match uses).",
+    keywords: ['wild card', 'opposites attract', 'mismatch button', 'wildcard'],
+  },
+  {
+    id: 'di-wild-card-vs-mystery',
+    category: 'discover',
+    question: "How is Wild Card different from Vybe Flip (Mystery Match)?",
+    answer:
+      "Both deliberately look for low overlap instead of high, but they work differently. Vybe Flip is part of Mystery Match: a standing daily preference that waits for a once-a-day scheduled pairing at 8:00pm IST, and creates a real match immediately, blind, with no swipe involved. Wild Card is instant and swipe-based: tap the button any time you like (up to your daily limit) to pull one card into your normal Discover stack, and nothing happens until you actually swipe VYBE on it like any other profile.",
+    keywords: ['wild card vs vybe flip', 'wild card vs mystery match', 'difference'],
+  },
 
   // ---------------------------------------------------------------- chat
   {

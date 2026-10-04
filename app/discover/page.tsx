@@ -17,6 +17,10 @@ interface MatchInfo {
 interface DiscoverMeta {
   intent: 'JUST_VIBING' | 'SOMETHING_REAL' | 'RISHTA_READY';
   hasSharedLocation: boolean;
+  // Wild Card (see docs/WILD_CARD.md) -- the daily count, refreshed by
+  // whatever /api/discover/wildcard itself last returned (see
+  // wildCardRemaining state below), so the button never has to guess.
+  wildCard: { limit: number; used: number; remaining: number };
 }
 
 export default function DiscoverPage() {
@@ -27,6 +31,15 @@ export default function DiscoverPage() {
   const [locationPromptDismissed, setLocationPromptDismissed] = useState(false);
   const [locationBusy, setLocationBusy] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  // Wild Card -- see docs/WILD_CARD.md. wildCardRemaining starts as
+  // whatever the main feed load reported and is kept current from each
+  // wildcard fetch's own response, so it never drifts from what the
+  // button is actually allowed to do next. wildCardError is a small
+  // inline message (quota hit, or nobody eligible right now), cleared on
+  // the next feed reload.
+  const [wildCardRemaining, setWildCardRemaining] = useState<number | null>(null);
+  const [wildCardBusy, setWildCardBusy] = useState(false);
+  const [wildCardError, setWildCardError] = useState<string | null>(null);
 
   function loadFeed() {
     fetch('/api/discover')
@@ -34,7 +47,38 @@ export default function DiscoverPage() {
       .then((d) => {
         setFeed(d.feed ?? []);
         setMeta(d.meta ?? null);
+        setWildCardRemaining(d.meta?.wildCard?.remaining ?? null);
       });
+  }
+
+  // Pulled live, inside the normal swipe flow -- not a separate feed or
+  // screen. Inserts the card right after whatever the viewer is currently
+  // looking at, so it shows up next without losing their place in the
+  // ordinary feed; see docs/WILD_CARD.md for why this is on-demand rather
+  // than a scheduled batch like Mystery Match.
+  async function drawWildCard() {
+    setWildCardBusy(true);
+    setWildCardError(null);
+    try {
+      const res = await fetch('/api/discover/wildcard');
+      const data = await res.json();
+      if (!res.ok) {
+        setWildCardError(data.error ?? "Couldn't draw a Wild Card right now.");
+        if (typeof data.remaining === 'number') setWildCardRemaining(data.remaining);
+        return;
+      }
+      setFeed((prev) => {
+        const base = prev ?? [];
+        const next = [...base];
+        next.splice(index, 0, data.card);
+        return next;
+      });
+      setWildCardRemaining(data.remaining);
+    } catch {
+      setWildCardError("Couldn't draw a Wild Card right now.");
+    } finally {
+      setWildCardBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -97,7 +141,26 @@ export default function DiscoverPage() {
       <InactivityLogout />
       <main className="mx-auto max-w-3xl px-4 py-6">
         <h1 className="mb-1 font-display text-2xl font-extrabold">Discover</h1>
-        <p className="mb-6 text-sm text-inkSoft">Ranked by shared interests, city, and intent.</p>
+        <p className="mb-1 text-sm text-inkSoft">Ranked by shared interests, city, and intent.</p>
+
+        {/* Wild Card -- see docs/WILD_CARD.md. Same intent, same city, but
+            the opposite of what the ranked feed above favors: someone you
+            have almost nothing in common with on paper. Capped at
+            wildCard.limit/day, shown here regardless of remaining count so
+            the button doubles as a reminder of the daily cap. */}
+        {meta && (
+          <div className="mb-6 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={drawWildCard}
+              disabled={wildCardBusy || wildCardRemaining === 0}
+              className="rounded-full border border-line bg-white px-3 py-1.5 text-xs font-bold text-ink shadow-sm disabled:opacity-50"
+            >
+              {wildCardBusy ? 'Drawing…' : `🃏 Wild Card${wildCardRemaining != null ? ` (${wildCardRemaining} left)` : ''}`}
+            </button>
+            {wildCardError && <span className="text-xs text-inkSoft">{wildCardError}</span>}
+          </div>
+        )}
 
         {match && (
           <MatchModal

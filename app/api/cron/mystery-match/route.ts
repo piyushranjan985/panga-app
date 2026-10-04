@@ -2,24 +2,19 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { isPushCategoryEnabled, sendPushToUser } from '@/lib/notifications/push';
 import { matchMysteryPool, nextRotationCategory, type MysteryCandidate, type MysteryCategory } from '@/lib/mysteryMatch';
+import { startOfTodayIST } from '@/lib/istTime';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 // Mystery Match runs on India time regardless of where Vercel's cron
 // clock or this function's region happens to be -- see
-// docs/MYSTERY_MATCH.md. India has no DST, so this fixed +5:30 offset
-// never drifts; vercel.json's schedule ("30 14 * * *") is this same
-// 8:00pm IST expressed in UTC for the cron trigger itself.
-const IST_OFFSET_MS = 5.5 * 60 * 60_000;
+// docs/MYSTERY_MATCH.md. vercel.json's schedule ("30 14 * * *") is
+// 8:00pm IST expressed in UTC for the cron trigger itself. startOfTodayIST
+// used to be defined right here; it now lives in lib/istTime.ts so Wild
+// Card's daily-use quota (lib/wildCard.ts) can reuse the identical
+// day-boundary logic instead of a second copy.
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60_000;
-
-/** Start of "today" in IST, as a real UTC Date (safe to compare against any stored DateTime). */
-function startOfTodayIST(now: Date): Date {
-  const istNow = new Date(now.getTime() + IST_OFFSET_MS);
-  const istMidnight = new Date(Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate()));
-  return new Date(istMidnight.getTime() - IST_OFFSET_MS);
-}
 
 function orderedPair(a: string, b: string): [string, string] {
   return a < b ? [a, b] : [b, a];

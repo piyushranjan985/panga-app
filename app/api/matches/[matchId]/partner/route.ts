@@ -30,7 +30,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ matchId
   const otherId = otherUserId(match, session.userId);
   const isUserA = match.userAId === session.userId;
 
-  const [profile, myProfile] = await Promise.all([
+  const [profile, myProfile, foundViaWildCard] = await Promise.all([
     db.profile.findUnique({
       where: { userId: otherId },
       include: {
@@ -44,6 +44,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ matchId
       },
     }),
     db.profile.findUnique({ where: { userId: session.userId }, select: { latitude: true, longitude: true, city: true } }),
+    // Wild Card attribution (see docs/WILD_CARD.md) -- one-sided on
+    // purpose: this is "did *I* (the signed-in viewer) draw *them* as a
+    // Wild Card," never the reverse, so only the person who actually used
+    // their slot ever sees the badge. A plain existence check -- no
+    // Match/Swipe schema changes needed, see prisma/schema.prisma's
+    // WildCardUse model comment.
+    db.wildCardUse.findFirst({ where: { userId: session.userId, candidateUserId: otherId }, select: { id: true } }),
   ]);
   if (!profile) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
@@ -101,6 +108,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ matchId
     },
     matchMeta: {
       isMuted: isUserA ? Boolean(match.mutedAAt) : Boolean(match.mutedBAt),
+      foundViaWildCard: Boolean(foundViaWildCard),
     },
     revealStatus: {
       isMysteryMatch: match.isMysteryMatch,

@@ -163,22 +163,24 @@ model User {
 
   profile Profile?
 
-  otpCodes              OtpCode[]
-  swipesSent            Swipe[]               @relation("SwipesBySender")
-  swipesReceived        Swipe[]               @relation("SwipesByTarget")
-  matchesAsUserA        Match[]               @relation("MatchUserA")
-  matchesAsUserB        Match[]               @relation("MatchUserB")
-  mysteryHistoryAsUserA MysteryMatchHistory[] @relation("MysteryHistoryUserA")
-  mysteryHistoryAsUserB MysteryMatchHistory[] @relation("MysteryHistoryUserB")
-  messagesSent          Message[]             @relation("MessagesBySender")
-  reportsFiled          Report[]              @relation("ReportsByReporter")
-  reportsReceived       Report[]              @relation("ReportsAboutUser")
-  blocksMade            Block[]               @relation("BlocksByBlocker")
-  blocksReceived        Block[]               @relation("BlocksByBlocked")
-  dateFeedback          DateFeedback[]
-  messageLikes          MessageLike[]
-  vybeVouchInvitesSent  VybeVouchInvite[]
-  deviceTokens          DeviceToken[]
+  otpCodes                OtpCode[]
+  swipesSent              Swipe[]               @relation("SwipesBySender")
+  swipesReceived          Swipe[]               @relation("SwipesByTarget")
+  matchesAsUserA          Match[]               @relation("MatchUserA")
+  matchesAsUserB          Match[]               @relation("MatchUserB")
+  mysteryHistoryAsUserA   MysteryMatchHistory[] @relation("MysteryHistoryUserA")
+  mysteryHistoryAsUserB   MysteryMatchHistory[] @relation("MysteryHistoryUserB")
+  wildCardUsesAsViewer    WildCardUse[]         @relation("WildCardUseViewer")
+  wildCardUsesAsCandidate WildCardUse[]         @relation("WildCardUseCandidate")
+  messagesSent            Message[]             @relation("MessagesBySender")
+  reportsFiled            Report[]              @relation("ReportsByReporter")
+  reportsReceived         Report[]              @relation("ReportsAboutUser")
+  blocksMade              Block[]               @relation("BlocksByBlocker")
+  blocksReceived          Block[]               @relation("BlocksByBlocked")
+  dateFeedback            DateFeedback[]
+  messageLikes            MessageLike[]
+  vybeVouchInvitesSent    VybeVouchInvite[]
+  deviceTokens            DeviceToken[]
 
   // --- Admin Portal: relations from the admin-domain models below ---------
   moderationCases       ModerationCase[]       @relation("ModerationCasesAboutUser")
@@ -586,6 +588,31 @@ model MysteryMatchHistory {
 // summary of that specific match. Advisory only, by design -- see the doc's
 // §1 guardrails -- never gates messaging/matching/discovery.
 // =============================================================================
+
+// =============================================================================
+// WILD CARD -- see docs/WILD_CARD.md for the full design
+// -----------------------------------------------------------------------------
+// One row per Wild Card card actually handed back to a viewer (not per
+// swipe, not per request that came back empty) -- see lib/wildCard.ts.
+// Serves two jobs with no Swipe/Match schema changes needed at all:
+//   1. Daily quota count + same-day "don't repeat this candidate" --
+//      both are just "rows for this userId since IST midnight."
+//   2. One-sided match-screen attribution ("you found this one through
+//      Wild Card," shown only to the person who used their slot) -- a
+//      plain existence check on (userId=me, candidateUserId=them), see
+//      app/api/matches/[matchId]/partner/route.ts.
+// =============================================================================
+
+model WildCardUse {
+  id              String   @id @default(cuid())
+  userId          String
+  candidateUserId String
+  user            User     @relation("WildCardUseViewer", fields: [userId], references: [id], onDelete: Cascade)
+  candidateUser   User     @relation("WildCardUseCandidate", fields: [candidateUserId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
 
 model VybeVouchInvite {
   id            String    @id @default(cuid())

@@ -233,3 +233,74 @@ export function rankCandidates(
     .map((c) => scoreCandidate(viewer, c, now))
     .sort((a, b) => b.score - a.score);
 }
+
+/**
+ * Wild Card (see docs/WILD_CARD.md) -- same intent, same-city compatibility
+ * floor as ordinary discovery (isEligibleCandidate is reused UNCHANGED, not
+ * duplicated or loosened), with exactly one scoring term flipped: shared
+ * interests. scoreCandidate() rewards overlap; this rewards its absence,
+ * weighted twice as heavily so it's the dominant signal rather than a
+ * tiebreaker -- "opposites attract," not "everyone you'd never otherwise
+ * see." City/intent/proximity/recency terms are identical to scoreCandidate
+ * on purpose: Wild Card is still someone you could actually go meet, in
+ * your city, wanting the same kind of thing you are -- just a stranger on
+ * paper instead of a lookalike.
+ */
+export function scoreWildCardCandidate(viewer: MatchableProfile, candidate: MatchableProfile, now: Date = new Date()): ScoredCandidate {
+  const reasons: string[] = [];
+  let score = 0;
+
+  const sharedInterests = sharedCount(viewer.interestIds, candidate.interestIds);
+  score -= sharedInterests * WEIGHTS.sharedInterest * 2;
+  reasons.push(sharedInterests === 0 ? 'nothing in common on paper' : `only ${sharedInterests} shared interest${sharedInterests > 1 ? 's' : ''}`);
+
+  if (viewer.city === candidate.city) {
+    score += WEIGHTS.sameCity;
+    reasons.push('same city');
+  }
+
+  const compatibility = INTENT_COMPATIBILITY[viewer.intent][candidate.intent];
+  score += compatibility * WEIGHTS.intent;
+  if (compatibility === 1) reasons.push('same intent');
+
+  // Same proximity treatment as scoreCandidate -- Wild Card still respects
+  // intent's location rule (isEligibleCandidate's hasLocationPath), this
+  // is just the within-the-eligible-pool tiebreaker.
+  const distance = distanceKmBetween(viewer, candidate);
+  const radius = DISTANCE_RADIUS_KM[viewer.intent];
+  const proximity = proximityFactor(distance, radius);
+  if (proximity > 0) {
+    const weight = viewer.intent === 'JUST_VIBING' ? WEIGHTS.proximityPrimary : WEIGHTS.proximitySecondary;
+    score += proximity * weight;
+    if (distance !== null && distance <= 2) reasons.push('right nearby');
+    else reasons.push('close by');
+  }
+
+  const hoursSinceActive = (now.getTime() - candidate.lastActiveAt.getTime()) / 36e5;
+  if (hoursSinceActive <= 48) {
+    score += WEIGHTS.recency * (1 - hoursSinceActive / 48);
+  }
+
+  return { userId: candidate.userId, score: Math.round(score * 100) / 100, reasons };
+}
+
+/**
+ * Wild Card's ranking entry point -- same shape as rankCandidates, scored
+ * with scoreWildCardCandidate instead. excludedUserIds should contain
+ * anyone the viewer has swiped on, blocked in either direction, AND
+ * anyone already served to them as a Wild Card today (see
+ * app/api/discover/wildcard/route.ts) -- the last one isn't this
+ * function's concern, same way "already swiped" isn't rankCandidates'.
+ */
+export function rankWildCardCandidates(
+  viewer: MatchableProfile,
+  candidates: MatchableProfile[],
+  excludedUserIds: Set<string> = new Set(),
+  now: Date = new Date(),
+): ScoredCandidate[] {
+  return candidates
+    .filter((c) => !excludedUserIds.has(c.userId))
+    .filter((c) => isEligibleCandidate(viewer, c))
+    .map((c) => scoreWildCardCandidate(viewer, c, now))
+    .sort((a, b) => b.score - a.score);
+}

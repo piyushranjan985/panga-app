@@ -135,6 +135,11 @@ export default function ChatPage() {
   const [revealStatus, setRevealStatus] = useState<RevealStatus | null>(null);
   const [revealing, setRevealing] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  // Wild Card -- see docs/WILD_CARD.md. One-sided: only true for the
+  // person who actually drew this match as their Wild Card, never shown
+  // to or inferred by the other side.
+  const [foundViaWildCard, setFoundViaWildCard] = useState(false);
+  const [wildCardBannerDismissed, setWildCardBannerDismissed] = useState(false);
   const [usedVybeSources, setUsedVybeSources] = useState<string[]>([]);
   const [sharedVybeOpen, setSharedVybeOpen] = useState(false);
   const [revealDifference, setRevealDifference] = useState(false);
@@ -174,6 +179,7 @@ export default function ChatPage() {
     const d = await fetch(`/api/matches/${params.matchId}/partner`).then((r) => r.json());
     setPartner(d.partner ?? null);
     setIsMuted(Boolean(d.matchMeta?.isMuted));
+    setFoundViaWildCard(Boolean(d.matchMeta?.foundViaWildCard));
     setRevealStatus(d.revealStatus ?? null);
   }
 
@@ -567,6 +573,19 @@ export default function ChatPage() {
             docs/MYSTERY_MATCH.md. Only ever shown for a Mystery Match
             pairing that isn't fully revealed yet; disappears for good
             (not just hidden) the moment both sides have revealed. */}
+        {/* 🃏 Wild Card attribution -- see docs/WILD_CARD.md. A quiet,
+            dismissible one-liner, not a persistent banner like Mystery
+            Match's blind-reveal state above (there's no ongoing state to
+            track here, just a one-time "here's how you found them"). */}
+        {foundViaWildCard && !wildCardBannerDismissed && (
+          <div className="mb-2 flex items-center justify-between gap-2 rounded-2xl border border-line bg-white px-4 py-2.5 text-xs">
+            <span>🃏 You found this match with a Wild Card -- almost nothing in common on paper.</span>
+            <button type="button" onClick={() => setWildCardBannerDismissed(true)} className="shrink-0 font-semibold text-inkSoft/70 underline">
+              Got it
+            </button>
+          </div>
+        )}
+
         {revealStatus?.isMysteryMatch && !revealStatus.fullyRevealed && (
           <div className="mb-2 rounded-2xl border border-line bg-gradient-to-br from-marigold/10 via-white to-magenta/10 p-4 text-center">
             <p className="font-display text-sm font-extrabold">🎭 This is a Mystery Match</p>
