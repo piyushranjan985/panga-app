@@ -26,7 +26,7 @@ export default function PrivacyPolicyPage() {
         &larr; findmyVybe
       </Link>
       <h1 className="mt-4 font-display text-3xl font-extrabold">Privacy Policy</h1>
-      <p className="mt-2 text-xs uppercase tracking-wide text-inkSoft">Last updated: 1 October 2026</p>
+      <p className="mt-2 text-xs uppercase tracking-wide text-inkSoft">Last updated: 4 October 2026</p>
 
       <p className="mt-6 text-inkSoft">
         This policy explains what findmyVybe ("we", "us") collects when you use the app, why, and what you
@@ -85,6 +85,13 @@ export default function PrivacyPolicyPage() {
         approximate login method, rough platform (web/iOS/Android), IP address, and browser/device identifier —
         used for account security and to investigate abuse reports, not for advertising.
       </p>
+      <p className="mt-2 text-inkSoft">
+        <strong className="text-ink">Push notification tokens.</strong> If you allow notifications on iOS,
+        Android, or web, your device registers a token with Firebase Cloud Messaging (our notification
+        provider) so we can deliver alerts for new matches, messages, and a Mystery Match reveal. We never send
+        notifications without that explicit device/browser permission, and turning notifications off in your
+        device settings stops them and removes the stored token.
+      </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">How we use it</h2>
       <p className="mt-2 text-inkSoft">
@@ -104,6 +111,14 @@ export default function PrivacyPolicyPage() {
         anything beyond the basic profile you approve on their consent screen. We disclose information to law
         enforcement only when legally required to.
       </p>
+      <p className="mt-2 text-inkSoft">
+        <strong className="text-ink">Vybe Vouch.</strong> If you choose to use Vybe Vouch, you generate a
+        private link and send it yourself to one person of your choosing. That person — who doesn't need a
+        findmyVybe account, and whose phone number or email we never collect — sees a privacy-safe summary of
+        the specific match you invited them to look at (not your full profile or your messages), and can leave
+        a short reaction and optional note, which is shown only to you, never to the person you matched with or
+        anyone else. You can revoke an unused invite at any time.
+      </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">Your choices</h2>
       <ul className="mt-2 list-disc space-y-1 pl-5 text-inkSoft">
@@ -117,6 +132,15 @@ export default function PrivacyPolicyPage() {
         <li>
           <strong className="text-ink">Location sharing</strong> can be turned on or off any time from your
           Profile's Location section — turning it off deletes the stored coordinates immediately.
+        </li>
+        <li>
+          <strong className="text-ink">Mystery Match preference</strong> (Mystery Match, Vybe Flip, No-Labels
+          Match, or opted out) can be changed any time from your Profile. When you're paired, your photo and
+          name stay masked to that match until both of you choose to reveal them.
+        </li>
+        <li>
+          <strong className="text-ink">Push notifications</strong> can be turned off any time from your
+          device's or browser's notification settings.
         </li>
         <li>
           <strong className="text-ink">Access or export your data:</strong> contact us (below) and we'll help.

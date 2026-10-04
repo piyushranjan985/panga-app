@@ -302,6 +302,30 @@ export const HELP_ENTRIES: HelpEntry[] = [
       "An unmatch is final on our end -- it removes the connection and hides the conversation for both of you, and there's no automatic \"undo.\" If you both still want to connect, the other person would need to reappear in your Discover feed and you'd both swipe again as if for the first time.",
     keywords: ['unmatched by accident', 'rematch', 'undo unmatch'],
   },
+  {
+    id: 'di-mystery-match-what',
+    category: 'discover',
+    question: 'What is Mystery Match?',
+    answer:
+      "A daily, opt-in alternative to swiping. On your Profile screen you can set your Mystery preference to Mystery Match (close to random, same intent), Vybe Flip (deliberately pairs you with someone who shares almost nothing with you on paper), No-Labels Match (crosses intents -- you could be paired with someone looking for something different than you are), or Opted out. Once a day, everyone currently opted into the same category in your city is paired up, and both people get a real, chat-enabled match at the same moment -- always with someone that pair has never crossed paths with before, in any form.",
+    keywords: ['mystery match', 'vybe flip', 'no-labels match', 'daily match', 'random match'],
+  },
+  {
+    id: 'di-mystery-match-reveal',
+    category: 'discover',
+    question: 'Why can\'t I see my Mystery Match\'s photo or name?',
+    answer:
+      "Mystery Match pairings start blind on purpose -- you'll see a placeholder instead of their real photo and name until both of you tap \"Reveal\" in the chat. It only takes one side tapping Reveal to register your own choice, but the photo and name only unlock once BOTH people have revealed -- so revealing first never tips the other person off, and you'll both get notified the moment it fully unlocks. There's no way to undo a reveal once you've tapped it.",
+    keywords: ['mystery match reveal', 'blind match', 'hidden photo', 'reveal button'],
+  },
+  {
+    id: 'di-mystery-match-switch',
+    category: 'discover',
+    question: 'Can I change or turn off my Mystery Match preference?',
+    answer:
+      "Yes -- change it any time from the Profile screen; it only affects who you're pooled with at the next daily pairing (8:00pm IST), not any existing Mystery Match matches. Choosing No-Labels Match for the first time shows a one-time explainer, since it can pair you with someone looking for something different than you are -- after that it's remembered and won't ask again. Opting out simply excludes you from that day's pairing.",
+    keywords: ['turn off mystery match', 'change mystery preference', 'opt out mystery match'],
+  },
 
   // ---------------------------------------------------------------- chat
   {
@@ -363,8 +387,16 @@ export const HELP_ENTRIES: HelpEntry[] = [
     category: 'chat',
     question: 'Will I get a notification for a new message?',
     answer:
-      "Push notifications for new messages and matches aren't available yet -- for now, check the app directly for new activity. This is on the roadmap.",
-    keywords: ['push notification', 'message alert', 'notify me'],
+      "Yes -- once you've allowed notifications (iOS and Android ask the first time it's relevant, like after your first match; on web your browser will prompt you), you'll get a push notification for new messages, new matches, and a Mystery Match reveal. If you don't see the permission prompt or want to change your answer, check your device's or browser's notification settings for findmyVybe. On iOS Safari specifically, push only works once the site has been added to your home screen as an app.",
+    keywords: ['push notification', 'message alert', 'notify me', 'notification permission'],
+  },
+  {
+    id: 'ch-notifications-off',
+    category: 'chat',
+    question: "I'm not getting push notifications -- how do I fix that?",
+    answer:
+      "Check your device's notification settings for findmyVybe (or your browser's site permissions on web) and make sure notifications are allowed. If you denied the permission prompt the first time, you'll usually need to turn it on from Settings rather than being asked again in-app. On iOS Safari, web push only works after adding findmyvybe.com to your home screen (Share → Add to Home Screen) -- a regular browser tab can't receive push on iOS.",
+    keywords: ['no notifications', 'push not working', 'notification settings', 'ios safari push'],
   },
   {
     id: 'ch-date-feedback',
@@ -436,6 +468,30 @@ export const HELP_ENTRIES: HelpEntry[] = [
     question: 'I think a profile is fake -- what do I do?',
     answer: 'Report it with the "Fake profile" reason from the "..." chat menu, and consider blocking to stop further contact while the report is reviewed.',
     keywords: ['fake profile', 'catfish', 'scam profile'],
+  },
+  {
+    id: 'sf-vybe-vouch-what',
+    category: 'safety',
+    question: 'What is Vybe Vouch?',
+    answer:
+      "An optional way to get a second opinion on a specific match from someone you trust -- a friend, a parent, anyone. From a match's \"...\" menu you can generate a private link and send it yourself (WhatsApp, SMS, however you'd normally share a link) to one person. They don't need a findmyVybe account -- they just see a privacy-safe summary of that match and react with a quick \"good vibe,\" \"ask more,\" or \"something's off,\" plus an optional note. Only you ever see their response; the person you matched with never knows an invite happened.",
+    keywords: ['vybe vouch', 'ask a friend', 'second opinion', 'trusted contact', 'vouch invite'],
+  },
+  {
+    id: 'sf-vybe-vouch-gating',
+    category: 'safety',
+    question: 'Does a Vybe Vouch "something\'s off" response block the match?',
+    answer:
+      "No -- Vybe Vouch is purely advisory. A reaction, including \"something's off,\" is never shared with the other person, never affects matching or chat for either of you, and never blocks messaging. It's a private note shown back only to whoever sent the invite, for them to decide what to do with.",
+    keywords: ['vybe vouch block', 'vouch flag', 'advisory only'],
+  },
+  {
+    id: 'sf-vybe-vouch-link',
+    category: 'safety',
+    question: 'How long does a Vybe Vouch link last, and can I cancel it?',
+    answer:
+      'A Vybe Vouch link is single-use (it stops working the moment the person you sent it to responds) and expires after a short window if unused. You can revoke an invite yourself before it\'s been answered. We never collect the vetter\'s phone number or email -- you share the link however you choose to.',
+    keywords: ['vybe vouch expire', 'cancel vouch invite', 'revoke invite'],
   },
 
   // ---------------------------------------------------------------- privacy-location

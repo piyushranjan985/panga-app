@@ -37,7 +37,7 @@ export default function TermsOfServicePage() {
         &larr; findmyVybe
       </Link>
       <h1 className="mt-4 font-display text-3xl font-extrabold">Terms of Service</h1>
-      <p className="mt-2 text-xs uppercase tracking-wide text-inkSoft">Last updated: 29 September 2026</p>
+      <p className="mt-2 text-xs uppercase tracking-wide text-inkSoft">Last updated: 4 October 2026</p>
 
       <p className="mt-6 text-inkSoft">
         These terms are the agreement between you and findmyVybe ("we", "us") for using the findmyVybe app --
@@ -137,6 +137,29 @@ export default function TermsOfServicePage() {
         tell a friend where you're going, and trust your judgment. After a match, you can optionally leave
         "Vybe Check" feedback (meet again / maybe / not for me) -- this helps your own future matching, not a
         public rating of the other person.
+      </p>
+
+      <h2 className="mt-8 font-display text-xl font-bold">Mystery Match, Vybe Flip &amp; No-Labels Match</h2>
+      <p className="mt-2 text-inkSoft">
+        These are optional, opt-in daily pairings you choose from your Profile screen -- you're only ever
+        paired with someone who has independently chosen the same option as you, that same day. No-Labels
+        Match can pair you with someone whose stated intent is different from yours; the first time you select
+        it, we'll show you a short explainer, and selecting it again means you understand and accept that. A
+        Mystery Match pairing is a real match like any other (the same reporting, blocking, and conduct rules
+        below apply in full) except that your photo and name stay masked to each other until you both choose
+        to reveal them in chat -- revealing is one-way and can't be undone, and we'll never pressure you to do
+        it on any particular timeline.
+      </p>
+
+      <h2 className="mt-8 font-display text-xl font-bold">Vybe Vouch</h2>
+      <p className="mt-2 text-inkSoft">
+        From a match's "…" menu, you can optionally invite one person you trust to look at a privacy-safe
+        summary of that specific match and share a quick reaction with you. That person doesn't need a
+        findmyVybe account, and we never collect their contact details -- you share the link with them
+        yourself. Their response is shown only to you; it's advisory only and never affects your match,
+        messaging, or the other member in any way, and the other member is never told an invite happened. Don't
+        use Vybe Vouch to share someone else's information anywhere the privacy-safe summary wouldn't already
+        be appropriate to share.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">Reporting, blocking &amp; enforcement</h2>
