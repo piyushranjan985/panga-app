@@ -89,9 +89,16 @@ export function isMockModeForced(channel: OtpChannel): boolean {
  * isn't this person). The fix: configure that channel's real provider
  * (see lib/notifications/sms.ts / email.ts's setup notes) in Vercel's
  * Production environment.
+ *
+ * EXCEPT when isMockModeForced(channel) -- that's a deliberate, explicit
+ * decision to run mock in production, so it bypasses this guard
+ * entirely rather than being silently blocked by it (the whole point of
+ * MOCK_MODE_PHONE/MOCK_MODE_EMAIL would otherwise do nothing on a
+ * deployment whose real provider was never configured, which is exactly
+ * the case this guard exists for).
  */
 export function isMockOtpUnsafeInProduction(channel: OtpChannel): boolean {
-  return !isChannelConfigured(channel) && isRealProductionDeployment();
+  return !isChannelConfigured(channel) && isRealProductionDeployment() && !isMockModeForced(channel);
 }
 
 export type IssueOtpResult =
