@@ -1,3 +1,5 @@
+import { isRealProductionDeployment } from '@/lib/env';
+
 // Server component (no 'use client' needed) -- NEXT_PUBLIC_ vars are
 // inlined at build time either way, so this reads exactly the same on
 // server and client render passes.
@@ -5,13 +7,26 @@
 // The one unmistakable visual difference between environments: without
 // this, dev.findmyvybe.com and findmyvybe.com render pixel-identical
 // pages, which is exactly how someone ends up testing against (or
-// showing a family member) the wrong one. Renders nothing at all when
-// NEXT_PUBLIC_APP_ENV="production" (or unset, so a build that forgot to
-// set it fails safe by showing the badge rather than silently hiding
-// it) -- see .env.example for where this gets set per environment.
+// showing a family member) the wrong one.
+//
+// The real gate is isRealProductionDeployment() (VERCEL_ENV, set
+// automatically by Vercel on every deploy -- see lib/env.ts), not the
+// NEXT_PUBLIC_APP_ENV label below. That used to be the only check here,
+// which meant the badge rendered "env unset" on the live
+// findmyvybe.com site itself the moment someone forgot to set
+// NEXT_PUBLIC_APP_ENV=production in Vercel's Production environment
+// variables -- a labeling gap, not an environment problem, but it
+// showed up on the real production page regardless. VERCEL_ENV can't
+// be forgotten the same way (Vercel sets it on every build), so a real
+// production deployment now never shows the badge even if the label
+// was never configured. Off Vercel entirely (self-hosted, local
+// `next build && next start`), VERCEL_ENV is unset, so the badge still
+// shows there -- correct, since "env unset" is exactly true in that
+// case too.
 export default function DevEnvironmentBadge() {
+  if (isRealProductionDeployment()) return null;
+
   const env = process.env.NEXT_PUBLIC_APP_ENV;
-  if (env === 'production') return null;
 
   return (
     <div

@@ -774,15 +774,20 @@ export default function ProfilePage() {
         <section className="mt-3 rounded-2xl border border-line bg-white p-4">
           <p className="font-bold">🎭 Mystery Match</p>
           <p className="text-sm text-inkSoft">
-            One blind, no-photo pick a day, 8pm. Pick how today's is chosen -- change your mind any time, or opt out.
+            Every evening at 8pm, we'll match you with someone new -- their photo and name stay hidden until you both choose
+            to reveal them. Choose how that daily match gets picked below. You can switch anytime, or turn it off.
           </p>
           <div className="mt-3 grid grid-cols-2 gap-2">
             {(
               [
-                ['MYSTERY_MATCH', 'Mystery Match', 'A new person, your usual intent.'],
-                ['VYBE_FLIP', 'Vybe Flip', 'Someone with almost nothing in common with you.'],
-                ['NO_LABELS', 'No-Labels Match', 'Crosses Just Vibing / Something Real / Rishta Ready.'],
-                ['OPTED_OUT', 'Opt out', 'No daily mystery pick.'],
+                ['MYSTERY_MATCH', 'Mystery Match', 'Someone new who shares your dating intent.'],
+                ['VYBE_FLIP', 'Vybe Flip', 'Someone who shares almost nothing in common with you -- see what happens.'],
+                [
+                  'NO_LABELS',
+                  'No-Labels Match',
+                  'Could be matched with someone looking for something different (casual vs. serious vs. marriage-minded).',
+                ],
+                ['OPTED_OUT', 'Opt out', "Skip today's -- and every future -- Mystery Match pairing."],
               ] as const
             ).map(([value, label, desc]) => (
               <button
@@ -799,8 +804,8 @@ export default function ProfilePage() {
             ))}
           </div>
           <p className="mt-2 text-xs text-inkSoft">
-            Left on its own for 7 days, your pick moves to the next one in the list (never to Opt out) -- so this never goes
-            stale without you noticing.
+            If you don't touch this for 7 days, we'll automatically move you to the next option on this list (never to Opt
+            out), so your preference doesn't quietly go stale.
           </p>
         </section>
 
@@ -1001,7 +1006,7 @@ export default function ProfilePage() {
               />
             )}
           </div>
-          <p className="mb-2 text-xs text-inkSoft">The prompts people unlock about you on the feed.</p>
+          <p className="mb-2 text-xs text-inkSoft">Short either/or prompts that show up on your profile when people see you in Discover.</p>
           {editing === 'vybecheck' && catalog ? (
             <div className="flex flex-col gap-3">
               <p className="text-xs text-inkSoft">Pick {vybeMax === 3 ? '2 to 3' : '2'} prompts, then pick a side on each.</p>

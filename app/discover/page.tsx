@@ -140,12 +140,17 @@ export default function DiscoverPage() {
 
         {feed === null && <p className="text-sm text-inkSoft">Loading your feed...</p>}
 
+        {/* "Try widening your city" used to point at a setting that
+            doesn't exist (city isn't editable from the Profile screen),
+            and the dev-only `npm run db:seed` hint was leaking into a
+            real user's empty state. There's no self-service lever here
+            today -- the pool is genuinely just thin -- so this says that
+            plainly instead of suggesting a fix that doesn't exist. */}
         {feed !== null && feed.length === 0 && (
           <div className="rounded-card border border-line bg-white p-8 text-center">
             <p className="font-display text-lg font-bold">No one here yet</p>
             <p className="mt-1 text-sm text-inkSoft">
-              Try widening your city in your profile — or seed the database with demo
-              users via <code className="mono">npm run db:seed</code>.
+              There's no one new to show you in your city right now — check back soon as more people join findmyVybe.
             </p>
           </div>
         )}
