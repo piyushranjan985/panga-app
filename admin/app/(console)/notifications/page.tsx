@@ -30,7 +30,17 @@ export default async function NotificationsPage() {
 
   return (
     <div>
-      <PageHeader title="Notifications & Operations" description="Live operational signals and the tracked alert queue." />
+      <PageHeader
+        title="Notifications & Operations"
+        description="Live operational signals and the tracked alert queue."
+        actions={
+          hasPermission(admin.role, 'reporting.export') && (
+            <a href="/api/notifications/export" className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas">
+              Export CSV
+            </a>
+          )
+        }
+      />
       <div className="space-y-8 p-8">
         <section>
           <h2 className="mb-3 text-sm font-bold">Detected now</h2>

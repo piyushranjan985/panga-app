@@ -36,6 +36,13 @@ export default async function IncidentsPage() {
       <PageHeader
         title="Privacy & Security Incidents"
         description="Breach assessment, containment, and Data Protection Board notification tracking, per the DPDP Rules 2025 breach-notification requirements."
+        actions={
+          hasPermission(admin.role, 'reporting.export') && (
+            <a href="/api/privacy/incidents/export" className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas">
+              Export CSV
+            </a>
+          )
+        }
       />
       <div className="space-y-6 p-8">
         {hasPermission(admin.role, 'privacy.incidents.manage') && <NewIncidentForm />}

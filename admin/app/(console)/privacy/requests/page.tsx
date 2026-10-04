@@ -3,6 +3,7 @@ import { requirePageAccess } from '@/lib/pageGuard';
 import { db } from '@/lib/db';
 import PageHeader from '@/components/PageHeader';
 import Badge from '@/components/Badge';
+import { hasPermission } from '@/lib/rbac';
 import EmptyState from '@/components/EmptyState';
 import type { Prisma } from '@prisma/client';
 
@@ -16,7 +17,7 @@ const STATUS_TONE: Record<string, 'default' | 'success' | 'warning' | 'critical'
 };
 
 export default async function PrivacyRequestsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  await requirePageAccess('privacy.view');
+  const admin = await requirePageAccess('privacy.view');
   const sp = await searchParams;
 
   const where: Prisma.PrivacyRequestWhereInput = {};
@@ -36,7 +37,20 @@ export default async function PrivacyRequestsPage({ searchParams }: { searchPara
 
   return (
     <div>
-      <PageHeader title="Data-Principal Requests" description="Access, correction, deletion, grievance, portability, and consent-withdrawal requests." />
+      <PageHeader
+        title="Data-Principal Requests"
+        description="Access, correction, deletion, grievance, portability, and consent-withdrawal requests."
+        actions={
+          hasPermission(admin.role, 'reporting.export') && (
+            <a
+              href={`/api/privacy/requests/export?${new URLSearchParams({ type: sp.type ?? '', status: sp.status ?? '', overdue: sp.overdue ?? '' }).toString()}`}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas"
+            >
+              Export CSV
+            </a>
+          )
+        }
+      />
       <div className="p-8">
         <form className="mb-5 flex flex-wrap gap-2" method="get">
           <Select name="type" label="Any type" defaultValue={sp.type} options={['ACCESS', 'CORRECTION', 'DELETION', 'GRIEVANCE', 'PORTABILITY', 'CONSENT_WITHDRAWAL']} />

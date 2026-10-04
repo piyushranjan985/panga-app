@@ -17,7 +17,16 @@ const bodySchema = z.object({
  * so this just writes a SupportTicket directly -- no cross-app HTTP call,
  * no shared-secret to manage, and the admin Support Centre picks it up
  * immediately via the same table.
+ *
+ * SUPPORT_TICKET_SLA_HOURS: a 48-hour default due-by, set here at
+ * creation time. Previously slaDueAt was only ever set by
+ * admin/scripts/seed-admin.ts's demo data -- a real ticket created
+ * through this route had slaDueAt: null, so the admin portal's
+ * SLA-breach signal (admin/lib/liveSignals.ts) never actually fired for
+ * a real ticket. This is the only place a SupportTicket is created today.
  */
+const SUPPORT_TICKET_SLA_HOURS = 48;
+
 export async function POST(req: Request) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
@@ -37,6 +46,7 @@ export async function POST(req: Request) {
       category: 'other',
       channel: 'VYBEHELP_ESCALATION',
       status: 'OPEN',
+      slaDueAt: new Date(Date.now() + SUPPORT_TICKET_SLA_HOURS * 3600 * 1000),
       vybeHelpTranscript: parsed.data.transcript ?? [],
       messages: {
         create: { authorType: 'user', body: parsed.data.note },

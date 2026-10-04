@@ -3,6 +3,7 @@ import { requirePageAccess } from '@/lib/pageGuard';
 import { db } from '@/lib/db';
 import PageHeader from '@/components/PageHeader';
 import Badge from '@/components/Badge';
+import { hasPermission } from '@/lib/rbac';
 import EmptyState from '@/components/EmptyState';
 import { maskEmail, maskPhone, ageFromDob } from '@/lib/mask';
 import type { Prisma } from '@prisma/client';
@@ -60,11 +61,25 @@ export default async function UsersPage({
   ]);
 
   const canUnmask = admin.role !== 'READ_ONLY'; // fine-grained check happens server-side per unmask call anyway
+  const canExport = hasPermission(admin.role, 'users.export');
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div>
-      <PageHeader title="Users" description={`${total.toLocaleString()} accounts`} />
+      <PageHeader
+        title="Users"
+        description={`${total.toLocaleString()} accounts`}
+        actions={
+          canExport && (
+            <a
+              href={`/api/users/export?${new URLSearchParams({ status: sp.status ?? '', city: sp.city ?? '' }).toString()}`}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas"
+            >
+              Export CSV
+            </a>
+          )
+        }
+      />
       <div className="p-8">
         <form className="mb-5 flex flex-wrap gap-2" method="get">
           <input

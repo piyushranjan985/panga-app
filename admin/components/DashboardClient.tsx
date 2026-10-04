@@ -109,11 +109,11 @@ export default function DashboardClient({ role }: { role: AdminRole }) {
 
       <Section title="Growth & activity">
         <StatTile label="Total users" value={data.growth.totalUsers} href="/users" />
-        <StatTile label="New registrations" value={data.growth.newRegistrations} />
-        <StatTile label="DAU" value={data.growth.dau} />
-        <StatTile label="WAU" value={data.growth.wau} />
-        <StatTile label="MAU" value={data.growth.mau} />
-        <StatTile label="Active now" value={data.growth.onlineNow} sub="last 5 min, proxy metric" />
+        <StatTile label="New registrations" value={data.growth.newRegistrations} detail="New sign-ups within the selected date range, above." />
+        <StatTile label="DAU" value={data.growth.dau} detail="Daily active users -- accounts with activity (lastActiveAt) in the last 24 hours." />
+        <StatTile label="WAU" value={data.growth.wau} detail="Weekly active users -- accounts with activity (lastActiveAt) in the last 7 days." />
+        <StatTile label="MAU" value={data.growth.mau} detail="Monthly active users -- accounts with activity (lastActiveAt) in the last 30 days." />
+        <StatTile label="Active now" value={data.growth.onlineNow} sub="last 5 min, proxy metric" detail="Accounts with activity (lastActiveAt) in the last 5 minutes -- a proxy for 'online now', since this app doesn't track live presence." />
       </Section>
 
       <Section title="Profiles & verification">

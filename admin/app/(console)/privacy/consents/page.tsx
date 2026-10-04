@@ -3,13 +3,14 @@ import { requirePageAccess } from '@/lib/pageGuard';
 import { db } from '@/lib/db';
 import PageHeader from '@/components/PageHeader';
 import Badge from '@/components/Badge';
+import { hasPermission } from '@/lib/rbac';
 import EmptyState from '@/components/EmptyState';
 import type { Prisma } from '@prisma/client';
 
 const PURPOSES = ['ACCOUNT_ESSENTIAL', 'PRECISE_LOCATION', 'MARKETING_COMMUNICATIONS', 'ANALYTICS', 'THIRD_PARTY_SHARING'];
 
 export default async function ConsentsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  await requirePageAccess('privacy.consents.view');
+  const admin = await requirePageAccess('privacy.consents.view');
   const sp = await searchParams;
 
   const where: Prisma.ConsentRecordWhereInput = {};
@@ -34,6 +35,16 @@ export default async function ConsentsPage({ searchParams }: { searchParams: Pro
       <PageHeader
         title="Consent Records"
         description="Purpose-tagged, versioned consent history. Append-only -- withdrawing consent inserts a new row rather than editing the granted one."
+        actions={
+          hasPermission(admin.role, 'reporting.export') && (
+            <a
+              href={`/api/privacy/consents/export?${new URLSearchParams({ purpose: sp.purpose ?? '', status: sp.status ?? '', userId: sp.userId ?? '' }).toString()}`}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas"
+            >
+              Export CSV
+            </a>
+          )
+        }
       />
       <div className="space-y-6 p-8">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">

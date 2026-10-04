@@ -14,7 +14,15 @@ export default async function AdminRolesPage() {
 
   return (
     <div>
-      <PageHeader title="Admin & Roles" description="Who can sign in to this portal, what role they hold, and exactly what each role can do." />
+      <PageHeader
+        title="Admin & Roles"
+        description="Who can sign in to this portal, what role they hold, and exactly what each role can do."
+        actions={
+          <a href="/api/admin-roles/export" className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas">
+            Export CSV
+          </a>
+        }
+      />
       <div className="space-y-8 p-8">
         <NewAdminForm />
 

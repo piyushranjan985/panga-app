@@ -2,6 +2,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import { db } from '@/lib/db';
 import { hashDocumentReference, checkDuplicateIdentity } from './duplicateIdentity';
 import { isPushCategoryEnabled, sendPushToUser } from '@/lib/notifications/push';
+import { moderationSlaDueAt } from '@/lib/moderationSla';
 
 /**
  * DigiLocker (India's government-run digital document locker, run under
@@ -431,6 +432,7 @@ export async function finalizeIdentityVerification(params: {
         category: categoryForFailureReason(decision.failureReason),
         severity: decision.status === 'REJECTED' ? 'HIGH' : 'MEDIUM',
         status: 'OPEN',
+        slaDueAt: moderationSlaDueAt(decision.status === 'REJECTED' ? 'HIGH' : 'MEDIUM'),
         evidence: {
           documentType: document.documentType,
           referenceMasked: document.referenceMasked,

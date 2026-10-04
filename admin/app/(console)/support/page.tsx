@@ -3,6 +3,7 @@ import { requirePageAccess } from '@/lib/pageGuard';
 import { db } from '@/lib/db';
 import PageHeader from '@/components/PageHeader';
 import Badge from '@/components/Badge';
+import { hasPermission } from '@/lib/rbac';
 import EmptyState from '@/components/EmptyState';
 import type { Prisma } from '@prisma/client';
 
@@ -16,7 +17,7 @@ const STATUS_TONE: Record<string, 'default' | 'success' | 'warning' | 'critical'
 };
 
 export default async function SupportPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  await requirePageAccess('support.view');
+  const admin = await requirePageAccess('support.view');
   const sp = await searchParams;
 
   const where: Prisma.SupportTicketWhereInput = {};
@@ -32,7 +33,20 @@ export default async function SupportPage({ searchParams }: { searchParams: Prom
 
   return (
     <div>
-      <PageHeader title="Support" description="Tickets from VybeHelp escalations and direct contact." />
+      <PageHeader
+        title="Support"
+        description="Tickets from VybeHelp escalations and direct contact."
+        actions={
+          hasPermission(admin.role, 'reporting.export') && (
+            <a
+              href={`/api/support/export?${new URLSearchParams({ status: sp.status ?? '', priority: sp.priority ?? '' }).toString()}`}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas"
+            >
+              Export CSV
+            </a>
+          )
+        }
+      />
       <div className="p-8">
         <form className="mb-5 flex flex-wrap gap-2" method="get">
           <Select name="status" label="Open queue" defaultValue={sp.status} options={['OPEN', 'IN_PROGRESS', 'WAITING_ON_USER', 'ESCALATED', 'RESOLVED', 'CLOSED']} />

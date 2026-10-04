@@ -19,7 +19,17 @@ export default async function LegalHoldsPage() {
 
   return (
     <div>
-      <PageHeader title="Legal Holds" description="A hold blocks a DPDP deletion request from being completed against that user's account until it's released." />
+      <PageHeader
+        title="Legal Holds"
+        description="A hold blocks a DPDP deletion request from being completed against that user's account until it's released."
+        actions={
+          hasPermission(admin.role, 'reporting.export') && (
+            <a href="/api/privacy/legal-holds/export" className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas">
+              Export CSV
+            </a>
+          )
+        }
+      />
       <div className="space-y-6 p-8">
         {canManage && <NewLegalHoldForm />}
 

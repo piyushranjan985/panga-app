@@ -24,7 +24,17 @@ export default async function ReportsPage() {
 
   return (
     <div>
-      <PageHeader title="Reports" description="Every report filed by a user, cross-referenced with any moderation case it became." />
+      <PageHeader
+        title="Reports"
+        description="Every report filed by a user, cross-referenced with any moderation case it became."
+        actions={
+          hasPermission(admin.role, 'reporting.export') && (
+            <a href="/api/reports/export" className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas">
+              Export CSV
+            </a>
+          )
+        }
+      />
       <div className="p-8">
         {reports.length === 0 ? (
           <EmptyState title="No reports yet" />

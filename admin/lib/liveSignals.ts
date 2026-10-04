@@ -20,20 +20,32 @@ export interface LiveSignal {
 // (see components/AlertActions.tsx) when it's worth keeping a record of.
 export async function getLiveSignals(): Promise<LiveSignal[]> {
   const now = new Date();
-  const [overdueRequests, overdueTickets, overdueModerationCases, openIncidents] = await Promise.all([
+  // Escalating a ticket/case (admin/app/api/support/tickets/[ticketId]
+  // and admin/app/api/moderation/cases/[caseId]) only ever changed a
+  // status column and wrote an audit entry -- nobody was told, and it
+  // didn't show up here until the (now-tightened) SLA clock separately
+  // ran out. So both queries below match on "overdue OR escalated", not
+  // just "overdue", and the per-item detail below says which is true.
+  const [overdueRequests, flaggedTickets, flaggedModerationCases, openIncidents] = await Promise.all([
     db.privacyRequest.findMany({
       where: { dueAt: { lt: now }, status: { in: ['RECEIVED', 'VERIFYING_IDENTITY', 'IN_PROGRESS'] } },
       select: { id: true, type: true, dueAt: true },
       take: 20,
     }),
     db.supportTicket.findMany({
-      where: { slaDueAt: { lt: now }, status: { in: ['OPEN', 'IN_PROGRESS', 'WAITING_ON_USER', 'ESCALATED'] as never } },
-      select: { id: true, subject: true, slaDueAt: true },
+      where: {
+        status: { in: ['OPEN', 'IN_PROGRESS', 'WAITING_ON_USER', 'ESCALATED'] as never },
+        OR: [{ slaDueAt: { lt: now } }, { status: 'ESCALATED' as never }],
+      },
+      select: { id: true, subject: true, slaDueAt: true, status: true },
       take: 20,
     }),
     db.moderationCase.findMany({
-      where: { slaDueAt: { lt: now }, status: { in: ['OPEN', 'IN_REVIEW', 'ESCALATED'] as never } },
-      select: { id: true, category: true, severity: true, slaDueAt: true },
+      where: {
+        status: { in: ['OPEN', 'IN_REVIEW', 'ESCALATED'] as never },
+        OR: [{ slaDueAt: { lt: now } }, { status: 'ESCALATED' as never }],
+      },
+      select: { id: true, category: true, severity: true, slaDueAt: true, status: true },
       take: 20,
     }),
     db.privacyIncident.findMany({
@@ -57,25 +69,37 @@ export async function getLiveSignals(): Promise<LiveSignal[]> {
       href: `/privacy/requests/${r.id}`,
     });
   }
-  for (const t of overdueTickets) {
+  for (const t of flaggedTickets) {
+    const overdue = Boolean(t.slaDueAt && t.slaDueAt < now);
     signals.push({
       key: `ticket-${t.id}`,
       category: 'SLA_BREACH',
-      severity: 'WARNING',
-      title: `Support ticket past SLA: ${t.subject}`,
-      detail: `Due ${t.slaDueAt?.toISOString().slice(0, 10)}.`,
+      severity: overdue ? 'CRITICAL' : 'WARNING',
+      title: overdue ? `Support ticket past SLA: ${t.subject}` : `Support ticket escalated: ${t.subject}`,
+      detail: t.slaDueAt
+        ? overdue
+          ? `Was due ${t.slaDueAt.toISOString().slice(0, 10)}.`
+          : `Due ${t.slaDueAt.toISOString().slice(0, 10)}.`
+        : 'No SLA due date set.',
       sourceType: 'SupportTicket',
       sourceId: t.id,
       href: `/support/${t.id}`,
     });
   }
-  for (const c of overdueModerationCases) {
+  for (const c of flaggedModerationCases) {
+    const overdue = Boolean(c.slaDueAt && c.slaDueAt < now);
     signals.push({
       key: `case-${c.id}`,
       category: 'MODERATION',
-      severity: c.severity === 'CRITICAL' || c.severity === 'HIGH' ? 'CRITICAL' : 'WARNING',
-      title: `Moderation case past SLA: ${c.category.replace(/_/g, ' ')}`,
-      detail: `Due ${c.slaDueAt?.toISOString().slice(0, 10)}.`,
+      severity: overdue || c.severity === 'CRITICAL' || c.severity === 'HIGH' ? 'CRITICAL' : 'WARNING',
+      title: overdue
+        ? `Moderation case past SLA: ${c.category.replace(/_/g, ' ')}`
+        : `Moderation case escalated: ${c.category.replace(/_/g, ' ')}`,
+      detail: c.slaDueAt
+        ? overdue
+          ? `Was due ${c.slaDueAt.toISOString().slice(0, 10)}.`
+          : `Due ${c.slaDueAt.toISOString().slice(0, 10)}.`
+        : 'No SLA due date set.',
       sourceType: 'ModerationCase',
       sourceId: c.id,
       href: `/moderation/${c.id}`,

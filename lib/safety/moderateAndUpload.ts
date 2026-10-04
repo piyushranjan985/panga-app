@@ -1,6 +1,7 @@
 import { db } from '@/lib/db';
 import { evaluatePhoto, type PhotoModerationDecision } from './policyEngine';
 import { getImageModerationProvider, isUnsafeProductionMock, UndecodableImageError } from './imageModeration';
+import { moderationSlaDueAt } from '@/lib/moderationSla';
 
 export interface ModerationOutcome {
   decision: PhotoModerationDecision;
@@ -208,6 +209,7 @@ export async function recordPhotoModeration(params: {
         severity: SEVERITY_FOR_DECISION(outcome.decision),
         status: 'OPEN',
         isRepeatOffender: priorCases > 0,
+        slaDueAt: moderationSlaDueAt(SEVERITY_FOR_DECISION(outcome.decision)),
         evidence: {
           photoId,
           decision: outcome.decision,

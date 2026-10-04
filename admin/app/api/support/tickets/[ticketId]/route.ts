@@ -25,7 +25,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ ticket
   if (!existing) return NextResponse.json({ error: 'Not found.' }, { status: 404 });
 
   const data: Record<string, unknown> = { ...parsed.data };
-  if (parsed.data.status === 'ESCALATED') data.escalatedAt = new Date();
+  if (parsed.data.status === 'ESCALATED') {
+    data.escalatedAt = new Date();
+    // Same reasoning as the moderation case route: escalating pulls the
+    // SLA due-by in to 4 hours out (never later than it already was) so
+    // it shows up on the Notifications page's SLA-breach signal quickly
+    // if it isn't picked up, and bumps priority to URGENT if it wasn't
+    // already -- escalating a LOW/NORMAL-priority ticket shouldn't leave
+    // it looking routine in the queue.
+    const escalatedDueAt = new Date(Date.now() + 4 * 3600 * 1000);
+    if (!existing.slaDueAt || existing.slaDueAt > escalatedDueAt) data.slaDueAt = escalatedDueAt;
+    if (!parsed.data.priority && existing.priority !== 'URGENT') data.priority = 'URGENT';
+  }
   if (parsed.data.status === 'RESOLVED') data.resolvedAt = new Date();
 
   await db.supportTicket.update({ where: { id: ticketId }, data });

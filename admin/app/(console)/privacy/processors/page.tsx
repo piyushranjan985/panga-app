@@ -14,7 +14,17 @@ export default async function ProcessorsPage() {
 
   return (
     <div>
-      <PageHeader title="Data Processors" description="Vendor register -- who else touches user data on findmyVybe's behalf, and why." />
+      <PageHeader
+        title="Data Processors"
+        description="Vendor register -- who else touches user data on findmyVybe's behalf, and why."
+        actions={
+          hasPermission(admin.role, 'reporting.export') && (
+            <a href="/api/privacy/processors/export" className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas">
+              Export CSV
+            </a>
+          )
+        }
+      />
       <div className="space-y-6 p-8">
         {canManage && <NewProcessorForm />}
 

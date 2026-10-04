@@ -27,8 +27,14 @@ export default async function AnalyticsPage() {
       />
       <div className="space-y-8 p-8">
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          <ReportCard title="Verification" rows={verificationBreakdown.map((v) => ({ label: v.verification, count: v._count._all }))} />
-          <ReportCard title="Moderation cases" rows={moderationByStatus.map((v) => ({ label: v.status, count: v._count._all }))} />
+          <ReportCard
+            title="Verification"
+            rows={verificationBreakdown.map((v) => ({ label: v.verification, count: v._count._all, href: `/users?verification=${v.verification}` }))}
+          />
+          <ReportCard
+            title="Moderation cases"
+            rows={moderationByStatus.map((v) => ({ label: v.status, count: v._count._all, href: `/moderation?status=${v.status}` }))}
+          />
           <ReportCard title="Support tickets by category" rows={ticketsByCategory.map((v) => ({ label: v.category, count: v._count._all }))} />
           <ReportCard title="Logins by platform" rows={deviceSplit.map((v) => ({ label: v.platform ?? 'unknown', count: v._count._all }))} />
         </div>
@@ -47,19 +53,31 @@ export default async function AnalyticsPage() {
   );
 }
 
-function ReportCard({ title, rows }: { title: string; rows: { label: string; count: number }[] }) {
+function ReportCard({ title, rows }: { title: string; rows: { label: string; count: number; href?: string }[] }) {
   return (
     <div className="rounded-card border border-border bg-surface p-4">
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-inkFaint">{title}</p>
       {rows.length === 0 ? (
         <p className="text-xs text-inkFaint">No data yet.</p>
       ) : (
-        rows.map((r) => (
-          <div key={r.label} className="flex justify-between border-b border-border py-1 text-sm last:border-0">
-            <span className="text-inkSoft">{r.label}</span>
-            <span className="tabular-nums font-semibold">{r.count}</span>
-          </div>
-        ))
+        rows.map((r) =>
+          r.href ? (
+            <Link
+              key={r.label}
+              href={r.href}
+              className="flex justify-between border-b border-border py-1 text-sm last:border-0 hover:bg-canvas"
+              title={`View ${r.count} in ${r.label}`}
+            >
+              <span className="text-inkSoft">{r.label}</span>
+              <span className="tabular-nums font-semibold text-brand">{r.count}</span>
+            </Link>
+          ) : (
+            <div key={r.label} className="flex justify-between border-b border-border py-1 text-sm last:border-0">
+              <span className="text-inkSoft">{r.label}</span>
+              <span className="tabular-nums font-semibold">{r.count}</span>
+            </div>
+          ),
+        )
       )}
     </div>
   );

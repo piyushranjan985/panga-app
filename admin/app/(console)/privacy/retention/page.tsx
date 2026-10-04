@@ -15,7 +15,17 @@ export default async function RetentionPage() {
 
   return (
     <div>
-      <PageHeader title="Retention Policies" description="How long each data category is kept, and whether it's slated for automatic deletion once that period ends." />
+      <PageHeader
+        title="Retention Policies"
+        description="How long each data category is kept, and whether it's slated for automatic deletion once that period ends."
+        actions={
+          hasPermission(admin.role, 'reporting.export') && (
+            <a href="/api/privacy/retention/export" className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas">
+              Export CSV
+            </a>
+          )
+        }
+      />
       <div className="space-y-6 p-8">
         {canManage && <NewRetentionPolicyForm />}
 

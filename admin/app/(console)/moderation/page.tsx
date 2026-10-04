@@ -35,7 +35,20 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
 
   return (
     <div>
-      <PageHeader title="Moderation" description="Trust & Safety case queue -- reports, automated flags, and content reviews." />
+      <PageHeader
+        title="Moderation"
+        description="Trust & Safety case queue -- reports, automated flags, and content reviews."
+        actions={
+          hasPermission(admin.role, 'reporting.export') && (
+            <a
+              href={`/api/moderation/export?${new URLSearchParams({ status: sp.status ?? '', severity: sp.severity ?? '', category: sp.category ?? '' }).toString()}`}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas"
+            >
+              Export CSV
+            </a>
+          )
+        }
+      />
       <div className="p-8">
         <form className="mb-5 flex flex-wrap gap-2" method="get">
           <Select name="status" label="Open + In review + Escalated" defaultValue={sp.status} options={['OPEN', 'IN_REVIEW', 'ESCALATED', 'RESOLVED', 'DISMISSED']} />
@@ -63,7 +76,7 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
                   <th className="px-4 py-2.5">Category</th>
                   <th className="px-4 py-2.5">Source</th>
                   <th className="px-4 py-2.5">Severity</th>
-                  {canViewRisk && <th className="px-4 py-2.5">Risk</th>}
+                  {canViewRisk && <th className="px-4 py-2.5" title="Internal automated-risk score, 0.00 (lowest) to 1.00 (highest).">Risk (0-1)</th>}
                   <th className="px-4 py-2.5">Status</th>
                   <th className="px-4 py-2.5">Assignee</th>
                   <th className="px-4 py-2.5">Opened</th>

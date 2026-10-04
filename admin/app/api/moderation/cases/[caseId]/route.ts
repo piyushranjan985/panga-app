@@ -29,6 +29,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ caseId
   if (parsed.data.status) data.status = parsed.data.status;
   if (parsed.data.severity) data.severity = parsed.data.severity;
 
+  // Escalating is meant to actually mean something, not just relabel the
+  // row: pull the due-by in to 4 hours out (never pushing it further away
+  // than it already was) so it surfaces on the Notifications page's
+  // SLA-breach signal promptly if nobody picks it up, the same way a
+  // CRITICAL-severity new case already would (see lib/moderationSla.ts
+  // in the main app).
+  if (parsed.data.status === 'ESCALATED') {
+    const escalatedDueAt = new Date(Date.now() + 4 * 3600 * 1000);
+    if (!existing.slaDueAt || existing.slaDueAt > escalatedDueAt) data.slaDueAt = escalatedDueAt;
+  }
+
   await db.moderationCase.update({ where: { id: caseId }, data });
 
   await writeAudit({
