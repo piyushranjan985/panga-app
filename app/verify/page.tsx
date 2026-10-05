@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import OtpCodeInput from '@/components/OtpCodeInput';
+import { parseJsonResponse } from '@/lib/fetchJson';
 
 /** "+919876543210" -> "+91 98765 43210" -- display formatting only, never sent anywhere or stored this way. */
 function formatPhoneForDisplay(phone: string): string {
@@ -62,7 +63,7 @@ function VerifyForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) {
         const retryAfter = Number(res.headers.get('Retry-After'));
         if (Number.isFinite(retryAfter) && retryAfter > 0) setResendCooldown(retryAfter);
@@ -90,7 +91,7 @@ function VerifyForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) throw new Error(data.error ?? 'Invalid code');
       router.push(data.next ?? '/discover');
     } catch (err) {

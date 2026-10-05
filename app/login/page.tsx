@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { startAuthentication } from '@simplewebauthn/browser';
+import { parseJsonResponse } from '@/lib/fetchJson';
 
 // Shown on the login page when a real OAuth round trip (google) comes
 // back with ?error=... -- see app/api/auth/google/callback. Deliberately
@@ -178,7 +179,7 @@ function LoginForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) throw new Error(data.error ?? 'Something went wrong');
       const query = method === 'phone' ? `phone=${encodeURIComponent(phone)}` : `email=${encodeURIComponent(email)}`;
       const existingFlag = data.alreadyHasProfile ? '&existing=1' : '';
@@ -209,7 +210,7 @@ function LoginForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: socialEmail }),
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) throw new Error(data.error ?? 'Something went wrong');
       router.push(data.next ?? '/discover');
     } catch (err) {
