@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { OtpPurpose } from '@prisma/client';
 import { db } from '@/lib/db';
-import { issueOtp } from '@/lib/otp';
+import { issueOtp, describeIssueOtpFailure } from '@/lib/otp';
+import { clientIpFromRequest } from '@/lib/otpRateLimit';
+import { getOrCreateRateLimitClientId } from '@/lib/rateLimitClientId';
 
 const bodySchema = z.object({
   email: z.string().trim().toLowerCase().email('Enter a valid email address'),
@@ -34,15 +37,14 @@ export async function POST(req: Request) {
   }
   const alreadyHasProfile = Boolean(user.profile);
 
-  const issued = await issueOtp(user.id, email, 'email');
+  const ip = clientIpFromRequest(req);
+  const clientId = await getOrCreateRateLimitClientId();
+
+  const issued = await issueOtp(user.id, email, 'email', OtpPurpose.LOGIN, { ip, clientId });
   if (!issued.ok) {
-    if (issued.reason === 'provider_not_configured') {
-      return NextResponse.json({ error: 'Sign-in is temporarily unavailable — please try again shortly.' }, { status: 503 });
-    }
-    if (issued.reason === 'send_failed') {
-      return NextResponse.json({ error: "We couldn't send that code — please try again in a moment." }, { status: 502 });
-    }
-    return NextResponse.json({ error: 'A code was already sent recently — check your inbox or wait a bit before requesting another.' }, { status: 429 });
+    const { status, message, retryAfterSeconds } = describeIssueOtpFailure(issued);
+    const headers = retryAfterSeconds ? { 'Retry-After': String(retryAfterSeconds) } : undefined;
+    return NextResponse.json({ error: message }, { status, headers });
   }
 
   return NextResponse.json({ ok: true, alreadyHasProfile });

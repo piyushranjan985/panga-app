@@ -6,7 +6,7 @@ import { consumeOtp } from '@/lib/otp';
 
 const bodySchema = z.object({
   email: z.string().trim().toLowerCase().email(),
-  code: z.string().trim().length(8),
+  code: z.string().trim().length(6),
 });
 
 /** Verify half of ./request-otp -- see that route's doc comment. */

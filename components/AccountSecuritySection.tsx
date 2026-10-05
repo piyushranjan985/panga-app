@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { startRegistration } from '@simplewebauthn/browser';
+import OtpCodeInput from '@/components/OtpCodeInput';
 
 export interface AccountSecurityData {
   phone: string | null;
@@ -71,15 +72,15 @@ export default function AccountSecuritySection({
     }
   }
 
-  async function verifyPhoneCode(e: React.FormEvent) {
-    e.preventDefault();
+  async function verifyPhoneCode(codeToSubmit: string) {
+    if (codeToSubmit.length !== 6 || phoneBusy) return;
     setPhoneBusy(true);
     setPhoneError(null);
     try {
       const res = await fetch('/api/profile/phone/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phoneDraft, code: phoneCode }),
+        body: JSON.stringify({ phone: phoneDraft, code: codeToSubmit }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Invalid code');
@@ -88,6 +89,7 @@ export default function AccountSecuritySection({
       onChange();
     } catch (err) {
       setPhoneError(err instanceof Error ? err.message : 'Invalid code');
+      setPhoneCode('');
     } finally {
       setPhoneBusy(false);
     }
@@ -113,15 +115,15 @@ export default function AccountSecuritySection({
     }
   }
 
-  async function verifyEmailCode(e: React.FormEvent) {
-    e.preventDefault();
+  async function verifyEmailCode(codeToSubmit: string) {
+    if (codeToSubmit.length !== 6 || emailBusy) return;
     setEmailBusy(true);
     setEmailError(null);
     try {
       const res = await fetch('/api/profile/email/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: emailDraft, code: emailCode }),
+        body: JSON.stringify({ email: emailDraft, code: codeToSubmit }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Invalid code');
@@ -130,6 +132,7 @@ export default function AccountSecuritySection({
       onChange();
     } catch (err) {
       setEmailError(err instanceof Error ? err.message : 'Invalid code');
+      setEmailCode('');
     } finally {
       setEmailBusy(false);
     }
@@ -244,22 +247,20 @@ export default function AccountSecuritySection({
             </form>
           )}
           {phoneStep === 'code' && (
-            <form onSubmit={verifyPhoneCode} className="mt-3 flex flex-col gap-2">
-              <p className="text-sm text-inkSoft">Enter the code we sent to {phoneDraft}.</p>
-              <input
-                value={phoneCode}
-                onChange={(e) => setPhoneCode(e.target.value)}
-                placeholder="00000000"
-                inputMode="numeric"
-                maxLength={8}
-                className="rounded-2xl border border-line bg-white px-4 py-3 text-center text-xl tracking-[0.4em]"
-                required
-              />
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                verifyPhoneCode(phoneCode);
+              }}
+              className="mt-3 flex flex-col gap-2"
+            >
+              <p className="text-sm text-inkSoft">Enter the 6-digit code we sent to {phoneDraft}.</p>
+              <OtpCodeInput value={phoneCode} onChange={setPhoneCode} onComplete={verifyPhoneCode} disabled={phoneBusy} error={Boolean(phoneError)} />
               {phoneError && <p className="text-sm text-magenta">{phoneError}</p>}
               <div className="flex gap-2">
                 <button
                   type="submit"
-                  disabled={phoneBusy}
+                  disabled={phoneBusy || phoneCode.length !== 6}
                   className="gradient-btn rounded-full px-5 py-2 text-sm font-bold text-white disabled:opacity-60"
                 >
                   {phoneBusy ? 'Verifying...' : 'Verify'}
@@ -323,22 +324,20 @@ export default function AccountSecuritySection({
             </form>
           )}
           {emailStep === 'code' && (
-            <form onSubmit={verifyEmailCode} className="mt-3 flex flex-col gap-2">
-              <p className="text-sm text-inkSoft">Enter the code we sent to {emailDraft}.</p>
-              <input
-                value={emailCode}
-                onChange={(e) => setEmailCode(e.target.value)}
-                placeholder="00000000"
-                inputMode="numeric"
-                maxLength={8}
-                className="rounded-2xl border border-line bg-white px-4 py-3 text-center text-xl tracking-[0.4em]"
-                required
-              />
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                verifyEmailCode(emailCode);
+              }}
+              className="mt-3 flex flex-col gap-2"
+            >
+              <p className="text-sm text-inkSoft">Enter the 6-digit code we sent to {emailDraft}.</p>
+              <OtpCodeInput value={emailCode} onChange={setEmailCode} onComplete={verifyEmailCode} disabled={emailBusy} error={Boolean(emailError)} />
               {emailError && <p className="text-sm text-magenta">{emailError}</p>}
               <div className="flex gap-2">
                 <button
                   type="submit"
-                  disabled={emailBusy}
+                  disabled={emailBusy || emailCode.length !== 6}
                   className="gradient-btn rounded-full px-5 py-2 text-sm font-bold text-white disabled:opacity-60"
                 >
                   {emailBusy ? 'Verifying...' : 'Verify'}

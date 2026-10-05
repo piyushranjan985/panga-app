@@ -105,6 +105,21 @@ function LoginForm() {
       .catch(() => setCheckingDevice(false));
   }, [router]);
 
+  // Prefilled when arriving via /verify's "Edit number"/"Edit email" link
+  // (?method=phone&phone=+91...) -- lets someone fix a typo without
+  // retyping the whole thing from scratch. Doesn't touch the trusted-
+  // device check above; a prefill is just a form default, not a signal
+  // to skip anything.
+  useEffect(() => {
+    const prefillMethod = searchParams.get('method');
+    const prefillPhone = searchParams.get('phone');
+    const prefillEmail = searchParams.get('email');
+    if (prefillMethod === 'email') setMethod('email');
+    else if (prefillMethod === 'phone') setMethod('phone');
+    if (prefillPhone) setPhone(prefillPhone);
+    if (prefillEmail) setEmail(prefillEmail);
+  }, [searchParams]);
+
   // Reached two ways: app/api/auth/google|apple/route.ts redirects back
   // here with ?mock=google|apple when that provider's real credentials
   // aren't set yet (falls back to exactly the mock form below, just
@@ -215,8 +230,14 @@ function LoginForm() {
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 px-6 py-16">
       <div>
-        <h1 className="font-display text-3xl font-extrabold">Sign in</h1>
-        <p className="mt-2 text-sm text-inkSoft">We&apos;ll send a one-time code. No spam, ever.</p>
+        <h1 className="font-display text-3xl font-extrabold">
+          {method === 'phone' ? "What's your number?" : 'Sign in with email'}
+        </h1>
+        <p className="mt-2 text-sm text-inkSoft">
+          {method === 'phone'
+            ? "We'll send you a quick verification code. No spam, ever."
+            : "We'll send a one-time code to your inbox."}
+        </p>
       </div>
 
       <div className="flex gap-1 rounded-full border border-line bg-white p-1">

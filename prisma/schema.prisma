@@ -467,6 +467,29 @@ model PromptAnswer {
   @@unique([profileId, promptId])
 }
 
+// Why a channel can no longer be used to resolve purpose: the signup/login
+// split needs destination+requestIp+createdAt visible on the row itself for
+// abuse-rate queries to stay single-table (no join through User) -- see
+// lib/otpRateLimit.ts and docs/OTP_SECURITY.md.
+enum OtpChannel {
+  PHONE
+  EMAIL
+}
+
+// SIGNUP vs LOGIN are both issued from the same "look up or create by
+// phone" endpoint (app/api/auth/request-otp) -- which one applies is
+// decided at request time by whether a User row already existed, and
+// recorded here so abuse monitoring/rate limiting can be scoped per
+// purpose later if needed (e.g. a tighter cap on brand-new signups than
+// on returning logins). PHONE_CHANGE/EMAIL_CHANGE cover the authenticated
+// "add/change my phone or email" routes under app/api/profile/*.
+enum OtpPurpose {
+  SIGNUP
+  LOGIN
+  PHONE_CHANGE
+  EMAIL_CHANGE
+}
+
 model OtpCode {
   id         String    @id @default(cuid())
   userId     String
@@ -481,7 +504,24 @@ model OtpCode {
   attempts   Int       @default(0)
   createdAt  DateTime  @default(now())
 
+  // --- Abuse/rate-limiting metadata, added for the OTP security hardening
+  // pass -- see lib/otpRateLimit.ts and docs/OTP_SECURITY.md. All four are
+  // nullable: rows written before this migration have none of this, and
+  // that's fine -- they're ephemeral, already-expired data the cleanup
+  // cron (app/api/cron/otp-cleanup) purges on its own schedule regardless.
+  // destination/channel/purpose are always populated on every row written
+  // going forward; requestIp/clientId are best-effort (never block an
+  // issuance just because a header or cookie happened to be missing).
+  destination String? // the phone/email this code was actually sent to, denormalized so rate-limit queries never need to join through User (whose phone/email can itself change later)
+  channel     OtpChannel?
+  purpose     OtpPurpose?
+  requestIp   String? // x-forwarded-for at request time -- see lib/otpRateLimit.ts's clientIpFromRequest
+  clientId    String? // best-effort anonymous correlation id from the findmyvybe_rlid cookie -- NOT a security boundary (trivially cleared), just one more signal alongside the IP/phone limits that actually hold the line
+
   @@index([userId, expiresAt])
+  @@index([destination, createdAt])
+  @@index([requestIp, createdAt])
+  @@index([expiresAt])
 }
 
 // Every swipe is recorded (not just mutual likes) so the discovery feed can

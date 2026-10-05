@@ -1,8 +1,17 @@
 import crypto from 'node:crypto';
+import { OtpPurpose, type OtpChannel as DbOtpChannel } from '@prisma/client';
 import { db } from '@/lib/db';
 import { isRealProductionDeployment } from '@/lib/env';
 import { isSmsProviderConfigured, sendOtpSms } from '@/lib/notifications/sms';
 import { isBrevoConfigured, sendTransactionalEmail } from '@/lib/notifications/email';
+import {
+  getOtpRateLimitConfig,
+  computeProgressiveCooldownSeconds,
+  isSuspiciousPhoneNumber,
+  evaluateOtpRequestCounts,
+  type OtpRequestLimits,
+  type OtpRequestCounts,
+} from '@/lib/otpRateLimit';
 
 /**
  * Shared one-time-code logic used by both the phone flow and the email
@@ -19,8 +28,10 @@ import { isBrevoConfigured, sendTransactionalEmail } from '@/lib/notifications/e
  * isChannelConfigured() true means a real SMS (StartMessaging/MSG91) or Brevo email with a
  * fresh random code actually gets sent (lib/notifications/sms.ts,
  * lib/notifications/email.ts); false means the fixed MOCK_OTP, same as
- * before, for local/preview dev. REQUEST_COOLDOWN_SECONDS and
- * MAX_ATTEMPTS below apply identically either way.
+ * before, for local/preview dev. The resend cooldown and max-attempts cap
+ * (now both sourced from lib/otpRateLimit.ts's env-configurable
+ * getOtpRateLimitConfig(), see docs/OTP_SECURITY.md) apply identically
+ * either way.
  *
  * MOCK_MODE_PHONE / MOCK_MODE_EMAIL (see isMockModeForced below) are a
  * separate, explicit override on top of all that: set either to "true"
@@ -32,17 +43,46 @@ import { isBrevoConfigured, sendTransactionalEmail } from '@/lib/notifications/e
  * Environment Variables (then redeploy) or in your local .env, and flip
  * it back the same way when you're done. Google sign-in has no
  * equivalent override -- it's untouched by this.
+ *
+ * OTP_ENABLED (see getOtpRateLimitConfig) is a separate, blunter switch
+ * from MOCK_MODE_*: set it to "false" and NOTHING is issued at all, real
+ * or mock, on either channel -- the emergency "stop everything right
+ * now" lever for an active-abuse or runaway-SMS-cost incident, with no
+ * deploy needed.
  */
 
-export const MOCK_OTP = '43364336';
-const OTP_TTL_MINUTES = 5;
-const MAX_ATTEMPTS = 10;
-const REQUEST_COOLDOWN_SECONDS = 20;
+export const MOCK_OTP = '433643';
 
 export type OtpChannel = 'phone' | 'email';
 
+/** The TS-facing 'phone' | 'email' union -> the Prisma-persisted enum, used only when writing an OtpCode row. */
+function toDbChannel(channel: OtpChannel): DbOtpChannel {
+  return channel === 'phone' ? 'PHONE' : 'EMAIL';
+}
+
 export function hashOtp(code: string) {
   return crypto.createHash('sha256').update(code).digest('hex');
+}
+
+/**
+ * Keeps one leading/trailing sliver visible and blanks the rest -- for
+ * log lines only (see the SAFETY GUARD below's "never log OTP values"
+ * discipline, which extends to never logging a full phone/email either).
+ * Duplicated rather than imported from admin/lib/mask.ts or
+ * components/AccountSecuritySection.tsx's inline version -- this app and
+ * admin/ are separate Prisma Client instances with separate `@/*`
+ * aliases (root lib/ isn't importable from admin/, and this is server
+ * code that can't import a 'use client' component either), same
+ * constraint noted throughout this codebase wherever root/admin need the
+ * same small helper.
+ */
+function maskDestination(channel: OtpChannel, destination: string): string {
+  if (channel === 'phone') {
+    return destination.length > 4 ? `${destination.slice(0, -4).replace(/\d/g, '•')}${destination.slice(-4)}` : destination;
+  }
+  const [name, domain] = destination.split('@');
+  if (!name || !domain) return '••••';
+  return `${name.slice(0, 2)}${'•'.repeat(Math.max(name.length - 2, 1))}@${domain}`;
 }
 
 /**
@@ -101,22 +141,65 @@ export function isMockOtpUnsafeInProduction(channel: OtpChannel): boolean {
   return !isChannelConfigured(channel) && isRealProductionDeployment() && !isMockModeForced(channel);
 }
 
+export type IssueOtpRateLimitDetail =
+  | 'cooldown'
+  | 'destination_hourly_limit'
+  | 'destination_daily_limit'
+  | 'ip_hourly_limit'
+  | 'ip_daily_limit'
+  | 'global_hourly_limit';
+
 export type IssueOtpResult =
   | { ok: true }
-  | { ok: false; reason: 'rate_limited' | 'provider_not_configured' | 'send_failed' };
+  | { ok: false; reason: 'disabled' }
+  | { ok: false; reason: 'rate_limited'; detail: IssueOtpRateLimitDetail; retryAfterSeconds?: number }
+  | { ok: false; reason: 'provider_not_configured' }
+  | { ok: false; reason: 'send_failed' };
+
+export interface IssueOtpMeta {
+  /** x-forwarded-for from the incoming request, or null if unavailable -- see lib/otpRateLimit.ts's clientIpFromRequest. */
+  ip?: string | null;
+  /** The findmyvybe_rlid anonymous correlation cookie's value, or null -- see lib/otpRateLimit.ts's getOrCreateRateLimitClientId. Recorded on the row for monitoring only; nothing currently rate-limits on it directly. */
+  clientId?: string | null;
+}
 
 /**
  * Creates and stores a fresh OTP for a user, and -- when this channel's
  * real provider is configured (isChannelConfigured()) -- actually sends
- * it: a real random 6-digit code via MSG91 SMS or Brevo email. When it
- * isn't configured, this always issues the static MOCK_OTP and never
- * calls out to either provider, exactly like before (see .env.example).
+ * it: a real random 6-digit code via MSG91/StartMessaging SMS or Brevo
+ * email. When it isn't configured, this always issues the static
+ * MOCK_OTP and never calls out to either provider, exactly like before
+ * (see .env.example).
  *
- * Refuses to issue a new code (and therefore reset the attempt counter
- * on the previous one — see consumeOtp) more than once every
- * REQUEST_COOLDOWN_SECONDS for the same user.
+ * Full check order -- see docs/OTP_SECURITY.md for the reasoning behind
+ * each one:
+ *  1. OTP_ENABLED kill switch (reason: 'disabled').
+ *  2. The production safety guard above (reason: 'provider_not_configured').
+ *  3. Per-destination/IP/global rate limits, cooldown (possibly
+ *     progressive), and a soft daily cap for numbers that match a known
+ *     test/bot pattern (reason: 'rate_limited', with `detail` saying
+ *     which specific limit tripped -- logged for monitoring, but the
+ *     caller's user-facing message collapses all the `detail` values
+ *     down to "hourly" vs "daily" granularity, never naming IP/global/
+ *     suspicious specifically, so a prober learns nothing about which
+ *     layer actually caught them).
+ *  4. Actually generating + storing + (for a real provider) sending the
+ *     code (reason: 'send_failed' if the provider call itself throws).
  */
-export async function issueOtp(userId: string, destination: string, channel: OtpChannel): Promise<IssueOtpResult> {
+export async function issueOtp(
+  userId: string,
+  destination: string,
+  channel: OtpChannel,
+  purpose: OtpPurpose,
+  meta: IssueOtpMeta = {},
+): Promise<IssueOtpResult> {
+  const config = getOtpRateLimitConfig();
+
+  if (!config.enabled) {
+    console.warn(`[otp] OTP_ENABLED=false -- refusing to issue a ${channel} code (purpose=${purpose}). Set OTP_ENABLED=true in Vercel to resume.`);
+    return { ok: false, reason: 'disabled' };
+  }
+
   if (isMockOtpUnsafeInProduction(channel)) {
     console.error(
       `[otp] SAFETY GUARD: no real ${channel} provider is configured on a production deployment ` +
@@ -128,13 +211,76 @@ export async function issueOtp(userId: string, destination: string, channel: Otp
     return { ok: false, reason: 'provider_not_configured' };
   }
 
-  const mostRecent = await db.otpCode.findFirst({
-    where: { userId },
-    orderBy: { createdAt: 'desc' },
-    select: { createdAt: true },
-  });
-  if (mostRecent && Date.now() - mostRecent.createdAt.getTime() < REQUEST_COOLDOWN_SECONDS * 1000) {
-    return { ok: false, reason: 'rate_limited' };
+  const ip = meta.ip ?? null;
+  const clientId = meta.clientId ?? null;
+  const dbChannel = toDbChannel(channel);
+  const maskedDestination = maskDestination(channel, destination);
+
+  const now = Date.now();
+  const hourAgo = new Date(now - 60 * 60 * 1000);
+  const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
+  const cooldownLookbackAgo = new Date(now - config.progressiveCooldownLookbackHours * 60 * 60 * 1000);
+
+  const [destinationHour, destinationDay, recentForCooldown, mostRecent, ipHour, ipDay, globalHour, channelDailyVolume] =
+    await Promise.all([
+      db.otpCode.count({ where: { destination, channel: dbChannel, createdAt: { gte: hourAgo } } }),
+      db.otpCode.count({ where: { destination, channel: dbChannel, createdAt: { gte: dayAgo } } }),
+      db.otpCode.count({ where: { destination, channel: dbChannel, createdAt: { gte: cooldownLookbackAgo } } }),
+      db.otpCode.findFirst({
+        where: { destination, channel: dbChannel },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
+      ip ? db.otpCode.count({ where: { requestIp: ip, createdAt: { gte: hourAgo } } }) : Promise.resolve(null),
+      ip ? db.otpCode.count({ where: { requestIp: ip, createdAt: { gte: dayAgo } } }) : Promise.resolve(null),
+      config.maxGlobalPerHour !== null ? db.otpCode.count({ where: { createdAt: { gte: hourAgo } } }) : Promise.resolve(null),
+      db.otpCode.count({ where: { channel: dbChannel, createdAt: { gte: dayAgo } } }),
+    ]);
+
+  // The cooldown itself (how long since the LAST request to this exact
+  // destination) is checked separately from the hour/day volume caps
+  // below -- it's about pacing back-to-back requests, not about a total
+  // count, and it escalates on its own (progressive cooldown) rather
+  // than being a fixed threshold.
+  if (mostRecent) {
+    const cooldownSeconds = config.progressiveCooldownEnabled
+      ? computeProgressiveCooldownSeconds(config.resendCooldownSeconds, recentForCooldown, config.progressiveCooldownMaxSeconds)
+      : config.resendCooldownSeconds;
+    const elapsedSeconds = (now - mostRecent.createdAt.getTime()) / 1000;
+    if (elapsedSeconds < cooldownSeconds) {
+      return { ok: false, reason: 'rate_limited', detail: 'cooldown', retryAfterSeconds: Math.ceil(cooldownSeconds - elapsedSeconds) };
+    }
+  }
+
+  // Suspicious-number soft mitigation: never a hard block (an unlucky
+  // false positive still gets one code through today), just a much
+  // tighter daily cap -- see lib/otpRateLimit.ts's isSuspiciousPhoneNumber
+  // for exactly which patterns this catches and why it's deliberately
+  // narrow.
+  const suspicious = channel === 'phone' && isSuspiciousPhoneNumber(destination);
+  if (suspicious) {
+    console.warn(`[otp-abuse] suspicious phone pattern requested a code (purpose=${purpose}, ip=${ip ?? 'unknown'}) -- throttling to ${config.suspiciousNumberDailyLimit}/day instead of the normal limit.`);
+  }
+
+  const limits: OtpRequestLimits = {
+    destinationPerHour: channel === 'phone' ? config.maxPerPhonePerHour : config.maxPerEmailPerHour,
+    destinationPerDay: suspicious ? config.suspiciousNumberDailyLimit : channel === 'phone' ? config.maxPerPhonePerDay : config.maxPerEmailPerDay,
+    ipPerHour: config.maxPerIpPerHour,
+    ipPerDay: config.maxPerIpPerDay,
+    globalPerHour: config.maxGlobalPerHour,
+  };
+  const counts: OtpRequestCounts = { destinationHour, destinationDay, ipHour, ipDay, globalHour };
+
+  const decision = evaluateOtpRequestCounts(limits, counts);
+  if (!decision.ok) {
+    console.warn(`[otp-abuse] rate-limited a ${channel} request`, {
+      detail: decision.reason,
+      purpose,
+      ip: ip ?? 'unknown',
+      clientId: clientId ?? 'unknown',
+      destination: maskedDestination,
+    });
+    return { ok: false, reason: 'rate_limited', detail: decision.reason };
   }
 
   const forced = isMockModeForced(channel);
@@ -151,26 +297,47 @@ export async function issueOtp(userId: string, destination: string, channel: Otp
   }
   const useRealProvider = isChannelConfigured(channel) && !forced;
   const code = useRealProvider ? crypto.randomInt(100000, 999999).toString() : MOCK_OTP;
+  const otpTtlMinutes = Math.max(1, Math.round(config.expirySeconds / 60));
 
   await db.otpCode.create({
     data: {
       userId,
       codeHash: hashOtp(code),
-      expiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000),
+      expiresAt: new Date(Date.now() + config.expirySeconds * 1000),
+      destination,
+      channel: dbChannel,
+      purpose,
+      requestIp: ip ?? undefined,
+      clientId: clientId ?? undefined,
     },
   });
 
   if (useRealProvider) {
     try {
       if (channel === 'phone') {
-        await sendOtpSms(destination, code, OTP_TTL_MINUTES);
+        await sendOtpSms(destination, code, otpTtlMinutes);
       } else {
         await sendTransactionalEmail({
           to: destination,
           subject: `${code} is your findmyVybe verification code`,
-          text: `Your findmyVybe verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.\n\nIf you didn't request this, you can safely ignore this email.`,
-          html: `<p>Your findmyVybe verification code is <strong style="font-size:1.2em;letter-spacing:0.1em">${code}</strong>.</p><p>It expires in ${OTP_TTL_MINUTES} minutes.</p><p style="color:#666;font-size:0.9em">If you didn't request this, you can safely ignore this email.</p>`,
+          text: `Your findmyVybe verification code is ${code}. It expires in ${otpTtlMinutes} minutes.\n\nIf you didn't request this, you can safely ignore this email.`,
+          html: `<p>Your findmyVybe verification code is <strong style="font-size:1.2em;letter-spacing:0.1em">${code}</strong>.</p><p>It expires in ${otpTtlMinutes} minutes.</p><p style="color:#666;font-size:0.9em">If you didn't request this, you can safely ignore this email.</p>`,
         });
+      }
+      // Rough provider-spend glance, not real billing -- see
+      // docs/OTP_SECURITY.md §6. Neither StartMessaging, MSG91, nor
+      // Brevo exposes a spend/usage API this app calls, so this counts
+      // issued codes (real + mock) for the channel over the last 24h as
+      // a stand-in, logged only every 50 to avoid spamming Vercel's
+      // logs on a busy day.
+      const approxTodayCount = channelDailyVolume + 1;
+      if (approxTodayCount % 50 === 0) {
+        if (channel === 'phone') {
+          const costPerSms = Number(process.env.OTP_SMS_COST_INR_ESTIMATE || '0.25');
+          console.log(`[otp-cost] ~${approxTodayCount} phone codes issued in the last 24h (~₹${(approxTodayCount * costPerSms).toFixed(2)} estimated at ₹${costPerSms}/SMS -- a rough glance, not real provider billing)`);
+        } else {
+          console.log(`[otp-cost] ~${approxTodayCount} email codes issued in the last 24h (Brevo's free tier is 300/day -- watch this if it's climbing)`);
+        }
       }
     } catch (err) {
       // The OtpCode row above already exists -- a stuck row that can
@@ -187,6 +354,47 @@ export async function issueOtp(userId: string, destination: string, channel: Otp
   }
 
   return { ok: true };
+}
+
+/**
+ * Turns any non-ok IssueOtpResult into one friendly, generic message +
+ * HTTP status for a route to return -- shared across all four call
+ * sites (app/api/auth/request-otp, request-email-otp,
+ * app/api/profile/phone|email/request-otp) so "what does this failure
+ * mean to a user" is answered in exactly one place. Deliberately
+ * collapses every rate_limited `detail` down to just "hourly" vs
+ * "daily" phrasing -- never mentions IP/global/cooldown/suspicious
+ * specifically, so a prober learns nothing about which layer actually
+ * caught them (see issueOtp's doc comment).
+ */
+export function describeIssueOtpFailure(
+  issued: Exclude<IssueOtpResult, { ok: true }>,
+): { status: number; message: string; retryAfterSeconds?: number } {
+  if (issued.reason === 'disabled') {
+    return { status: 503, message: 'Verification is temporarily paused — please try again shortly.' };
+  }
+  if (issued.reason === 'provider_not_configured') {
+    return { status: 503, message: 'Sign-in is temporarily unavailable — please try again shortly.' };
+  }
+  if (issued.reason === 'send_failed') {
+    return { status: 502, message: "We couldn't send that code — please try again in a moment." };
+  }
+  // issued.reason === 'rate_limited'
+  if (issued.detail === 'cooldown') {
+    const wait = issued.retryAfterSeconds ?? 60;
+    return {
+      status: 429,
+      message: `A code was already sent recently — wait ${wait}s before requesting another.`,
+      retryAfterSeconds: wait,
+    };
+  }
+  const isDaily = issued.detail.endsWith('daily_limit');
+  return {
+    status: 429,
+    message: isDaily
+      ? "You've requested too many codes today — please try again tomorrow."
+      : 'Too many requests — please try again in a bit.',
+  };
 }
 
 export type OtpConsumeFailureReason =
@@ -221,10 +429,11 @@ export type OtpConsumeResult = { ok: true } | { ok: false; reason: OtpConsumeFai
  * still-unexpired code could be accepted even after a newer one was
  * issued, and gave no way to tell that apart from a genuine typo.
  *
- * Once a row hits MAX_ATTEMPTS wrong guesses it's permanently dead
- * (checked before comparing the new guess at all, so an eventual correct
- * guess still doesn't work) -- request a fresh code to get a fresh
- * counter, subject to issueOtp's cooldown.
+ * Once a row hits the configured max wrong guesses (lib/otpRateLimit.ts's
+ * OTP_MAX_ATTEMPTS, default 10) it's permanently dead (checked before
+ * comparing the new guess at all, so an eventual correct guess still
+ * doesn't work) -- request a fresh code to get a fresh counter, subject
+ * to issueOtp's cooldown and rate limits.
  */
 export async function consumeOtp(userId: string, code: string, channel: OtpChannel): Promise<OtpConsumeResult> {
   // Belt-and-suspenders alongside issueOtp()'s same check: if this
@@ -237,17 +446,26 @@ export async function consumeOtp(userId: string, code: string, channel: OtpChann
     return { ok: false, reason: 'provider_not_configured' };
   }
 
+  const config = getOtpRateLimitConfig();
+
   const latest = await db.otpCode.findFirst({
     where: { userId },
     orderBy: { createdAt: 'desc' },
   });
   if (!latest) return { ok: false, reason: 'not_found' };
   if (latest.consumedAt) return { ok: false, reason: 'already_used' };
-  if (latest.attempts >= MAX_ATTEMPTS) return { ok: false, reason: 'too_many_attempts' };
+  if (latest.attempts >= config.maxAttempts) return { ok: false, reason: 'too_many_attempts' };
   if (latest.expiresAt.getTime() <= Date.now()) return { ok: false, reason: 'expired' };
 
   if (latest.codeHash !== hashOtp(code)) {
-    await db.otpCode.update({ where: { id: latest.id }, data: { attempts: { increment: 1 } } });
+    const attempts = await db.otpCode.update({
+      where: { id: latest.id },
+      data: { attempts: { increment: 1 } },
+      select: { attempts: true },
+    });
+    if (attempts.attempts >= config.maxAttempts) {
+      console.warn(`[otp-abuse] ${channel} code for user ${userId} hit the max-attempts cap -- a fresh code is required now.`);
+    }
     return { ok: false, reason: 'mismatch' };
   }
 

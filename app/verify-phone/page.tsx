@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import OtpCodeInput from '@/components/OtpCodeInput';
 
 /**
  * The mandatory phone-verification gate -- see docs/PHONE_FIRST_AUTH.md.
@@ -45,15 +46,15 @@ export default function VerifyPhonePage() {
     }
   }
 
-  async function verifyCode(e: React.FormEvent) {
-    e.preventDefault();
+  async function verifyCode(codeToSubmit: string) {
+    if (codeToSubmit.length !== 6 || loading) return;
     setLoading(true);
     setError(null);
     try {
       const res = await fetch('/api/profile/phone/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, code }),
+        body: JSON.stringify({ phone, code: codeToSubmit }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Invalid code');
@@ -62,6 +63,7 @@ export default function VerifyPhonePage() {
       router.push('/onboarding');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid code');
+      setCode('');
     } finally {
       setLoading(false);
     }
@@ -74,7 +76,7 @@ export default function VerifyPhonePage() {
         <p className="mt-2 text-sm text-inkSoft">
           {step === 'phone'
             ? "Verify your phone number to finish setting up findmyVybe -- it's the one thing we check to keep fake accounts out. We'll text you a one-time code, nothing else."
-            : `Enter the code we sent to ${phone}.`}
+            : `Enter the 6-digit code we sent to ${phone}.`}
         </p>
       </div>
 
@@ -85,10 +87,15 @@ export default function VerifyPhonePage() {
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="+919876543210"
+            aria-label="Phone number"
             className="rounded-2xl border border-line bg-white px-4 py-3 text-base"
             required
           />
-          {error && <p className="text-sm text-magenta">{error}</p>}
+          {error && (
+            <p role="alert" aria-live="polite" className="text-sm text-magenta">
+              {error}
+            </p>
+          )}
           <button
             type="submit"
             disabled={loading}
@@ -98,20 +105,20 @@ export default function VerifyPhonePage() {
           </button>
         </form>
       ) : (
-        <form onSubmit={verifyCode} className="flex flex-col gap-3">
-          <input
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder="00000000"
-            inputMode="numeric"
-            maxLength={8}
-            className="rounded-2xl border border-line bg-white px-4 py-3 text-center text-2xl tracking-[0.5em]"
-            required
-          />
-          {error && <p className="text-sm text-magenta">{error}</p>}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            verifyCode(code);
+          }}
+          className="flex flex-col gap-3"
+        >
+          <OtpCodeInput value={code} onChange={setCode} onComplete={verifyCode} disabled={loading} error={Boolean(error)} />
+          <p role="alert" aria-live="polite" className="min-h-[1.25rem] text-sm text-magenta">
+            {error}
+          </p>
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || code.length !== 6}
             className="gradient-btn rounded-full px-6 py-3 text-sm font-bold text-white disabled:opacity-60"
           >
             {loading ? 'Verifying...' : 'Verify & continue'}
@@ -120,6 +127,7 @@ export default function VerifyPhonePage() {
             type="button"
             onClick={() => {
               setStep('phone');
+              setCode('');
               setError(null);
             }}
             className="text-sm font-semibold text-inkSoft underline-offset-2 hover:underline"

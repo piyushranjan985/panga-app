@@ -9,7 +9,7 @@ import { DELETED_ACCOUNT_MESSAGE } from '@/lib/accountEnforcement';
 
 const bodySchema = z.object({
   phone: z.string().trim(),
-  code: z.string().trim().length(8),
+  code: z.string().trim().length(6),
 });
 
 export async function POST(req: Request) {

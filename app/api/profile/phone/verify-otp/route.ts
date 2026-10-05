@@ -9,7 +9,7 @@ const bodySchema = z.object({
     .string()
     .trim()
     .regex(/^\+91[6-9]\d{9}$/, 'Enter a valid Indian mobile number, e.g. +919876543210'),
-  code: z.string().trim().length(8),
+  code: z.string().trim().length(6),
 });
 
 /** Verify half of ./request-otp -- see that route's doc comment. */

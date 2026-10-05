@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/mystery-match",
       "schedule": "30 14 * * *"
+    },
+    {
+      "path": "/api/cron/otp-cleanup",
+      "schedule": "15 21 * * *"
     }
   ]
 }
