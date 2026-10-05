@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import OtpCodeInput from '@/components/OtpCodeInput';
+import { parseJsonResponse } from '@/lib/fetchJson';
 
 /**
  * The mandatory phone-verification gate -- see docs/PHONE_FIRST_AUTH.md.
@@ -36,7 +37,7 @@ export default function VerifyPhonePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone }),
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) throw new Error(data.error ?? 'Something went wrong');
       setStep('code');
     } catch (err) {
@@ -56,7 +57,7 @@ export default function VerifyPhonePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone, code: codeToSubmit }),
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) throw new Error(data.error ?? 'Invalid code');
       // No profile exists yet -- that's the only way to reach this page
       // (see nextPathAfterAuth) -- so onboarding is always next.
