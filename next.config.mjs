@@ -52,8 +52,23 @@ const nextConfig = {
   // real photo upload failing "review" the same way, indistinguishable at
   // a glance from an actual borderline-content case. This explicitly forces
   // those files into every API route's bundle so that can't happen again.
+  // Scoped to only the 3 routes that actually call imageModeration.ts
+  // (profile create, photo upload, photo add) -- it used to be
+  // '/api/**/*', which force-included these 5.4MB model files into
+  // ALL ~56 API routes' deployed function bundles, not just the ones
+  // that need them. That was silently inflating Vercel's "Function
+  // Storage" usage by ~5MB x 53 unrelated functions on every single
+  // deployment (every git push creates one), which is what triggered
+  // the 75%-of-10GB free-tier usage alert. NOTE: if you add a new
+  // route that calls lib/safety/imageModeration.ts (grep for that
+  // import), add its path below too, or you'll get the exact ENOENT /
+  // MANUAL_REVIEW bug this block originally existed to prevent -- so
+  // test a real photo upload against this change's Preview deployment
+  // before merging it to main.
   outputFileTracingIncludes: {
-    '/api/**/*': ['./public/models/face-api/**/*'],
+    '/api/profile': ['./public/models/face-api/**/*'],
+    '/api/profile/photos': ['./public/models/face-api/**/*'],
+    '/api/upload': ['./public/models/face-api/**/*'],
   },
   // Next 16 moved this out of `experimental.turbo` to a top-level key.
   turbopack: {
