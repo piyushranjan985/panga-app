@@ -107,6 +107,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ userId:
         where: { id: userId },
         data: { status: 'BANNED', statusReason: reason, statusChangedAt: new Date(), sessionsInvalidatedAt: new Date() },
       });
+      // Trusted devices (findmyVybe's skip-OTP mechanism, see the
+      // consumer app's docs/PHONE_FIRST_AUTH.md) die wherever
+      // sessionsInvalidatedAt is also set -- a ban shouldn't leave a
+      // standing way back in via a recognized device.
+      await db.trustedDevice.deleteMany({ where: { userId } });
       newValue = { status: 'BANNED' };
       break;
     }
@@ -117,6 +122,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ userId:
     }
     case 'forceLogout': {
       await db.user.update({ where: { id: userId }, data: { sessionsInvalidatedAt: new Date() } });
+      // See the 'ban' case above -- same reasoning.
+      await db.trustedDevice.deleteMany({ where: { userId } });
       newValue = { sessionsInvalidatedAt: 'now' };
       break;
     }

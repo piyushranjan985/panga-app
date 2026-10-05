@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { createSession } from '@/lib/session';
+import { issueTrustedDevice } from '@/lib/trustedDevice';
+import { nextPathAfterAuth } from '@/lib/auth/postAuthRedirect';
 import { isBetaAllowed, BETA_LOCKED_MESSAGE } from '@/lib/auth/betaAllowlist';
 import { DELETED_ACCOUNT_MESSAGE } from '@/lib/accountEnforcement';
 import { isGoogleOAuthConfigured } from '@/lib/auth/googleOAuth';
@@ -65,8 +67,9 @@ export async function POST(req: Request) {
     }
 
     await createSession({ userId: user.id }, { method: 'google' });
+    await issueTrustedDevice(user.id);
 
-    return NextResponse.json({ ok: true, hasProfile: Boolean(user.profile) });
+    return NextResponse.json({ ok: true, next: nextPathAfterAuth({ phoneVerified: user.phoneVerified, profile: user.profile }) });
   } catch (err: unknown) {
     // This demo doesn't support linking multiple sign-in methods to one
     // account yet — if that email already belongs to a phone/email-OTP

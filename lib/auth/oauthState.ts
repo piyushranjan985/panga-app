@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify } from 'jose';
 
 /**
  * Shared OAuth2 `state` param signer for the real social-login providers
- * (currently just Google) below -- same CSRF-protection role as
+ * (Google, Apple) below -- same CSRF-protection role as
  * lib/safety/identityVerification.ts's signVerificationState, just without
  * a userId to embed: at login time there's no session yet (that's the
  * whole point of this redirect), so the only thing this needs to prove on
@@ -19,7 +19,7 @@ const STATE_SECRET = new TextEncoder().encode(
 const STATE_TTL_SECONDS = 60 * 10; // 10 minutes -- plenty for a consent screen, short enough to limit replay risk
 const AUDIENCE = 'social_oauth_state';
 
-export type SocialProvider = 'google';
+export type SocialProvider = 'google' | 'apple';
 
 /**
  * `provider` is embedded and re-checked on verify so a state token minted

@@ -25,15 +25,16 @@ export { COOKIE_NAME, verifySessionToken, type SessionPayload };
 // phone" now that email and Google are also valid ways in. Anything that
 // needs the user's phone/email looks it up fresh from the DB.
 
-// `method` distinguishes phone OTP / email OTP / Google -- the three call
-// sites (app/api/auth/verify-otp, verify-email-otp, mock-google) each pass
-// their own. This also writes a
+// `method` distinguishes how this particular session came to exist --
+// every real sign-in call site passes its own (phone/email OTP, Google,
+// Apple, a passkey, or a recognized trusted device skipping OTP
+// entirely -- see docs/PHONE_FIRST_AUTH.md). This also writes a
 // LoginEvent row (admin portal's "Login/session history" on the User
 // detail page, and the Dashboard's platform breakdown) -- best-effort:
 // a logging failure never blocks the actual login.
 export async function createSession(
   payload: SessionPayload,
-  meta: { method: 'phone_otp' | 'email_otp' | 'google' },
+  meta: { method: 'phone_otp' | 'email_otp' | 'google' | 'apple' | 'passkey' | 'trusted_device' },
 ) {
   const token = await signSessionToken(payload);
 

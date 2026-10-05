@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { createSession } from '@/lib/session';
 import { consumeOtp } from '@/lib/otp';
+import { issueTrustedDevice } from '@/lib/trustedDevice';
+import { nextPathAfterAuth } from '@/lib/auth/postAuthRedirect';
 import { DELETED_ACCOUNT_MESSAGE } from '@/lib/accountEnforcement';
 
 const bodySchema = z.object({
@@ -10,6 +12,18 @@ const bodySchema = z.object({
   code: z.string().trim().length(8),
 });
 
+/**
+ * Email twin of /api/auth/verify-otp -- SIGN-IN only now, never sign-UP
+ * (see /api/auth/request-email-otp's doc comment: that route refuses to
+ * create a brand-new user for an email with no existing account, so a
+ * user row only reaches this route if either it already existed before
+ * phone became the mandatory signup gate, or it was created some other
+ * way -- see docs/PHONE_FIRST_AUTH.md §2). nextPathAfterAuth still
+ * routes a phone-less legacy account that never finished onboarding to
+ * /verify-phone -- the same gate a Google/Apple sign-up would hit --
+ * while leaving every already-onboarded account (phoneVerified or not)
+ * completely alone, per that doc's grandfather decision (§3).
+ */
 export async function POST(req: Request) {
   const json = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(json);
@@ -53,6 +67,7 @@ export async function POST(req: Request) {
 
   await db.user.update({ where: { id: user.id }, data: { emailVerified: true, lastActiveAt: new Date() } });
   await createSession({ userId: user.id }, { method: 'email_otp' });
+  await issueTrustedDevice(user.id);
 
-  return NextResponse.json({ ok: true, hasProfile: Boolean(user.profile) });
+  return NextResponse.json({ ok: true, next: nextPathAfterAuth({ phoneVerified: user.phoneVerified, profile: user.profile }) });
 }

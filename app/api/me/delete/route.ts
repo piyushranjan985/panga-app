@@ -69,6 +69,10 @@ export async function POST() {
         sessionsInvalidatedAt: now,
       },
     }),
+    // Trusted devices die with the session state above -- see
+    // lib/trustedDevice.ts's file comment on why this is a plain
+    // deleteMany here rather than a shared helper call.
+    db.trustedDevice.deleteMany({ where: { userId: user.id } }),
     db.privacyRequest.create({
       data: {
         userId: user.id,

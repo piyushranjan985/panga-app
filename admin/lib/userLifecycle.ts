@@ -23,8 +23,13 @@ export async function anonymizeUserAccount(userId: string, reason: string | unde
         email: null,
         phone: null,
         googleId: null,
+        appleId: null,
       },
     }),
+    // Trusted devices die with the session state above -- see the
+    // consumer app's docs/PHONE_FIRST_AUTH.md and
+    // app/api/users/[userId]/actions/route.ts's 'ban'/'forceLogout' cases.
+    db.trustedDevice.deleteMany({ where: { userId } }),
     ...(user.profile
       ? [db.profile.update({ where: { userId }, data: { displayName: 'Deleted user', bio: '', latitude: null, longitude: null } })]
       : []),

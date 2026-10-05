@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { createSession } from '@/lib/session';
 import { consumeOtp } from '@/lib/otp';
+import { issueTrustedDevice } from '@/lib/trustedDevice';
+import { nextPathAfterAuth } from '@/lib/auth/postAuthRedirect';
 import { DELETED_ACCOUNT_MESSAGE } from '@/lib/accountEnforcement';
 
 const bodySchema = z.object({
@@ -56,6 +58,10 @@ export async function POST(req: Request) {
 
   await db.user.update({ where: { id: user.id }, data: { phoneVerified: true, lastActiveAt: new Date() } });
   await createSession({ userId: user.id }, { method: 'phone_otp' });
+  // Phone is the strong anti-fake-account signal this whole flow exists
+  // for (see docs/PHONE_FIRST_AUTH.md) -- a successful phone OTP earns a
+  // trusted device immediately, same as every other real sign-in.
+  await issueTrustedDevice(user.id);
 
-  return NextResponse.json({ ok: true, hasProfile: Boolean(user.profile) });
+  return NextResponse.json({ ok: true, next: nextPathAfterAuth({ phoneVerified: true, profile: user.profile }) });
 }

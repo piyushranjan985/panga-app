@@ -139,19 +139,46 @@ export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
-  const profile = await db.profile.findUnique({
-    where: { userId: session.userId },
-    include: {
-      interests: true,
-      tribes: true,
-      subCommunities: { include: { tribe: true } },
-      relationshipStyles: true,
-      answers: { include: { prompt: true } },
-      photos: { orderBy: { position: 'asc' } },
-    },
-  });
+  const [profile, user, passkeys] = await Promise.all([
+    db.profile.findUnique({
+      where: { userId: session.userId },
+      include: {
+        interests: true,
+        tribes: true,
+        subCommunities: { include: { tribe: true } },
+        relationshipStyles: true,
+        answers: { include: { prompt: true } },
+        photos: { orderBy: { position: 'asc' } },
+      },
+    }),
+    db.user.findUnique({
+      where: { id: session.userId },
+      select: { phone: true, phoneVerified: true, email: true, emailVerified: true, googleId: true, appleId: true },
+    }),
+    db.webAuthnCredential.findMany({
+      where: { userId: session.userId },
+      select: { id: true, label: true, createdAt: true, lastUsedAt: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+  ]);
 
-  return NextResponse.json({ profile, verificationIsMock: !isRealIdentityCheck() });
+  // Account & Security (see app/profile/page.tsx) -- deliberately exposing
+  // presence, not the raw values, for the OAuth-linked fields (a client
+  // only needs "is Google/Apple linked?", never the provider's internal
+  // id string).
+  const account = user
+    ? {
+        phone: user.phone,
+        phoneVerified: user.phoneVerified,
+        email: user.email,
+        emailVerified: user.emailVerified,
+        googleLinked: !!user.googleId,
+        appleLinked: !!user.appleId,
+        passkeys,
+      }
+    : null;
+
+  return NextResponse.json({ profile, account, verificationIsMock: !isRealIdentityCheck() });
 }
 
 export async function PUT(req: Request) {

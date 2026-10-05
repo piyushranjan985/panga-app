@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { createSession } from '@/lib/session';
+import { issueTrustedDevice } from '@/lib/trustedDevice';
+import { nextPathAfterAuth } from '@/lib/auth/postAuthRedirect';
 import { exchangeGoogleCodeForProfile } from '@/lib/auth/googleOAuth';
 import { verifySocialOAuthState } from '@/lib/auth/oauthState';
 import { isBetaAllowed } from '@/lib/auth/betaAllowlist';
@@ -61,7 +63,8 @@ export async function GET(req: NextRequest) {
     }
 
     await createSession({ userId: user.id }, { method: 'google' });
-    return NextResponse.redirect(`${base}/${user.profile ? 'discover' : 'onboarding'}`);
+    await issueTrustedDevice(user.id);
+    return NextResponse.redirect(`${base}${nextPathAfterAuth({ phoneVerified: user.phoneVerified, profile: user.profile })}`);
   } catch (err: unknown) {
     // Same collision this demo's mock-google route already surfaces:
     // this Google account's email already backs a different (phone/email

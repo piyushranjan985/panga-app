@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
+import { getSession } from '@/lib/session';
 import { issueOtp } from '@/lib/otp';
 
 const bodySchema = z.object({
@@ -8,16 +9,18 @@ const bodySchema = z.object({
 });
 
 /**
- * Email twin of /api/auth/request-otp -- SIGN-IN only, not sign-up. See
- * docs/PHONE_FIRST_AUTH.md §2: phone is findmyVybe's mandatory account-
- * creation gate now (the stronger anti-fake-account signal), so this
- * route no longer auto-creates a user for an email with no existing
- * account the way it -- and /api/auth/request-otp, deliberately
- * unchanged -- both used to. An email that DOES already have an account
- * (grandfathered pre-existing email/Google sign-ups, or an email added
- * later from Profile) still signs in exactly as before.
+ * "Add & verify email" from an authenticated context -- the Profile-
+ * settings half of findmyVybe's "phone first, email later" flow (see
+ * docs/PHONE_FIRST_AUTH.md). Same relationship to /api/auth/request-
+ * email-otp as app/api/profile/phone/request-otp/route.ts has to
+ * /api/auth/request-otp: that one is sign-in-by-email (and, since the
+ * phone-first change, only for an email that already has an account);
+ * this one always attaches to the CURRENT session's user.
  */
 export async function POST(req: Request) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+
   const json = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(json);
   if (!parsed.success) {
@@ -25,16 +28,12 @@ export async function POST(req: Request) {
   }
   const { email } = parsed.data;
 
-  const user = await db.user.findUnique({ where: { email }, include: { profile: true } });
-  if (!user) {
-    return NextResponse.json(
-      { error: "No account found for that email yet — sign up with your phone number first, then add email from your profile." },
-      { status: 404 },
-    );
+  const existing = await db.user.findUnique({ where: { email }, select: { id: true } });
+  if (existing && existing.id !== session.userId) {
+    return NextResponse.json({ error: 'That email is already linked to a different account.' }, { status: 409 });
   }
-  const alreadyHasProfile = Boolean(user.profile);
 
-  const issued = await issueOtp(user.id, email, 'email');
+  const issued = await issueOtp(session.userId, email, 'email');
   if (!issued.ok) {
     if (issued.reason === 'provider_not_configured') {
       return NextResponse.json({ error: 'Sign-in is temporarily unavailable — please try again shortly.' }, { status: 503 });
@@ -45,5 +44,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'A code was already sent recently — check your inbox or wait a bit before requesting another.' }, { status: 429 });
   }
 
-  return NextResponse.json({ ok: true, alreadyHasProfile });
+  return NextResponse.json({ ok: true });
 }

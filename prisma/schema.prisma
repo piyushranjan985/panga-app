@@ -135,6 +135,7 @@ model User {
   email         String?  @unique
   emailVerified Boolean  @default(false)
   googleId      String?  @unique
+  appleId       String?  @unique
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   lastActiveAt  DateTime @default(now())
@@ -172,6 +173,8 @@ model User {
   mysteryHistoryAsUserB   MysteryMatchHistory[] @relation("MysteryHistoryUserB")
   wildCardUsesAsViewer    WildCardUse[]         @relation("WildCardUseViewer")
   wildCardUsesAsCandidate WildCardUse[]         @relation("WildCardUseCandidate")
+  trustedDevices          TrustedDevice[]
+  webAuthnCredentials     WebAuthnCredential[]
   messagesSent            Message[]             @relation("MessagesBySender")
   reportsFiled            Report[]              @relation("ReportsByReporter")
   reportsReceived         Report[]              @relation("ReportsAboutUser")
@@ -612,6 +615,59 @@ model WildCardUse {
   createdAt       DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+// =============================================================================
+// AUTH: TRUSTED DEVICE + PASSKEYS -- see docs/PHONE_FIRST_AUTH.md
+// -----------------------------------------------------------------------------
+// Two independent pieces of "don't make someone re-prove who they are
+// every single time," both deliberately separate from Match/Swipe/OtpCode:
+//
+// TrustedDevice -- a long-lived, rotating token set in a cookie after any
+// successful sign-in (OTP, Google, Apple, or passkey). A recognized
+// device gets a brand-new session with NO fresh OTP; an unrecognized one
+// still goes through the normal flow. This is the actual SMS/email-OTP
+// cost lever -- see lib/trustedDevice.ts. Only tokenHash is stored (same
+// pattern as OtpCode.codeHash) -- the raw token lives only in the
+// viewer's cookie and this table, never logged or returned in a response.
+//
+// WebAuthnCredential -- one row per passkey a user has registered. No
+// third-party account or cost is involved (this is the open WebAuthn
+// standard, not a paid provider) -- see lib/webauthn.ts.
+// =============================================================================
+
+model TrustedDevice {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String   @unique
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  expiresAt  DateTime
+  userAgent  String?
+  ip         String?
+
+  @@index([userId])
+}
+
+model WebAuthnCredential {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialId String   @unique
+  publicKey    Bytes
+  counter      Int      @default(0)
+  transports   String[] @default([])
+  deviceType   String // 'singleDevice' | 'multiDevice' -- WebAuthnCredential's own credentialDeviceType
+  backedUp     Boolean  @default(false)
+  // User-facing label so "Manage passkeys" means something -- derived
+  // from the registering browser's User-Agent at creation time (see
+  // lib/webauthn.ts's labelFromUserAgent), editable later if ever needed.
+  label        String
+  createdAt    DateTime @default(now())
+  lastUsedAt   DateTime @default(now())
+
+  @@index([userId])
 }
 
 model VybeVouchInvite {

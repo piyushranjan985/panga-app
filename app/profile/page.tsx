@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import InactivityLogout from '@/components/InactivityLogout';
+import AccountSecuritySection, { type AccountSecurityData } from '@/components/AccountSecuritySection';
 import IntentBadge from '@/components/IntentBadge';
 import { getCurrentPosition, requestPushPermission } from '@/lib/native';
 import {
@@ -222,6 +223,7 @@ type EditSection =
 export default function ProfilePage() {
   const router = useRouter();
   const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [account, setAccount] = useState<AccountSecurityData | null>(null);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [verificationError, setVerificationError] = useState<string | null>(null);
@@ -259,6 +261,7 @@ export default function ProfilePage() {
       .then((r) => r.json())
       .then((d) => {
         setProfile(d.profile);
+        setAccount(d.account ?? null);
         if (typeof d.verificationIsMock === 'boolean') setVerificationIsMock(d.verificationIsMock);
       });
   }
@@ -1608,6 +1611,8 @@ export default function ProfilePage() {
             </section>
           </>
         )}
+
+        <AccountSecuritySection account={account} onChange={load} />
 
         {/* Danger zone: self-service account deletion (app/api/me/delete).
             Two-step so a stray tap can't trigger it -- "Delete my account"

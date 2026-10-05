@@ -67,7 +67,7 @@ function VerifyForm() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Invalid code');
-      router.push(data.hasProfile ? '/discover' : '/onboarding');
+      router.push(data.next ?? '/discover');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid code');
     } finally {
