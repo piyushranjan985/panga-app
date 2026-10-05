@@ -110,3 +110,29 @@ export async function consumeTrustedDevice(): Promise<ConsumeTrustedDeviceResult
 // see admin/lib/db.ts's comment) -- see each call site's own comment for
 // why User.sessionsInvalidatedAt and TrustedDevice rows are always
 // cleared together.
+
+/**
+ * Revokes THIS device's trust only -- the plain "Log out" counterpart
+ * to the bulk, every-device revokes above (self-service delete, admin
+ * force-logout/ban). Bug fix 2026-10-05: /api/auth/logout previously
+ * only called destroySession(), never this, so the trusted-device
+ * cookie survived a normal logout untouched -- the next visit to
+ * /login (e.g. the landing page's "Set your intent"/"Jump back in",
+ * both of which just link there) silently signed the same person back
+ * in via /api/auth/device-login before the form ever rendered, making
+ * logout look like it did nothing. A plain logout deliberately only
+ * revokes the device actually doing the logging out -- someone's other
+ * signed-in devices (another phone, a laptop) stay trusted, same as
+ * any normal "log out of this device" expectation.
+ */
+export async function revokeCurrentTrustedDevice(): Promise<void> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(COOKIE_NAME)?.value;
+  cookieStore.set(COOKIE_NAME, '', { path: '/', maxAge: 0 });
+  if (!token) return;
+
+  // Best-effort: a row that's already gone (expired and previously
+  // swept, or never existed) is exactly the end state this function is
+  // trying to reach anyway.
+  await db.trustedDevice.deleteMany({ where: { tokenHash: hashToken(token) } });
+}
