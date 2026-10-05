@@ -775,22 +775,26 @@ export default function ProfilePage() {
         </section>
 
         <section className="mt-3 rounded-2xl border border-line bg-white p-4">
-          <p className="font-bold">🎭 Mystery Match</p>
+          {/* "Blind Match" is the section/feature name -- "Mystery Match"
+              is just one of the four picks below (the default), so the
+              heading can't reuse that name without implying it's the only
+              option. Copy here is deliberately terse -- this card is the
+              same width on a phone as everywhere else on this screen, and
+              four descriptions plus an intro plus a footnote add up fast.
+              See docs/MYSTERY_MATCH.md for the full, unabridged version of
+              every one of these. */}
+          <p className="font-bold">🎭 Blind Match</p>
           <p className="text-sm text-inkSoft">
-            Every evening at 8pm, we'll match you with someone new -- their photo and name stay hidden until you both choose
-            to reveal them. Choose how that daily match gets picked below. You can switch anytime, or turn it off.
+            A new hidden match every night at 8pm — photo and name reveal only if you both want to. Pick how it's
+            chosen, or turn it off anytime.
           </p>
           <div className="mt-3 grid grid-cols-2 gap-2">
             {(
               [
-                ['MYSTERY_MATCH', 'Mystery Match', 'Someone new who shares your dating intent.'],
-                ['VYBE_FLIP', 'Vybe Flip', 'Someone who shares almost nothing in common with you -- see what happens.'],
-                [
-                  'NO_LABELS',
-                  'No-Labels Match',
-                  'Could be matched with someone looking for something different (casual vs. serious vs. marriage-minded).',
-                ],
-                ['OPTED_OUT', 'Opt out', "Skip today's -- and every future -- Mystery Match pairing."],
+                ['MYSTERY_MATCH', 'Mystery Match', 'Shares your dating intent.'],
+                ['VYBE_FLIP', 'Vybe Flip', 'Opposite of you — see what happens.'],
+                ['NO_LABELS', 'No-Labels Match', 'Any intent, casual to marriage-minded.'],
+                ['OPTED_OUT', 'Opt out', 'No match tonight or later.'],
               ] as const
             ).map(([value, label, desc]) => (
               <button
@@ -807,8 +811,7 @@ export default function ProfilePage() {
             ))}
           </div>
           <p className="mt-2 text-xs text-inkSoft">
-            If you don't touch this for 7 days, we'll automatically move you to the next option on this list (never to Opt
-            out), so your preference doesn't quietly go stale.
+            No changes in 7 days moves you to the next option above (never to Opt out).
           </p>
         </section>
 

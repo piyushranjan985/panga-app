@@ -141,24 +141,28 @@ export default function DiscoverPage() {
       <InactivityLogout />
       <main className="mx-auto max-w-3xl px-4 py-6">
         <h1 className="mb-1 font-display text-2xl font-extrabold">Discover</h1>
-        <p className="mb-1 text-sm text-inkSoft">Ranked by shared interests, city, and intent.</p>
 
         {/* Wild Card -- see docs/WILD_CARD.md. Same intent, same city, but
-            the opposite of what the ranked feed above favors: someone you
+            the opposite of what the ranked feed below favors: someone you
             have almost nothing in common with on paper. Capped at
             wildCard.limit/day, shown here regardless of remaining count so
-            the button doubles as a reminder of the daily cap. */}
+            the button doubles as a reminder of the daily cap. The caption
+            is the one-line version of that -- docs/WILD_CARD.md has the
+            full writeup. */}
         {meta && (
-          <div className="mb-6 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={drawWildCard}
-              disabled={wildCardBusy || wildCardRemaining === 0}
-              className="rounded-full border border-line bg-white px-3 py-1.5 text-xs font-bold text-ink shadow-sm disabled:opacity-50"
-            >
-              {wildCardBusy ? 'Drawing…' : `🃏 Wild Card${wildCardRemaining != null ? ` (${wildCardRemaining} left)` : ''}`}
-            </button>
-            {wildCardError && <span className="text-xs text-inkSoft">{wildCardError}</span>}
+          <div className="mb-6">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={drawWildCard}
+                disabled={wildCardBusy || wildCardRemaining === 0}
+                className="rounded-full border border-line bg-white px-3 py-1.5 text-xs font-bold text-ink shadow-sm disabled:opacity-50"
+              >
+                {wildCardBusy ? 'Drawing…' : `🃏 Wild Card${wildCardRemaining != null ? ` (${wildCardRemaining} left)` : ''}`}
+              </button>
+              {wildCardError && <span className="text-xs text-inkSoft">{wildCardError}</span>}
+            </div>
+            <p className="mt-1 text-xs text-inkSoft">Your total opposite, same city &amp; intent.</p>
           </div>
         )}
 
@@ -200,6 +204,8 @@ export default function DiscoverPage() {
             </button>
           </div>
         )}
+
+        <p className="mb-1 text-sm text-inkSoft">Ranked by shared interests, city, and intent.</p>
 
         {feed === null && <p className="text-sm text-inkSoft">Loading your feed...</p>}
 
