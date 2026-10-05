@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { startRegistration } from '@simplewebauthn/browser';
 import OtpCodeInput from '@/components/OtpCodeInput';
+import EmailVerifyField from '@/components/EmailVerifyField';
 
 export interface AccountSecurityData {
   phone: string | null;
@@ -10,7 +11,6 @@ export interface AccountSecurityData {
   email: string | null;
   emailVerified: boolean;
   googleLinked: boolean;
-  appleLinked: boolean;
   passkeys: { id: string; label: string; createdAt: string; lastUsedAt: string }[];
 }
 
@@ -22,10 +22,12 @@ export interface AccountSecurityData {
  * section has to handle "no phone yet" as a normal, common state rather
  * than an edge case.
  *
- * Deliberately read-only for Google/Apple -- unlinking a social login
- * isn't offered here (out of scope for this change); those two rows are
- * just status badges. Email and phone each get a real "add/verify" flow
- * since those are the two things grandfathered accounts are missing.
+ * Deliberately read-only for Google -- unlinking a social login isn't
+ * offered here (out of scope for this change); that row is just a
+ * status badge. Email and phone each get a real "add/verify" flow since
+ * those are the two things grandfathered accounts are missing. (Apple
+ * Sign-In was removed 2026-10-05 -- it was a scaffold, never configured
+ * in production -- see docs/PHONE_FIRST_AUTH.md.)
  */
 export default function AccountSecuritySection({
   account,
@@ -40,11 +42,7 @@ export default function AccountSecuritySection({
   const [phoneBusy, setPhoneBusy] = useState(false);
   const [phoneError, setPhoneError] = useState<string | null>(null);
 
-  const [emailStep, setEmailStep] = useState<'closed' | 'email' | 'code'>('closed');
-  const [emailDraft, setEmailDraft] = useState('');
-  const [emailCode, setEmailCode] = useState('');
-  const [emailBusy, setEmailBusy] = useState(false);
-  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailAdding, setEmailAdding] = useState(false);
 
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
@@ -95,48 +93,6 @@ export default function AccountSecuritySection({
     }
   }
 
-  async function sendEmailCode(e: React.FormEvent) {
-    e.preventDefault();
-    setEmailBusy(true);
-    setEmailError(null);
-    try {
-      const res = await fetch('/api/profile/email/request-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: emailDraft }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Something went wrong');
-      setEmailStep('code');
-    } catch (err) {
-      setEmailError(err instanceof Error ? err.message : 'Something went wrong');
-    } finally {
-      setEmailBusy(false);
-    }
-  }
-
-  async function verifyEmailCode(codeToSubmit: string) {
-    if (codeToSubmit.length !== 6 || emailBusy) return;
-    setEmailBusy(true);
-    setEmailError(null);
-    try {
-      const res = await fetch('/api/profile/email/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: emailDraft, code: codeToSubmit }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Invalid code');
-      setEmailStep('closed');
-      setEmailCode('');
-      onChange();
-    } catch (err) {
-      setEmailError(err instanceof Error ? err.message : 'Invalid code');
-      setEmailCode('');
-    } finally {
-      setEmailBusy(false);
-    }
-  }
 
   async function addPasskey() {
     setPasskeyBusy(true);
@@ -284,13 +240,10 @@ export default function AccountSecuritySection({
             </div>
             {account.email && account.emailVerified ? (
               <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">Verified</span>
-            ) : emailStep === 'closed' ? (
+            ) : !emailAdding ? (
               <button
                 type="button"
-                onClick={() => {
-                  setEmailError(null);
-                  setEmailStep('email');
-                }}
+                onClick={() => setEmailAdding(true)}
                 className="rounded-full border border-line px-4 py-2 text-xs font-bold"
               >
                 Add email
@@ -298,55 +251,15 @@ export default function AccountSecuritySection({
             ) : null}
           </div>
 
-          {emailStep === 'email' && (
-            <form onSubmit={sendEmailCode} className="mt-3 flex flex-col gap-2">
-              <input
-                type="email"
-                value={emailDraft}
-                onChange={(e) => setEmailDraft(e.target.value)}
-                placeholder="you@example.com"
-                className="rounded-2xl border border-line bg-white px-4 py-3 text-base"
-                required
+          {emailAdding && !(account.email && account.emailVerified) && (
+            <div className="mt-3">
+              <EmailVerifyField
+                onVerified={() => {
+                  setEmailAdding(false);
+                  onChange();
+                }}
               />
-              {emailError && <p className="text-sm text-magenta">{emailError}</p>}
-              <div className="flex gap-2">
-                <button
-                  type="submit"
-                  disabled={emailBusy}
-                  className="gradient-btn rounded-full px-5 py-2 text-sm font-bold text-white disabled:opacity-60"
-                >
-                  {emailBusy ? 'Sending...' : 'Send code'}
-                </button>
-                <button type="button" onClick={() => setEmailStep('closed')} className="text-sm font-semibold text-inkSoft">
-                  Cancel
-                </button>
-              </div>
-            </form>
-          )}
-          {emailStep === 'code' && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                verifyEmailCode(emailCode);
-              }}
-              className="mt-3 flex flex-col gap-2"
-            >
-              <p className="text-sm text-inkSoft">Enter the 6-digit code we sent to {emailDraft}.</p>
-              <OtpCodeInput value={emailCode} onChange={setEmailCode} onComplete={verifyEmailCode} disabled={emailBusy} error={Boolean(emailError)} />
-              {emailError && <p className="text-sm text-magenta">{emailError}</p>}
-              <div className="flex gap-2">
-                <button
-                  type="submit"
-                  disabled={emailBusy || emailCode.length !== 6}
-                  className="gradient-btn rounded-full px-5 py-2 text-sm font-bold text-white disabled:opacity-60"
-                >
-                  {emailBusy ? 'Verifying...' : 'Verify'}
-                </button>
-                <button type="button" onClick={() => setEmailStep('email')} className="text-sm font-semibold text-inkSoft">
-                  Use a different email
-                </button>
-              </div>
-            </form>
+            </div>
           )}
         </div>
 
@@ -360,13 +273,6 @@ export default function AccountSecuritySection({
               }`}
             >
               Google {account.googleLinked ? '· linked' : '· not linked'}
-            </span>
-            <span
-              className={`rounded-full px-3 py-1 text-xs font-bold ${
-                account.appleLinked ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-inkSoft'
-              }`}
-            >
-              Apple {account.appleLinked ? '· linked' : '· not linked'}
             </span>
           </div>
         </div>

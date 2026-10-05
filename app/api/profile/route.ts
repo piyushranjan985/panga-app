@@ -153,7 +153,7 @@ export async function GET() {
     }),
     db.user.findUnique({
       where: { id: session.userId },
-      select: { phone: true, phoneVerified: true, email: true, emailVerified: true, googleId: true, appleId: true },
+      select: { phone: true, phoneVerified: true, email: true, emailVerified: true, googleId: true },
     }),
     db.webAuthnCredential.findMany({
       where: { userId: session.userId },
@@ -163,9 +163,9 @@ export async function GET() {
   ]);
 
   // Account & Security (see app/profile/page.tsx) -- deliberately exposing
-  // presence, not the raw values, for the OAuth-linked fields (a client
-  // only needs "is Google/Apple linked?", never the provider's internal
-  // id string).
+  // presence, not the raw value, for the OAuth-linked field (a client
+  // only needs "is Google linked?", never the provider's internal id
+  // string). Apple Sign-In was removed 2026-10-05.
   const account = user
     ? {
         phone: user.phone,
@@ -173,7 +173,6 @@ export async function GET() {
         email: user.email,
         emailVerified: user.emailVerified,
         googleLinked: !!user.googleId,
-        appleLinked: !!user.appleId,
         passkeys,
       }
     : null;

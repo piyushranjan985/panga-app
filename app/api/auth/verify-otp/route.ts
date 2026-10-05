@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   const json = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(json);
   if (!parsed.success) {
-    return NextResponse.json({ error: 'Enter the 8-digit code we sent you.' }, { status: 400 });
+    return NextResponse.json({ error: 'Enter the 6-digit code we sent you.' }, { status: 400 });
   }
   const { phone, code } = parsed.data;
 
@@ -57,7 +57,13 @@ export async function POST(req: Request) {
   }
 
   await db.user.update({ where: { id: user.id }, data: { phoneVerified: true, lastActiveAt: new Date() } });
-  await createSession({ userId: user.id }, { method: 'phone_otp' });
+  // result.channel is the channel this code actually went out on, which
+  // can be 'email' here even though this is the phone sign-in route --
+  // see /api/auth/request-otp's doc comment and docs/PHONE_FIRST_AUTH.md
+  // §9. Recording the real channel keeps LoginEvent accurate rather than
+  // always claiming phone_otp for a route that no longer always means
+  // that.
+  await createSession({ userId: user.id }, { method: result.channel === 'email' ? 'email_otp' : 'phone_otp' });
   // Phone is the strong anti-fake-account signal this whole flow exists
   // for (see docs/PHONE_FIRST_AUTH.md) -- a successful phone OTP earns a
   // trusted device immediately, same as every other real sign-in.

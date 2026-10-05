@@ -19,7 +19,11 @@ const STATE_SECRET = new TextEncoder().encode(
 const STATE_TTL_SECONDS = 60 * 10; // 10 minutes -- plenty for a consent screen, short enough to limit replay risk
 const AUDIENCE = 'social_oauth_state';
 
-export type SocialProvider = 'google' | 'apple';
+// Apple Sign-In was removed 2026-10-05 (scaffold only, never configured
+// in any environment -- see docs/PHONE_FIRST_AUTH.md). Kept as a union
+// of one, not a bare string literal, so a second real OAuth provider
+// can be added here again without reshaping every call site.
+export type SocialProvider = 'google';
 
 /**
  * `provider` is embedded and re-checked on verify so a state token minted

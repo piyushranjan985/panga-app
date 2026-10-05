@@ -34,7 +34,7 @@ export { COOKIE_NAME, verifySessionToken, type SessionPayload };
 // a logging failure never blocks the actual login.
 export async function createSession(
   payload: SessionPayload,
-  meta: { method: 'phone_otp' | 'email_otp' | 'google' | 'apple' | 'passkey' | 'trusted_device' },
+  meta: { method: 'phone_otp' | 'email_otp' | 'google' | 'passkey' | 'trusted_device' },
 ) {
   const token = await signSessionToken(payload);
 

@@ -23,7 +23,6 @@ export async function anonymizeUserAccount(userId: string, reason: string | unde
         email: null,
         phone: null,
         googleId: null,
-        appleId: null,
       },
     }),
     // Trusted devices die with the session state above -- see the

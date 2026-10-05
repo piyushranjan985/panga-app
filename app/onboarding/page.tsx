@@ -14,6 +14,7 @@ import {
   CHILDREN_OPTIONS,
 } from '@/lib/constants';
 import IntentBadge from '@/components/IntentBadge';
+import EmailVerifyField from '@/components/EmailVerifyField';
 
 type Interest = { id: string; label: string; emoji: string; intents: string[] };
 type Prompt = { id: string; text: string; emoji: string; optionA: string; optionB: string; intents: string[] };
@@ -112,6 +113,12 @@ function OnboardingForm() {
   const [myUserId, setMyUserId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Required at the Bio (basics) step for a brand-new signup -- not
+  // re-required for an existing account revisiting basics via
+  // switchIntent (see nextDisabled below). Seeded from /api/profile's
+  // account.email/emailVerified on mount so a page refresh mid-onboarding
+  // doesn't ask again for an email already verified in a previous visit.
+  const [verifiedEmail, setVerifiedEmail] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     displayName: '',
@@ -163,6 +170,15 @@ function OnboardingForm() {
     fetch('/api/me')
       .then((r) => r.json())
       .then((d) => setMyUserId(d.userId ?? null));
+    // account.email/emailVerified come back here even with no Profile row
+    // yet (it's User-level, not Profile-level) -- seeds verifiedEmail so
+    // the basics step's email gate (see nextDisabled) already knows about
+    // an email verified earlier in this same onboarding session.
+    fetch('/api/profile')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.account?.email && d.account?.emailVerified) setVerifiedEmail(d.account.email);
+      });
   }, []);
 
   // Reached from the Profile screen's intent switcher: pull the existing
@@ -490,6 +506,11 @@ function OnboardingForm() {
       (!form.displayName ||
         !form.dateOfBirth ||
         dobTooYoung ||
+        // Email is mandatory for a brand-new signup's first pass through
+        // Basics (phone-first signup, email right after -- see
+        // docs/PHONE_FIRST_AUTH.md), but not retroactively required of an
+        // existing account revisiting Basics via switchIntent.
+        (!editMode && !verifiedEmail) ||
         (form.intent === 'RISHTA_READY' && !form.livingPreference))) ||
     (stepKey === 'photos' && form.photoUrls.length === 0) ||
     (stepKey === 'interests' && interestsIncomplete) ||
@@ -641,6 +662,24 @@ function OnboardingForm() {
             className="rounded-2xl border border-line px-4 py-3"
             rows={2}
           />
+          {/* Mandatory for a fresh signup only -- see nextDisabled above.
+              Phone already got them this far; this is what makes most
+              future sign-ins skip SMS entirely (lib/otp.ts's request-otp
+              route sends the code here instead, once this is verified). */}
+          {!editMode && (
+            <div className="rounded-2xl border border-line bg-white p-3">
+              <p className="text-sm font-bold">Email address</p>
+              <p className="mb-2 text-xs text-inkSoft">
+                So we can reach you if your phone's ever unreachable -- and so future sign-ins on a new
+                device usually won't need an SMS code at all.
+              </p>
+              {verifiedEmail ? (
+                <p className="text-sm font-semibold text-green-700">✓ {verifiedEmail}</p>
+              ) : (
+                <EmailVerifyField onVerified={(email) => setVerifiedEmail(email)} />
+              )}
+            </div>
+          )}
           {form.intent === 'RISHTA_READY' && (
             <div className="flex flex-col gap-2 rounded-2xl border border-line bg-white p-3">
               <p className="text-sm font-semibold">Where do you see yourself living?</p>

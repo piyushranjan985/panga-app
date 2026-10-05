@@ -12,7 +12,7 @@ const bodySchema = z.object({
 
 /**
  * Email twin of /api/auth/request-otp -- SIGN-IN only, not sign-up. See
- * docs/PHONE_FIRST_AUTH.md §2: phone is findmyVybe's mandatory account-
+ * docs/PHONE_FIRST_AUTH.md §3: phone is findmyVybe's mandatory account-
  * creation gate now (the stronger anti-fake-account signal), so this
  * route no longer auto-creates a user for an email with no existing
  * account the way it -- and /api/auth/request-otp, deliberately

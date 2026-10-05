@@ -129,13 +129,14 @@ model User {
   // (see the Swipe/Message models for the same "start simple, note the
   // real-scale shape" pattern) so one person can link more than one
   // method to the same account — not needed yet at MVP size. (Facebook
-  // login, and its facebookId column, were removed 2026-09-29.)
+  // login/facebookId was removed 2026-09-29; Apple Sign-In/appleId was
+  // removed 2026-10-05 -- see prisma/migrations/20260929210000_remove_facebook_auth
+  // and the matching 20261010090000_remove_apple_auth migration.)
   phone         String?  @unique
   phoneVerified Boolean  @default(false)
   email         String?  @unique
   emailVerified Boolean  @default(false)
   googleId      String?  @unique
-  appleId       String?  @unique
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   lastActiveAt  DateTime @default(now())

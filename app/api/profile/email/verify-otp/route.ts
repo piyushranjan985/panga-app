@@ -17,7 +17,7 @@ export async function POST(req: Request) {
   const json = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(json);
   if (!parsed.success) {
-    return NextResponse.json({ error: 'Enter the 8-digit code we sent you.' }, { status: 400 });
+    return NextResponse.json({ error: 'Enter the 6-digit code we sent you.' }, { status: 400 });
   }
   const { email, code } = parsed.data;
 

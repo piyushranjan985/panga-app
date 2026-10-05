@@ -17,8 +17,16 @@ function VerifyForm() {
   const phone = params.get('phone') ?? '';
   const email = params.get('email') ?? '';
   const destination = method === 'email' ? email : phone;
-  const displayDestination = method === 'phone' && phone ? formatPhoneForDisplay(phone) : destination;
+  const defaultDisplay = method === 'phone' && phone ? formatPhoneForDisplay(phone) : destination;
   const alreadyHasProfile = params.get('existing') === '1';
+  // A phone sign-in can come back routed to email instead (see
+  // /api/auth/request-otp's doc comment and docs/PHONE_FIRST_AUTH.md
+  // §9) -- state, not just the initial query params, so a resend that
+  // re-resolves the channel can update what's shown here too.
+  const [deliveryChannel, setDeliveryChannel] = useState(params.get('channel') === 'email' ? 'email' : method);
+  const [deliveryMasked, setDeliveryMasked] = useState(params.get('masked') ?? '');
+  const usingFallbackChannel = deliveryChannel !== method;
+  const displayDestination = usingFallbackChannel && deliveryMasked ? deliveryMasked : defaultDisplay;
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +68,8 @@ function VerifyForm() {
         if (Number.isFinite(retryAfter) && retryAfter > 0) setResendCooldown(retryAfter);
         throw new Error(data.error ?? "Couldn't resend the code");
       }
+      if (data.channel) setDeliveryChannel(data.channel === 'email' ? 'email' : method);
+      if (data.maskedDestination) setDeliveryMasked(data.maskedDestination);
       setResendCooldown(RESEND_COOLDOWN_SECONDS);
     } catch (err) {
       setResendError(err instanceof Error ? err.message : "Couldn't resend the code");
@@ -102,7 +112,11 @@ function VerifyForm() {
         <h1 className="font-display text-3xl font-extrabold">Enter your code</h1>
         <p className="mt-2 text-sm text-inkSoft">
           We sent a 6-digit code to{' '}
-          <span className="font-semibold text-ink">{displayDestination || (method === 'email' ? 'your email' : 'your number')}</span>.{' '}
+          <span className="font-semibold text-ink">{displayDestination || (method === 'email' ? 'your email' : 'your number')}</span>
+          {usingFallbackChannel
+            ? " -- your verified email, not a text message, to keep this account's SMS use low"
+            : ''}
+          .{' '}
           <button type="button" onClick={editDestination} className="font-semibold text-magenta underline-offset-2 hover:underline">
             Edit {method === 'email' ? 'email' : 'number'}
           </button>

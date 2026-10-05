@@ -76,7 +76,7 @@ export function hashOtp(code: string) {
  * constraint noted throughout this codebase wherever root/admin need the
  * same small helper.
  */
-function maskDestination(channel: OtpChannel, destination: string): string {
+export function maskDestination(channel: OtpChannel, destination: string): string {
   if (channel === 'phone') {
     return destination.length > 4 ? `${destination.slice(0, -4).replace(/\d/g, '•')}${destination.slice(-4)}` : destination;
   }
@@ -150,7 +150,7 @@ export type IssueOtpRateLimitDetail =
   | 'global_hourly_limit';
 
 export type IssueOtpResult =
-  | { ok: true }
+  | { ok: true; channel: OtpChannel; maskedDestination: string }
   | { ok: false; reason: 'disabled' }
   | { ok: false; reason: 'rate_limited'; detail: IssueOtpRateLimitDetail; retryAfterSeconds?: number }
   | { ok: false; reason: 'provider_not_configured' }
@@ -353,7 +353,7 @@ export async function issueOtp(
     }
   }
 
-  return { ok: true };
+  return { ok: true, channel, maskedDestination };
 }
 
 /**
@@ -405,7 +405,7 @@ export type OtpConsumeFailureReason =
   | 'too_many_attempts'
   | 'provider_not_configured';
 
-export type OtpConsumeResult = { ok: true } | { ok: false; reason: OtpConsumeFailureReason };
+export type OtpConsumeResult = { ok: true; channel: OtpChannel } | { ok: false; reason: OtpConsumeFailureReason };
 
 /**
  * Consumes the code if it's valid; otherwise says specifically why not,
@@ -435,17 +435,21 @@ export type OtpConsumeResult = { ok: true } | { ok: false; reason: OtpConsumeFai
  * doesn't work) -- request a fresh code to get a fresh counter, subject
  * to issueOtp's cooldown and rate limits.
  */
+/**
+ * `channel` is only a fallback hint here, used solely when the row
+ * itself predates the channel/destination/purpose columns
+ * (20261010080000_otp_security_hardening -- any such row is long since
+ * expired by now). The row's own stored `channel` is the source of
+ * truth for which channel a code actually went out on -- this matters
+ * because /api/auth/request-otp can silently issue a *phone* sign-in's
+ * code over *email* instead (see docs/PHONE_FIRST_AUTH.md §3), so the
+ * caller posting back here may not actually know which channel was
+ * used. The resolved channel comes back on the ok branch so the caller
+ * can log an accurate session method and (for the production safety
+ * guard right below) check the channel the code really went out on,
+ * not the one the caller assumed.
+ */
 export async function consumeOtp(userId: string, code: string, channel: OtpChannel): Promise<OtpConsumeResult> {
-  // Belt-and-suspenders alongside issueOtp()'s same check: if this
-  // channel's provider somehow became unconfigured mid-flight (a code
-  // issued while configured, then the credentials got removed), a code
-  // already in the table still can't be consumed in real production
-  // either.
-  if (isMockOtpUnsafeInProduction(channel)) {
-    console.error('[otp] SAFETY GUARD: refusing to verify a code -- see issueOtp\'s matching guard.');
-    return { ok: false, reason: 'provider_not_configured' };
-  }
-
   const config = getOtpRateLimitConfig();
 
   const latest = await db.otpCode.findFirst({
@@ -453,6 +457,20 @@ export async function consumeOtp(userId: string, code: string, channel: OtpChann
     orderBy: { createdAt: 'desc' },
   });
   if (!latest) return { ok: false, reason: 'not_found' };
+
+  const effectiveChannel: OtpChannel = latest.channel === 'PHONE' ? 'phone' : latest.channel === 'EMAIL' ? 'email' : channel;
+
+  // Belt-and-suspenders alongside issueOtp()'s same check: if this
+  // channel's provider somehow became unconfigured mid-flight (a code
+  // issued while configured, then the credentials got removed), a code
+  // already in the table still can't be consumed in real production
+  // either. Checked against effectiveChannel, not the caller's guess --
+  // see this function's doc comment above.
+  if (isMockOtpUnsafeInProduction(effectiveChannel)) {
+    console.error('[otp] SAFETY GUARD: refusing to verify a code -- see issueOtp\'s matching guard.');
+    return { ok: false, reason: 'provider_not_configured' };
+  }
+
   if (latest.consumedAt) return { ok: false, reason: 'already_used' };
   if (latest.attempts >= config.maxAttempts) return { ok: false, reason: 'too_many_attempts' };
   if (latest.expiresAt.getTime() <= Date.now()) return { ok: false, reason: 'expired' };
@@ -464,11 +482,11 @@ export async function consumeOtp(userId: string, code: string, channel: OtpChann
       select: { attempts: true },
     });
     if (attempts.attempts >= config.maxAttempts) {
-      console.warn(`[otp-abuse] ${channel} code for user ${userId} hit the max-attempts cap -- a fresh code is required now.`);
+      console.warn(`[otp-abuse] ${effectiveChannel} code for user ${userId} hit the max-attempts cap -- a fresh code is required now.`);
     }
     return { ok: false, reason: 'mismatch' };
   }
 
   await db.otpCode.update({ where: { id: latest.id }, data: { consumedAt: new Date() } });
-  return { ok: true };
+  return { ok: true, channel: effectiveChannel };
 }

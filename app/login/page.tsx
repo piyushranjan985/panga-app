@@ -20,27 +20,31 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 };
 
 type Method = 'phone' | 'email';
-type SocialProvider = 'google' | 'apple' | null;
+type SocialProvider = 'google' | null;
 
-// Instagram had a button here until 2026-09-27, and Facebook until
-// 2026-09-29, both removed rather than kept mocked: Meta has no standalone
-// consumer OAuth for Instagram at all (the current Instagram API only
-// grants login to Instagram Business/Creator accounts, aimed at content/DM
-// management tools, not "any user signs into your app with their personal
-// Instagram") -- so there was never a real flow for it to grow into.
-// Facebook login worked technically, but Meta's Business Verification
-// requires a registered business entity to issue App Review, which
-// findmyVybe doesn't have -- not worth blocking launch on, especially since
-// most dating apps (Tinder, Hinge, Bumble) have themselves moved away from
-// requiring/offering it, favoring phone number + Google/Apple instead.
-const SOCIAL_ENDPOINT: Record<'google' | 'apple', string> = {
+// Instagram had a button here until 2026-09-27, Facebook until 2026-09-29,
+// and Apple until 2026-10-05, all removed rather than kept mocked: Meta has
+// no standalone consumer OAuth for Instagram at all (the current Instagram
+// API only grants login to Instagram Business/Creator accounts, aimed at
+// content/DM management tools, not "any user signs into your app with
+// their personal Instagram") -- so there was never a real flow for it to
+// grow into. Facebook login worked technically, but Meta's Business
+// Verification requires a registered business entity to issue App Review,
+// which findmyVybe doesn't have. Apple Sign-In (lib/auth/appleOAuth.ts) was
+// a working scaffold -- real credentials were never configured in any
+// environment -- removed by product decision in favor of a phone-first
+// identity plus a quiet email-OTP fallback for returning sign-ins (see
+// docs/PHONE_FIRST_AUTH.md) rather than a third OAuth provider to
+// maintain. Note for any future App Store submission: Apple's Guideline
+// 4.8 can require offering "Sign in with Apple" again if Google sign-in
+// stays -- worth re-checking against Apple's current rules before that
+// submission, not assumed moot just because it's gone from the web app.
+const SOCIAL_ENDPOINT: Record<'google', string> = {
   google: '/api/auth/mock-google',
-  apple: '/api/auth/mock-apple',
 };
 
-const SOCIAL_LABEL: Record<'google' | 'apple', string> = {
+const SOCIAL_LABEL: Record<'google', string> = {
   google: 'Google',
-  apple: 'Apple',
 };
 
 function GoogleIcon() {
@@ -54,17 +58,8 @@ function GoogleIcon() {
   );
 }
 
-function AppleIcon() {
-  return (
-    <svg width="18" height="20" viewBox="0 0 18 20" aria-hidden fill="currentColor">
-      <path d="M14.84 10.66c-.03-2.1 1.72-3.11 1.8-3.16-.98-1.43-2.5-1.63-3.04-1.65-1.4-.14-2.65.8-3.34.8-.7 0-1.78-.78-2.92-.76-1.5.02-2.9.87-3.66 2.2-1.57 2.72-.4 6.73 1.1 8.93.73 1.08 1.62 2.28 2.79 2.24 1.1-.04 1.53-.72 2.86-.72 1.33 0 1.72.72 2.9.7 1.19-.02 1.98-1.09 2.7-2.18.86-1.3 1.2-2.56 1.22-2.62-.03-.01-2.34-.9-2.37-3.58h-.04ZM12.44 2.58c.6-.73 1-1.75.9-2.78-.86.04-1.92.58-2.54 1.3-.56.63-1.04 1.65-.91 2.63.95.07 1.93-.49 2.55-1.15Z" />
-    </svg>
-  );
-}
-
-const SOCIAL_ICON: Record<'google' | 'apple', () => React.ReactElement> = {
+const SOCIAL_ICON: Record<'google', () => React.ReactElement> = {
   google: GoogleIcon,
-  apple: AppleIcon,
 };
 
 function LoginForm() {
@@ -86,8 +81,8 @@ function LoginForm() {
 
   // Trusted device -- see docs/PHONE_FIRST_AUTH.md. Tried silently
   // before the form ever renders: a device this browser already proved
-  // itself on (any OTP/Google/Apple/passkey sign-in within the last 30
-  // days) skips OTP entirely on return. checkingDevice starts true so
+  // itself on (any OTP/Google/passkey sign-in within the last 30 days)
+  // skips OTP entirely on return. checkingDevice starts true so
   // there's no flash of the phone/email form for someone about to be
   // redirected straight past it.
   const [checkingDevice, setCheckingDevice] = useState(true);
@@ -120,15 +115,15 @@ function LoginForm() {
     if (prefillEmail) setEmail(prefillEmail);
   }, [searchParams]);
 
-  // Reached two ways: app/api/auth/google|apple/route.ts redirects back
-  // here with ?mock=google|apple when that provider's real credentials
-  // aren't set yet (falls back to exactly the mock form below, just
-  // reached via a real navigation instead of the button's old onClick),
-  // or a real callback route redirects here with ?error=<reason> after a
+  // Reached two ways: app/api/auth/google/route.ts redirects back here
+  // with ?mock=google when that provider's real credentials aren't set
+  // yet (falls back to exactly the mock form below, just reached via a
+  // real navigation instead of the button's old onClick), or a real
+  // callback route redirects here with ?error=<reason> after a
   // failed/cancelled OAuth round trip.
   useEffect(() => {
     const mockProvider = searchParams.get('mock');
-    if (mockProvider === 'google' || mockProvider === 'apple') {
+    if (mockProvider === 'google') {
       setSocialProvider(mockProvider);
     }
     const oauthError = searchParams.get('error');
@@ -187,7 +182,15 @@ function LoginForm() {
       if (!res.ok) throw new Error(data.error ?? 'Something went wrong');
       const query = method === 'phone' ? `phone=${encodeURIComponent(phone)}` : `email=${encodeURIComponent(email)}`;
       const existingFlag = data.alreadyHasProfile ? '&existing=1' : '';
-      router.push(`/verify?method=${method}&${query}${existingFlag}`);
+      // Phone sign-in can come back with channel: 'email' (see
+      // /api/auth/request-otp's doc comment) -- forwarded so /verify can
+      // say "we sent a code to j***@gmail.com" instead of implying a
+      // text message that was never sent. Email sign-in never sets
+      // these (that route has no fallback channel of its own), so
+      // /verify's default (channel === method) applies as before.
+      const channelFlag = data.channel ? `&channel=${encodeURIComponent(data.channel)}` : '';
+      const maskedFlag = data.maskedDestination ? `&masked=${encodeURIComponent(data.maskedDestination)}` : '';
+      router.push(`/verify?method=${method}&${query}${existingFlag}${channelFlag}${maskedFlag}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -321,10 +324,10 @@ function LoginForm() {
 
         {/* A real top-level navigation to a server route that redirects to
             the real provider (once its real credentials are set) or back
-            here with ?mock=google|apple otherwise -- has to be a real
+            here with ?mock=google otherwise -- has to be a real
             navigation, not a fetch, since an OAuth consent screen isn't
             reachable from client JS/CORS. */}
-        {(['google', 'apple'] as const).map((p) => {
+        {(['google'] as const).map((p) => {
           const Icon = SOCIAL_ICON[p];
           return (
             <a

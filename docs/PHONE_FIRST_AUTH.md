@@ -1,14 +1,16 @@
 # Phone-First Auth + Trusted Devices + Passkeys — Design Spec
 
-Status: **Decided — built 2026-10-05** (scope locked via in-chat
-clarifying question: all four pieces below, existing accounts
-grandfathered, 30-day trust duration)
+Status: **Decided — built 2026-10-05, revised 2026-10-05** (scope
+locked via in-chat clarifying questions: all four pieces below,
+existing accounts grandfathered, 30-day trust duration; Apple
+Sign-In then removed, email made mandatory at signup, and a quiet
+email-OTP fallback added for returning sign-ins -- see §8)
 Owner: Product / Platform
 Related: `lib/trustedDevice.ts`, `lib/webauthn.ts`,
-`lib/auth/webauthnChallenge.ts`, `lib/auth/appleOAuth.ts`,
-`lib/auth/postAuthRedirect.ts`, `lib/auth/googleOAuth.ts` (the pattern
-Apple mirrors), `lib/session.ts`, `lib/otp.ts`, `prisma/schema.prisma`
-(`TrustedDevice`, `WebAuthnCredential`, `User.appleId`)
+`lib/auth/webauthnChallenge.ts`, `lib/auth/postAuthRedirect.ts`,
+`lib/auth/googleOAuth.ts`, `lib/session.ts`, `lib/otp.ts`,
+`components/EmailVerifyField.tsx`, `prisma/schema.prisma`
+(`TrustedDevice`, `WebAuthnCredential`)
 
 ## 0. What this is, in one paragraph
 
@@ -18,14 +20,18 @@ successful sign-in, this browser gets a rotating 30-day cookie that skips
 OTP entirely on return visits — this is the actual fix for the real cost
 driver (see §1). (2) **Phone-first signup**: new accounts can now only be
 created by verifying a phone number; email sign-in no longer auto-creates
-an account, and Google/Apple sign-ins without a verified phone are routed
+an account, and a Google sign-in without a verified phone is routed
 through a one-time phone-verification gate before onboarding. Every
 account that already existed is grandfathered in — nothing retroactive.
-(3) **Apple Sign-In**: a real OAuth integration mirroring the existing
-Google one, scaffolded and ready, but inert until the user supplies
-Apple Developer credentials (see §5). (4) **Passkeys**: WebAuthn
-registration and login, discoverable/resident credentials so a returning
-user can sign in with no typed identifier at all.
+(3) **Apple Sign-In**: built as a real OAuth integration mirroring
+Google's, scaffolded and ready but never configured with real
+credentials, then removed entirely by a later product decision (see
+§4, §8) in favor of (3') **a quiet email-OTP fallback**: a returning
+sign-in with a verified email on file gets its code emailed instead
+of texted, with no change to what the user types (see §3). (4)
+**Passkeys**: WebAuthn registration and login, discoverable/resident
+credentials so a returning user can sign in with no typed identifier
+at all.
 
 ## 1. Why "trusted device," not "fewer OTP methods"
 
@@ -49,9 +55,10 @@ returning visit skip straight past OTP into a brand-new session, without
 touching the 10-minute idle timeout itself (that timeout still protects
 an *active, abandoned* tab exactly as before — these are two different
 mechanisms layered on top of each other, not one replacing the other).
-Phone-first signup, Apple, and passkeys (§3-§5) are the other three
-pieces of the original ask, each independently useful, but none of them
-is what the SMS bill was actually about.
+Phone-first signup, Apple (later replaced by the quiet email-OTP
+fallback in §3), and passkeys (§3-§5) are the other three pieces of
+the original ask, each independently useful, but none of them is
+what the SMS bill was actually about.
 
 ## 2. Trusted device
 
@@ -80,7 +87,7 @@ model TrustedDevice {
   window quietly extends another 30 days on every visit rather than
   counting down to a hard expiry.
 - **Issued on every successful sign-in**, regardless of method —
-  phone OTP, email OTP, Google, Apple, and passkey login all call
+  phone OTP, email OTP, Google, and passkey login all call
   `issueTrustedDevice(userId)` right after `createSession(...)`. One
   mechanism, not one per method.
 - **Checked silently on page load.** `app/login/page.tsx` fires
@@ -114,12 +121,11 @@ fresh email is nearly free" was the premise. The gate:
   email yet — sign up with your phone number first, then add email from
   your profile." Existing accounts that sign in with email continue to
   work exactly as before (that's the grandfathering — see below).
-- **Google and Apple sign-in still create an account on first use**
-  (removing that would make them useless as signup methods, which wasn't
-  the ask), **but land anyone without a verified phone on
-  `/verify-phone`** instead of `/onboarding` — a mandatory, one-screen
-  phone-OTP gate (`app/verify-phone/page.tsx`) before they can create a
-  profile.
+- **Google sign-in still creates an account on first use** (removing
+  that would make it useless as a signup method, which wasn't the ask),
+  **but lands anyone without a verified phone on `/verify-phone`**
+  instead of `/onboarding` — a mandatory, one-screen phone-OTP gate
+  (`app/verify-phone/page.tsx`) before they can create a profile.
 - **Grandfathering has no separate flag or migration.** The gate
   condition is simply "no `Profile` row yet AND no verified phone" —
   `lib/auth/postAuthRedirect.ts`'s `nextPathAfterAuth`:
@@ -143,6 +149,31 @@ fresh email is nearly free" was the premise. The gate:
   session*, structurally distinct from `/api/auth/*`'s "look up or create
   by identifier" — so a grandfathered email-only user adding their phone
   from Account & Security can never accidentally create a second account.
+- **Email is mandatory at the Bio (`basics`) onboarding step for a
+  brand-new signup** (revised 2026-10-05, see §8's second decision
+  entry), verified inline before `Next` unlocks
+  (`components/EmailVerifyField.tsx`, reusing the same
+  `/api/profile/email/request-otp` + `/verify-otp` pair Account &
+  Security already used). Not re-required of an existing account
+  revisiting Basics via `switchIntent` — `app/onboarding/page.tsx`'s
+  `nextDisabled` only applies the gate when `!editMode`.
+- **A returning sign-in's OTP quietly prefers email over SMS.** The
+  login screen still only ever asks for a phone number — there's no
+  second tab or toggle to notice — but `POST /api/auth/request-otp`
+  checks `existing.phoneVerified && existing.email &&
+  existing.emailVerified` and, when all three hold, issues the code to
+  that email instead of by SMS. `phoneVerified` (not just row
+  existence) is required so a half-finished signup can't skip phone
+  verification on its first real attempt. The response's `channel`/
+  `maskedDestination` tell `/verify` which destination the code
+  actually went to, so it says "we sent a code to j***@gmail.com"
+  rather than implying a text message that was never sent —
+  `lib/otp.ts`'s `consumeOtp` resolves the real channel from the
+  `OtpCode` row itself (not the caller's guess) so the session's
+  recorded `method` (`phone_otp` vs `email_otp`) stays accurate too. A
+  brand-new signup always goes by SMS — there's no verified email yet
+  to fall back to, and phone is still this app's anti-fake-account
+  signal for a first account.
 
 This is also the first place a response-contract change touches every
 sign-in call site: every verify/callback route now returns `{ ok, next:
@@ -151,34 +182,36 @@ site does `router.push(data.next ?? '/discover')` instead of its own
 `hasProfile ? ... : ...` ternary — one decision function, not four
 copies of the same branch drifting independently.
 
-## 4. Apple Sign-In (scaffold, inert until configured)
+## 4. Apple Sign-In (removed 2026-10-05)
 
-`lib/auth/appleOAuth.ts`, mirroring `lib/auth/googleOAuth.ts` almost
-exactly — same `isAppleOAuthConfigured()` / `buildAppleAuthorizationUrl(state)`
+Was a working scaffold mirroring `lib/auth/googleOAuth.ts` almost
+exactly -- same `isAppleOAuthConfigured()` / `buildAppleAuthorizationUrl(state)`
 / `exchangeAppleCodeForProfile(code)` shape, same signed-JWT `state` CSRF
-pattern (`lib/auth/oauthState.ts`, now typed for
-`'google' | 'apple'`), same mock-consent fallback
-(`app/api/auth/mock-apple/route.ts`) when unconfigured, same beta
-allowlist / DELETED-account / `P2002` collision handling in the callback.
-Two real differences from Google, both forced by Apple's own protocol,
-not a design choice:
+pattern, same mock-consent fallback when unconfigured, same beta
+allowlist / DELETED-account / `P2002` collision handling in the
+callback. Its four env vars (`APPLE_TEAM_ID`, `APPLE_CLIENT_ID`,
+`APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`) were never set in any environment
+-- "Continue with Apple" always ran the mock-consent fallback, never a
+real OAuth round trip.
 
-- **`response_mode=form_post`** — Apple POSTs the callback instead of
-  redirecting with a query string, so `app/api/auth/apple/callback/route.ts`
-  is a POST handler reading `req.formData()`, where Google's is a GET
-  handler reading `searchParams`.
-- **No static client secret.** Apple requires a short-lived ES256 JWT,
-  self-minted per token exchange from a private key
-  (`APPLE_PRIVATE_KEY`) via `jose`'s `importPKCS8` — there's no long-lived
-  secret string to paste into an env var the way Google's
-  `GOOGLE_CLIENT_SECRET` works.
+Removed by product decision (see §8's second entry) in favor of a
+phone-first identity plus a quiet email-OTP fallback for returning
+sign-ins (§3) instead of a third OAuth provider to maintain:
+`lib/auth/appleOAuth.ts`, `app/api/auth/apple/`,
+`app/api/auth/mock-apple/` deleted outright; `User.appleId` dropped
+(`prisma/migrations/20261010090000_remove_apple_auth`, same lossless-drop
+reasoning as `20260929210000_remove_facebook_auth`'s `facebookId`
+drop -- see that migration's own comment); `lib/auth/oauthState.ts`'s
+`SocialProvider` narrowed to `'google'`; `app/login/page.tsx` down to one
+social button. A historical note lives in that file's comments, same
+pattern as the existing Instagram/Facebook removal notes there.
 
-Needs four env vars (`APPLE_TEAM_ID`, `APPLE_CLIENT_ID`, `APPLE_KEY_ID`,
-`APPLE_PRIVATE_KEY` — see `.env.example`) and an active Apple Developer
-Program enrollment, which is a paid, manual, outside-this-codebase step
-only the account owner can do. Until those are set, "Continue with
-Apple" behaves exactly like Google's own unconfigured fallback: a mock
-consent screen, fully testable, zero external calls.
+**Before any future App Store submission**, re-check Apple's Guideline
+4.8 (Sign in with Apple): it can require offering Apple sign-in again
+as long as Google sign-in stays available. Not re-checked as part of
+this removal since there's no App Store submission imminent -- flagged
+here so it isn't assumed moot just because the code is gone from the
+web app.
 
 ## 5. Passkeys
 
@@ -241,20 +274,23 @@ surfacing everything above in one place:
 - **Phone** — masked number + "Verified" badge once set; "Add phone" (a
   two-step OTP flow identical in shape to the mandatory gate) for anyone
   who doesn't have one yet — grandfathered accounts, mainly.
-- **Email** — same pattern, same masking.
-- **Google / Apple** — read-only linked/not-linked badges. Unlinking a
-  social login isn't offered here; out of scope for this change.
+- **Email** — same pattern, same masking (`components/EmailVerifyField.tsx` --
+  also what the onboarding Bio step uses for its own, now-mandatory,
+  email capture; see §3).
+- **Google** — a read-only linked/not-linked badge. Unlinking a social login
+  isn't offered here; out of scope for this change. (Was "Google /
+  Apple" until Apple Sign-In was removed 2026-10-05 -- see §4.)
 - **Passkeys** — list + add/remove, described in §5.
 
 `GET /api/profile` now returns an `account` object alongside the
 existing `profile` (phone, phoneVerified, email, emailVerified,
-googleLinked, appleLinked, passkeys) — deliberately exposing *presence*
-for Google/Apple, never the provider's internal id string, since the
-client only ever needs to know "is this linked," not the id itself.
+googleLinked, passkeys) — deliberately exposing *presence* for Google,
+never the provider's internal id string, since the client only ever
+needs to know "is this linked," not the id itself.
 
 ## 7. What's explicitly deferred, not forgotten
 
-- Unlinking Google/Apple from Account & Security.
+- Unlinking Google from Account & Security.
 - A "high-risk event" re-verification trigger (new device country, new
   payment method, etc.) that would force a fresh OTP even with a valid
   trusted-device cookie — the original request mentioned this as a
@@ -263,11 +299,13 @@ client only ever needs to know "is this linked," not the id itself.
   device") from Account & Security — today a user can only sign out
   everywhere (self-service delete) or get force-logged-out by admin;
   there's no per-device list yet.
-- Fixing the pre-existing `.length(8)` OTP-code Zod validation
-  inconsistency noticed during this work (`lib/otp.ts` generates 6-digit
-  real codes but several schemas validate an 8-character length,
-  matching only the `MOCK_OTP` fallback's length) — left alone as
-  out-of-scope for this change.
+- No automatic SMS fallback if the email provider fails for a returning
+  sign-in that got silently routed to email (§3) — `issueOtp` just
+  returns `send_failed`/`provider_not_configured` like any other failed
+  send, with no retry on the other channel. Brevo's uptime has been fine
+  so far; revisit if this becomes a real support complaint.
+- Re-checking Apple's App Store Guideline 4.8 (see §4) before any real
+  App Store submission.
 
 ## 8. Decision trail (chat, 2026-10-05)
 
@@ -283,3 +321,25 @@ client only ever needs to know "is this linked," not the id itself.
   Answered: all four pieces (overriding a suggestion to defer passkeys),
   grandfather existing accounts with no retroactive requirement, 30
   days.
+- Second round, same day: asked to (1) remove Apple Sign-In completely,
+  and (2) "make sure phone OTP isn't used much, ideally only for 1st-
+  time signup" -- offered as a rough idea (ask for phone at signup,
+  then email on the next/Bio screen, linked to the phone) with an
+  explicit invitation to expand and improve it, not a locked spec.
+  Researched the existing onboarding flow (the "Bio screen" is the
+  `basics` onboarding step) and this repo's Facebook-removal precedent
+  (`20260929210000_remove_facebook_auth`) before proposing anything.
+  Asked three clarifying questions (in chat): email at signup required-
+  and-verified-inline vs. optional-with-a-nudge; the returning-login
+  channel switch automatic-and-silent vs. a visible default-tab flip;
+  and whether to also drop the `appleId` column (matching the Facebook
+  precedent) or just leave it unused. Answered: required + verified
+  inline, automatic + silent, drop the column. Built as the "quiet
+  fallback" design in §3 rather than the originally-sketched two-tab
+  manual version, reusing the existing destination/channel/purpose
+  columns from the OTP security hardening pass (`docs/OTP_SECURITY.md`)
+  rather than adding new ones. Also fixed, as a drive-by: four
+  `verify-*-otp` routes' error strings still said "Enter the 8-digit
+  code" after the 6-digit Zod-validation fix (the item this section
+  used to list as deferred) -- the schemas were fixed, the hardcoded
+  message text next to them wasn't.

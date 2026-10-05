@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { OtpPurpose } from '@prisma/client';
 import { db } from '@/lib/db';
-import { issueOtp, describeIssueOtpFailure } from '@/lib/otp';
+import { issueOtp, describeIssueOtpFailure, type OtpChannel } from '@/lib/otp';
 import { clientIpFromRequest } from '@/lib/otpRateLimit';
 import { getOrCreateRateLimitClientId } from '@/lib/rateLimitClientId';
 
@@ -20,6 +20,16 @@ const bodySchema = z.object({
  * request/verify doubles as both sign-up and sign-in (hasProfile/
  * hasAccount decides the follow-on message, not a separate endpoint) --
  * see app/verify/page.tsx routing.
+ *
+ * For a returning sign-in (purpose=LOGIN) with a verified email already
+ * on file, the code is sent to that email instead of by SMS -- see
+ * docs/PHONE_FIRST_AUTH.md §3. The client still only ever types a phone
+ * number here; the response's `channel`/`maskedDestination` tell
+ * app/verify/page.tsx which destination the code actually went to, so
+ * it can say so rather than implying a text message that never arrives.
+ * A brand-new signup (purpose=SIGNUP) always goes by SMS -- there's no
+ * verified email yet to fall back to, and phone is this app's
+ * anti-fake-account signal for a first account (see §3).
  */
 export async function POST(req: Request) {
   const json = await req.json().catch(() => null);
@@ -41,15 +51,34 @@ export async function POST(req: Request) {
   const alreadyHasProfile = Boolean(existing?.profile);
   const purpose = existing ? OtpPurpose.LOGIN : OtpPurpose.SIGNUP;
 
+  // Quiet SMS-cost reduction (see this route's doc comment and
+  // docs/PHONE_FIRST_AUTH.md §3): a returning sign-in whose phone was
+  // already verified before, with a verified email already on file,
+  // gets the code emailed instead of texted. `existing.phoneVerified` is
+  // checked (not just `existing`) so a half-finished signup -- a User
+  // row created by a previous request-otp call that was never actually
+  // verified -- can't skip straight to email on its very first real
+  // attempt; it has to prove the phone once, the normal way, like any
+  // new signup.
+  const verifiedEmailOnFile =
+    existing?.phoneVerified && existing.email && existing.emailVerified ? existing.email : null;
+  const destination = verifiedEmailOnFile ?? phone;
+  const channel: OtpChannel = verifiedEmailOnFile ? 'email' : 'phone';
+
   const ip = clientIpFromRequest(req);
   const clientId = await getOrCreateRateLimitClientId();
 
-  const issued = await issueOtp(user.id, phone, 'phone', purpose, { ip, clientId });
+  const issued = await issueOtp(user.id, destination, channel, purpose, { ip, clientId });
   if (!issued.ok) {
     const { status, message, retryAfterSeconds } = describeIssueOtpFailure(issued);
     const headers = retryAfterSeconds ? { 'Retry-After': String(retryAfterSeconds) } : undefined;
     return NextResponse.json({ error: message }, { status, headers });
   }
 
-  return NextResponse.json({ ok: true, alreadyHasProfile });
+  return NextResponse.json({
+    ok: true,
+    alreadyHasProfile,
+    channel: issued.channel,
+    maskedDestination: issued.maskedDestination,
+  });
 }
