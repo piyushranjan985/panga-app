@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { PairIntent, SignalItem } from '@/lib/matchSignals';
 import { pickVybePrompt, getAskAboutTopics, type AskTopic } from '@/lib/vybeContent';
+import { describeMatchOrigin, type MatchOrigin } from '@/lib/matchOrigin';
 
 interface MatchModalProps {
   matchId: string;
@@ -38,6 +39,14 @@ export default function MatchModal({ matchId, otherName, otherAvatarSeed, otherA
   const router = useRouter();
   const [vibe, setVibe] = useState<VibeData | null>(null);
   const [partner, setPartner] = useState<PartnerLite | null>(null);
+  // How this match actually happened -- Wild Card or a Mystery Match
+  // category -- reusing the SAME /api/matches/[matchId]/partner fetch
+  // just below rather than a new request; that route already computes
+  // both matchMeta.foundViaWildCard and revealStatus.{isMysteryMatch,
+  // mysteryCategory} for the chat page, this screen just wasn't reading
+  // them before. See lib/matchOrigin.ts. null means an ordinary Discover
+  // match -- nothing to highlight, same as the chat page's convention.
+  const [origin, setOrigin] = useState<MatchOrigin | null>(null);
   const [sayHiOpen, setSayHiOpen] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -57,7 +66,16 @@ export default function MatchModal({ matchId, otherName, otherAvatarSeed, otherA
       .catch(() => setVibe(null));
     fetch(`/api/matches/${matchId}/partner`)
       .then((r) => r.json())
-      .then((d) => setPartner({ interests: d.partner?.interests ?? [], tribes: d.partner?.tribes ?? [] }))
+      .then((d) => {
+        setPartner({ interests: d.partner?.interests ?? [], tribes: d.partner?.tribes ?? [] });
+        setOrigin(
+          describeMatchOrigin({
+            isMysteryMatch: Boolean(d.revealStatus?.isMysteryMatch),
+            mysteryCategory: d.revealStatus?.mysteryCategory ?? null,
+            foundViaWildCard: Boolean(d.matchMeta?.foundViaWildCard),
+          })
+        );
+      })
       .catch(() => setPartner(null));
   }, [matchId]);
 
@@ -111,6 +129,16 @@ export default function MatchModal({ matchId, otherName, otherAvatarSeed, otherA
         <p className="mt-1 text-sm text-inkSoft">
           You and {otherName} both liked each other.
         </p>
+
+        {/* Highlights how this match actually happened -- Wild Card or a
+            Mystery Match category -- right at the moment it's most
+            exciting, instead of only in a quieter chat-header banner
+            later. Absent entirely for an ordinary Discover match. */}
+        {origin && (
+          <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-paper px-3 py-1 text-xs font-bold text-ink">
+            {origin.emoji} {origin.label}
+          </span>
+        )}
 
         <div className="mt-5 flex items-center justify-center -space-x-3">
           <div className="grid h-16 w-16 place-items-center rounded-full border-4 border-white bg-gradient-to-br from-marigold to-magenta font-display text-xl font-bold text-white shadow">

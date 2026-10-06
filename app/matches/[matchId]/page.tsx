@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import IntentBadge from '@/components/IntentBadge';
+import { describeMatchOrigin } from '@/lib/matchOrigin';
 import InactivityLogout from '@/components/InactivityLogout';
 import type { PairIntent, SignalItem } from '@/lib/matchSignals';
 import {
@@ -77,6 +78,11 @@ interface Partner {
 // this be meaningfully unrevealed.
 interface RevealStatus {
   isMysteryMatch: boolean;
+  // One of MYSTERY_MATCH / VYBE_FLIP / NO_LABELS whenever isMysteryMatch
+  // is true (null otherwise) -- see lib/matchOrigin.ts, which is what
+  // turns this into the "🔄 Vybe Flip" / "🧩 No-Labels Match" wording
+  // below instead of a generic "Mystery Match" for all three categories.
+  mysteryCategory: 'MYSTERY_MATCH' | 'VYBE_FLIP' | 'NO_LABELS' | 'OPTED_OUT' | null;
   myRevealed: boolean;
   partnerRevealed: boolean;
   fullyRevealed: boolean;
@@ -521,6 +527,13 @@ export default function ChatPage() {
   // photo (if the partner has one) takes over from it -- see
   // docs/MYSTERY_MATCH.md §8.
   const showRealPhoto = Boolean(partner?.photoUrl) && (!revealStatus?.isMysteryMatch || revealStatus.fullyRevealed);
+  // Names the specific category ("Vybe Flip", "No-Labels Match") in the
+  // blind-reveal banner below instead of a one-size-fits-all "Mystery
+  // Match" -- see lib/matchOrigin.ts. foundViaWildCard is handled by its
+  // own separate banner just above, so this never needs that input.
+  const mysteryOrigin = revealStatus?.isMysteryMatch
+    ? describeMatchOrigin({ isMysteryMatch: true, mysteryCategory: revealStatus.mysteryCategory, foundViaWildCard: false })
+    : null;
 
   return (
     <div className="flex h-screen flex-col">
@@ -588,7 +601,9 @@ export default function ChatPage() {
 
         {revealStatus?.isMysteryMatch && !revealStatus.fullyRevealed && (
           <div className="mb-2 rounded-2xl border border-line bg-gradient-to-br from-marigold/10 via-white to-magenta/10 p-4 text-center">
-            <p className="font-display text-sm font-extrabold">🎭 This is a Mystery Match</p>
+            <p className="font-display text-sm font-extrabold">
+              {mysteryOrigin ? `${mysteryOrigin.emoji} This is a ${mysteryOrigin.label}` : '🎭 This is a Mystery Match'}
+            </p>
             <p className="mt-1 text-sm text-inkSoft">
               {revealStatus.myRevealed
                 ? "You've revealed — waiting for them to reveal too."

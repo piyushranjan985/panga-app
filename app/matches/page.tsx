@@ -10,6 +10,9 @@ interface MatchRow {
   matchId: string;
   other: { displayName: string; avatarSeed: string; avatarHue: number; intent: string };
   lastMessage: { body: string; createdAt: string } | null;
+  // How this match happened -- Wild Card or a Mystery Match category --
+  // null for an ordinary Discover match. See lib/matchOrigin.ts.
+  origin: { emoji: string; label: string } | null;
 }
 
 export default function MatchesPage() {
@@ -47,6 +50,11 @@ export default function MatchesPage() {
                 <div className="flex items-center gap-2">
                   <p className="truncate font-bold">{m.other.displayName}</p>
                   <IntentBadge intent={m.other.intent} />
+                  {m.origin && (
+                    <span className="shrink-0 rounded-full bg-paper px-2 py-0.5 text-[11px] font-bold text-inkSoft">
+                      {m.origin.emoji} {m.origin.label}
+                    </span>
+                  )}
                 </div>
                 <p className="truncate text-sm text-inkSoft">
                   {m.lastMessage?.body ?? 'Say hi \u{1F44B}'}

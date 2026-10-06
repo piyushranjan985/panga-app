@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
+import { describeMatchOrigin } from '@/lib/matchOrigin';
 
 // Defensive bound for a very long-tenured, very active user -- matches
 // lists aren't currently paginated in the UI (unlike chat messages above,
@@ -33,6 +34,9 @@ export async function GET() {
       // always isMysteryMatch === false with both reveal timestamps
       // null, so this select costs nothing for the common case.
       isMysteryMatch: true,
+      // See lib/matchOrigin.ts -- lets the inbox badge below name the
+      // exact category instead of a generic "Mystery Match" for all three.
+      mysteryCategory: true,
       revealedAAt: true,
       revealedBAt: true,
       // select, not include -- the full User+Profile models carry dozens
@@ -48,6 +52,20 @@ export async function GET() {
     orderBy: { createdAt: 'desc' },
     take: MATCH_LIST_LIMIT,
   });
+
+  // Wild Card attribution for the inbox badge -- one-sided, same rule as
+  // app/api/matches/[matchId]/partner/route.ts (only true for the person
+  // who actually drew this match as their Wild Card). One bulk query for
+  // every "other side" across the whole list, instead of a query per
+  // row -- this list can hold up to MATCH_LIST_LIMIT matches.
+  const otherIds = matches.map((m) => (m.userAId === session.userId ? m.userBId : m.userAId));
+  const wildCardDraws = otherIds.length
+    ? await db.wildCardUse.findMany({
+        where: { userId: session.userId, candidateUserId: { in: otherIds } },
+        select: { candidateUserId: true },
+      })
+    : [];
+  const wildCardDrawnIds = new Set(wildCardDraws.map((w) => w.candidateUserId));
 
   const shaped = matches.map((m) => {
     const isUserA = m.userAId === session.userId;
@@ -71,6 +89,13 @@ export async function GET() {
       lastMessage: m.messages[0]
         ? { body: m.messages[0].body, senderId: m.messages[0].senderId, createdAt: m.messages[0].createdAt }
         : null,
+      // See lib/matchOrigin.ts -- null for an ordinary Discover match
+      // (no badge shown), otherwise {emoji, label} for the inbox row.
+      origin: describeMatchOrigin({
+        isMysteryMatch: m.isMysteryMatch,
+        mysteryCategory: m.mysteryCategory,
+        foundViaWildCard: wildCardDrawnIds.has(other.id),
+      }),
     };
   });
 

@@ -112,6 +112,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ matchId
     },
     revealStatus: {
       isMysteryMatch: match.isMysteryMatch,
+      // Lets callers (MatchModal, the chat page's banner) name the exact
+      // category -- "Vybe Flip" / "No-Labels Match" -- instead of the
+      // generic "Mystery Match" for all three. See lib/matchOrigin.ts.
+      mysteryCategory: match.mysteryCategory,
       myRevealed: iRevealed,
       partnerRevealed,
       fullyRevealed,

@@ -9,6 +9,7 @@ import EmptyState from '@/components/EmptyState';
 import { ageFromDob } from '@/lib/mask';
 import UserPiiPanel from '@/components/UserPiiPanel';
 import UserActionsPanel from '@/components/UserActionsPanel';
+import { describeMatchOrigin } from '@/lib/matchOrigin';
 import ConfirmActionButton from '@/components/ConfirmActionButton';
 import { hasPermission as hasPerm } from '@/lib/rbac';
 
@@ -48,6 +49,7 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
     privacyRequests,
     moderationCases,
     auditEntries,
+    wildCardUses,
   ] = await Promise.all([
     db.match.findMany({ where: { userAId: userId }, include: { userB: { include: { profile: { select: { displayName: true } } } } }, orderBy: { createdAt: 'desc' }, take: 25 }),
     db.match.findMany({ where: { userBId: userId }, include: { userA: { include: { profile: { select: { displayName: true } } } } }, orderBy: { createdAt: 'desc' }, take: 25 }),
@@ -62,11 +64,43 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
     db.privacyRequest.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } }),
     db.moderationCase.findMany({ where: { subjectUserId: userId }, orderBy: { createdAt: 'desc' }, include: { assignee: { select: { name: true } } } }),
     db.auditLogEntry.findMany({ where: { targetType: 'User', targetId: userId }, orderBy: { createdAt: 'desc' }, take: 30 }),
+    // Wild Card attribution for the Matches table below -- unlike the
+    // consumer app's own one-sided rule (see lib/matchOrigin.ts's admin
+    // copy), an admin isn't "a side" of the match, so this checks BOTH
+    // directions: did this user draw the other as their Wild Card, or
+    // vice versa. One bulk query covering every match below rather than
+    // one per row.
+    db.wildCardUse.findMany({ where: { OR: [{ userId }, { candidateUserId: userId }] }, select: { userId: true, candidateUserId: true } }),
   ]);
 
+  // Every other-side user id this user has a Wild Card connection with,
+  // in either direction -- see the wildCardUses query above.
+  const wildCardLinkedIds = new Set(
+    wildCardUses.map((w) => (w.userId === userId ? w.candidateUserId : w.userId)),
+  );
   const matches = [
-    ...matchesA.map((m) => ({ id: m.id, other: m.userB.profile?.displayName ?? '—', createdAt: m.createdAt, unmatchedAt: m.unmatchedAt })),
-    ...matchesB.map((m) => ({ id: m.id, other: m.userA.profile?.displayName ?? '—', createdAt: m.createdAt, unmatchedAt: m.unmatchedAt })),
+    ...matchesA.map((m) => ({
+      id: m.id,
+      other: m.userB.profile?.displayName ?? '—',
+      createdAt: m.createdAt,
+      unmatchedAt: m.unmatchedAt,
+      origin: describeMatchOrigin({
+        isMysteryMatch: m.isMysteryMatch,
+        mysteryCategory: m.mysteryCategory,
+        foundViaWildCard: wildCardLinkedIds.has(m.userBId),
+      }),
+    })),
+    ...matchesB.map((m) => ({
+      id: m.id,
+      other: m.userA.profile?.displayName ?? '—',
+      createdAt: m.createdAt,
+      unmatchedAt: m.unmatchedAt,
+      origin: describeMatchOrigin({
+        isMysteryMatch: m.isMysteryMatch,
+        mysteryCategory: m.mysteryCategory,
+        foundViaWildCard: wildCardLinkedIds.has(m.userAId),
+      }),
+    })),
   ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
   const likesSent = swipesSent.find((s) => s.action === 'VYBE')?._count._all ?? 0;
@@ -145,6 +179,9 @@ export default async function UserDetailPage({ params }: { params: Promise<{ use
                   {matches.map((m) => (
                     <tr key={m.id} className="border-b border-border last:border-0">
                       <td className="py-1.5">{m.other}</td>
+                      <td className="py-1.5 text-inkSoft">
+                        {m.origin ? `${m.origin.emoji} ${m.origin.label}` : 'Discover'}
+                      </td>
                       <td className="py-1.5 text-inkSoft">{m.createdAt.toISOString().slice(0, 10)}</td>
                       <td className="py-1.5">{m.unmatchedAt ? <Badge tone="warning">Unmatched</Badge> : <Badge tone="success">Active</Badge>}</td>
                     </tr>
