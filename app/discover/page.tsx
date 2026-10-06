@@ -59,6 +59,14 @@ const INTENT_FILTER_LABELS: Record<string, string> = {
 export default function DiscoverPage() {
   const [feed, setFeed] = useState<FeedProfile[] | null>(null);
   const [meta, setMeta] = useState<DiscoverMeta | null>(null);
+  // Surfaced when /api/discover itself returns a non-200 (e.g.
+  // checkAccountActive's 403 for an unverified/suspended account, or the
+  // 409 for "finish onboarding first") -- previously loadFeed() silently
+  // treated any such response as an empty feed, so a blocked user just
+  // saw the generic "No one here yet" card with no way to tell that was
+  // never really the reason. See lib/accountEnforcement.ts for the exact
+  // set of reasons this can be.
+  const [feedError, setFeedError] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
   const [match, setMatch] = useState<MatchInfo | null>(null);
   const [locationPromptDismissed, setLocationPromptDismissed] = useState(false);
@@ -100,12 +108,20 @@ export default function DiscoverPage() {
 
   function loadFeed() {
     fetch('/api/discover')
-      .then((r) => r.json())
-      .then((d) => {
-        setFeed(d.feed ?? []);
-        setMeta(d.meta ?? null);
-        setWildCardRemaining(d.meta?.wildCard?.remaining ?? null);
-      });
+      .then(async (r) => ({ ok: r.ok, data: await r.json().catch(() => ({})) }))
+      .then(({ ok, data }) => {
+        if (!ok) {
+          setFeedError(data.error ?? "Couldn't load your feed right now.");
+          setFeed([]);
+          setMeta(null);
+          return;
+        }
+        setFeedError(null);
+        setFeed(data.feed ?? []);
+        setMeta(data.meta ?? null);
+        setWildCardRemaining(data.meta?.wildCard?.remaining ?? null);
+      })
+      .catch(() => setFeedError("Couldn't load your feed right now."));
   }
 
   function toggleFilterId(list: string[], id: string): string[] {
@@ -509,7 +525,21 @@ export default function DiscoverPage() {
           {searchActive ? `Showing ${feed?.length ?? 0} search result${feed?.length === 1 ? '' : 's'}.` : 'Ranked by shared interests, city, and intent.'}
         </p>
 
-        {feed === null && <p className="text-sm text-inkSoft">Loading your feed...</p>}
+        {feed === null && !feedError && <p className="text-sm text-inkSoft">Loading your feed...</p>}
+
+        {/* Distinct from the "no one here yet" empty state below --
+            feedError means the request itself failed (blocked account,
+            onboarding incomplete, network/auth error), so saying "no one
+            here" would be actively misleading. See loadFeed(). */}
+        {feedError && (
+          <div className="rounded-card border border-line bg-white p-8 text-center">
+            <p className="font-display text-lg font-bold">Can&apos;t load Discover right now</p>
+            <p className="mt-1 text-sm text-inkSoft">{feedError}</p>
+            <a href="/profile" className="mt-3 inline-block text-sm font-bold text-magenta underline">
+              Go to your profile
+            </a>
+          </div>
+        )}
 
         {/* "Try widening your city" used to point at a setting that
             doesn't exist (city isn't editable from the Profile screen),
@@ -517,7 +547,7 @@ export default function DiscoverPage() {
             real user's empty state. There's no self-service lever here
             today -- the pool is genuinely just thin -- so this says that
             plainly instead of suggesting a fix that doesn't exist. */}
-        {feed !== null && feed.length === 0 && (
+        {!feedError && feed !== null && feed.length === 0 && (
           <div className="rounded-card border border-line bg-white p-8 text-center">
             <p className="font-display text-lg font-bold">{searchActive ? 'No one matches that search' : 'No one here yet'}</p>
             <p className="mt-1 text-sm text-inkSoft">
