@@ -69,13 +69,14 @@ export default function ModerationCaseActions({ caseId, role, status, currentAss
             <ConfirmActionButton
               label="Resolve (action taken)"
               confirmTitle="Resolve this case"
-              confirmDescription="Describe what enforcement action was taken (or link the User Actions used)."
+              confirmDescription="Describe what enforcement action was taken (or link the User Actions used). If this case is about a photo still awaiting its first decision, this also rejects that photo and notifies the user -- it stays invisible in Discover."
               endpoint={`/api/moderation/cases/${caseId}/resolve`}
               extraBody={{ outcome: 'RESOLVED' }}
             />
             <ConfirmActionButton
               label="Dismiss (no violation)"
               confirmTitle="Dismiss this case"
+              confirmDescription="If this case is about a photo still awaiting its first decision, this approves that photo and notifies the user -- it becomes visible in Discover right away, no logout needed on their end."
               endpoint={`/api/moderation/cases/${caseId}/resolve`}
               extraBody={{ outcome: 'DISMISSED' }}
             />
