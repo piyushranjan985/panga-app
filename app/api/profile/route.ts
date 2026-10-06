@@ -50,8 +50,10 @@ const upsertSchema = z.object({
   bio: z.string().trim().max(280).default(''),
   intent: intentEnum,
   avatarHue: z.number().int().min(1).max(6).default(1),
-  // "What are you into?" — broad/casual, 5 to 8.
-  interestIds: z.array(z.string()).min(5, 'Pick at least 5').max(8),
+  // "What are you into?" — broad/casual, 3 to 5 (app-wide rule: no
+  // onboarding selection step asks for a minimum above 3 or a maximum
+  // above 5 -- see app/onboarding/page.tsx's matching interests step).
+  interestIds: z.array(z.string()).min(3, 'Pick at least 3').max(5),
   // "What's your tribe?" — up to 5 tribes, plus 1-3 sub-communities per
   // tribe picked (validated against tribeIds below, not just count).
   tribeIds: z.array(z.string()).max(5).default([]),
@@ -346,7 +348,7 @@ const patchSchema = z.object({
   notifyVybeVouch: z.boolean().optional(),
   notifyReminders: z.boolean().optional(),
   bio: z.string().trim().max(280).optional(),
-  interestIds: z.array(z.string()).max(8).optional(),
+  interestIds: z.array(z.string()).max(5).optional(),
   tribeIds: z.array(z.string()).max(5).optional(),
   subCommunityIds: z.array(z.string()).optional(),
   relationshipStyleIds: z.array(z.string()).max(3).optional(),

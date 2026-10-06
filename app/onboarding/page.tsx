@@ -283,11 +283,13 @@ function OnboardingForm() {
   const visibleTribes = tribes.filter((t) => t.intents.length === 0 || t.intents.includes(form.intent));
   const visiblePrompts = prompts.filter((p) => p.intents.length === 0 || p.intents.includes(form.intent));
 
-  // "What are you into?" (interests): a broad, casual read -- 5 to 8 short
+  // "What are you into?" (interests): a broad, casual read -- 3 to 5 short
   // tags, no drill-down. Deliberately shallower than Tribe below, which is
   // the "actually tell us your specific scene" layer (Something Real /
-  // Rishta Ready only).
-  const interestsIncomplete = form.interestIds.length < 5;
+  // Rishta Ready only). Capped at 3-5 app-wide (see docs/PHONE_FIRST_AUTH.md's
+  // sibling onboarding-copy conventions) so no onboarding step ever asks for
+  // a minimum above 3 or a maximum above 5 -- this was the one outlier.
+  const interestsIncomplete = form.interestIds.length < 3;
 
   // Tribe: pick up to 5 (4 for Rishta Ready) sub-cultures, then drill into
   // 1-3 specific communities per tribe you picked. Deselecting a tribe
@@ -741,17 +743,17 @@ function OnboardingForm() {
       {stepKey === 'interests' && (
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">✨ What are you into?</h1>
-          <p className="text-sm text-inkSoft">Pick 5 to 8 — the quick, casual read on you.</p>
+          <p className="text-sm text-inkSoft">Pick 3 to 5 — the quick, casual read on you.</p>
           <div className="flex flex-wrap gap-2">
             {visibleInterests.map((i) => {
               const selected = form.interestIds.includes(i.id);
-              const disabled = !selected && form.interestIds.length >= 8;
+              const disabled = !selected && form.interestIds.length >= 5;
               return (
                 <button
                   key={i.id}
                   type="button"
                   disabled={disabled}
-                  onClick={() => setForm({ ...form, interestIds: toggle(form.interestIds, i.id, 8) })}
+                  onClick={() => setForm({ ...form, interestIds: toggle(form.interestIds, i.id, 5) })}
                   className={`rounded-full border px-3 py-1.5 text-sm ${
                     selected ? 'border-magenta bg-magenta/10 text-magenta' : 'border-line'
                   } ${disabled ? 'opacity-40' : ''}`}
@@ -762,7 +764,7 @@ function OnboardingForm() {
             })}
           </div>
           <p className="text-xs text-inkSoft">
-            {form.interestIds.length} of 8 picked{interestsIncomplete ? ' — need at least 5' : ''}
+            {form.interestIds.length} of 5 picked{interestsIncomplete ? ' — need at least 3' : ''}
           </p>
         </div>
       )}
