@@ -23,6 +23,39 @@ interface DiscoverMeta {
   wildCard: { limit: number; used: number; remaining: number };
 }
 
+interface TaxonomyOption {
+  id: string;
+  label: string;
+  emoji: string;
+}
+
+// Mirrors app/api/discover/search/route.ts's `appliedFilters` response
+// shape -- echoed back so the chips under the search box can show exactly
+// what the (rule-based, see lib/searchQueryParser.ts) parser understood
+// from free text, plus whatever the filter panel explicitly set.
+interface AppliedFilters {
+  gender: string | null;
+  intent: string | null;
+  ageMin: number | null;
+  ageMax: number | null;
+  distanceKm: number | null;
+  interestIds: string[];
+  tribeIds: string[];
+}
+
+const GENDER_FILTER_LABELS: Record<string, string> = {
+  WOMAN: 'Women',
+  MAN: 'Men',
+  NON_BINARY: 'Non-binary',
+  OTHER: 'Other',
+};
+
+const INTENT_FILTER_LABELS: Record<string, string> = {
+  JUST_VIBING: 'Just Vibing',
+  SOMETHING_REAL: 'Something Real',
+  RISHTA_READY: 'Rishta Ready',
+};
+
 export default function DiscoverPage() {
   const [feed, setFeed] = useState<FeedProfile[] | null>(null);
   const [meta, setMeta] = useState<DiscoverMeta | null>(null);
@@ -41,6 +74,30 @@ export default function DiscoverPage() {
   const [wildCardBusy, setWildCardBusy] = useState(false);
   const [wildCardError, setWildCardError] = useState<string | null>(null);
 
+  // Search (item 5, Sept 2026) -- a structured filter panel AND a
+  // free-text box, both feeding the same GET /api/discover/search (see
+  // that route for how the two combine: explicit filters always win over
+  // whatever the text box's rule-based parser guessed). searchActive just
+  // means "the feed below is search results, not the ordinary ranked
+  // feed" -- swiping behaves identically either way.
+  const [taxonomy, setTaxonomy] = useState<{ interests: TaxonomyOption[]; tribes: TaxonomyOption[] }>({
+    interests: [],
+    tribes: [],
+  });
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [filterGender, setFilterGender] = useState('');
+  const [filterIntent, setFilterIntent] = useState('');
+  const [filterAgeMin, setFilterAgeMin] = useState('');
+  const [filterAgeMax, setFilterAgeMax] = useState('');
+  const [filterDistanceKm, setFilterDistanceKm] = useState('');
+  const [filterInterestIds, setFilterInterestIds] = useState<string[]>([]);
+  const [filterTribeIds, setFilterTribeIds] = useState<string[]>([]);
+  const [searchActive, setSearchActive] = useState(false);
+  const [searchBusy, setSearchBusy] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [appliedFilters, setAppliedFilters] = useState<AppliedFilters | null>(null);
+
   function loadFeed() {
     fetch('/api/discover')
       .then((r) => r.json())
@@ -49,6 +106,49 @@ export default function DiscoverPage() {
         setMeta(d.meta ?? null);
         setWildCardRemaining(d.meta?.wildCard?.remaining ?? null);
       });
+  }
+
+  function toggleFilterId(list: string[], id: string): string[] {
+    return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+  }
+
+  async function runSearch() {
+    setSearchBusy(true);
+    setSearchError(null);
+    try {
+      const qs = new URLSearchParams();
+      if (searchText.trim()) qs.set('q', searchText.trim());
+      if (filterGender) qs.set('gender', filterGender);
+      if (filterIntent) qs.set('intent', filterIntent);
+      if (filterAgeMin) qs.set('ageMin', filterAgeMin);
+      if (filterAgeMax) qs.set('ageMax', filterAgeMax);
+      if (filterDistanceKm) qs.set('distanceKm', filterDistanceKm);
+      if (filterInterestIds.length) qs.set('interestIds', filterInterestIds.join(','));
+      if (filterTribeIds.length) qs.set('tribeIds', filterTribeIds.join(','));
+
+      const res = await fetch(`/api/discover/search?${qs.toString()}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setSearchError(data.error ?? "Couldn't search right now.");
+        return;
+      }
+      setFeed(data.feed ?? []);
+      setAppliedFilters(data.appliedFilters ?? null);
+      setIndex(0);
+      setSearchActive(true);
+    } catch {
+      setSearchError("Couldn't search right now.");
+    } finally {
+      setSearchBusy(false);
+    }
+  }
+
+  function clearSearch() {
+    setSearchActive(false);
+    setAppliedFilters(null);
+    setSearchError(null);
+    setIndex(0);
+    loadFeed();
   }
 
   // Pulled live, inside the normal swipe flow -- not a separate feed or
@@ -83,6 +183,13 @@ export default function DiscoverPage() {
 
   useEffect(() => {
     loadFeed();
+    // Interests + tribes for the search filter panel's chip pickers --
+    // same taxonomy onboarding already uses (see app/onboarding/page.tsx),
+    // fetched once here since Discover doesn't otherwise need it.
+    fetch('/api/onboarding-options')
+      .then((r) => r.json())
+      .then((d) => setTaxonomy({ interests: d.interests ?? [], tribes: d.tribes ?? [] }))
+      .catch(() => {});
   }, []);
 
   // Just Vibing is distance-based (see lib/matching.ts) -- without shared
@@ -111,7 +218,7 @@ export default function DiscoverPage() {
   }
 
   const showLocationPrompt =
-    meta?.intent === 'JUST_VIBING' && !meta.hasSharedLocation && !locationPromptDismissed;
+    meta?.intent === 'JUST_VIBING' && !meta.hasSharedLocation && !locationPromptDismissed && !searchActive;
 
   async function swipe(action: 'PASS' | 'VYBE') {
     const current = feed?.[index];
@@ -135,12 +242,205 @@ export default function DiscoverPage() {
 
   const current = feed?.[index];
 
+  const appliedFilterChips: string[] = [];
+  if (appliedFilters) {
+    if (appliedFilters.gender) appliedFilterChips.push(GENDER_FILTER_LABELS[appliedFilters.gender] ?? appliedFilters.gender);
+    if (appliedFilters.intent) appliedFilterChips.push(INTENT_FILTER_LABELS[appliedFilters.intent] ?? appliedFilters.intent);
+    if (appliedFilters.ageMin != null || appliedFilters.ageMax != null) {
+      appliedFilterChips.push(`${appliedFilters.ageMin ?? '18'}–${appliedFilters.ageMax ?? '99'} yrs`);
+    }
+    if (appliedFilters.distanceKm != null) appliedFilterChips.push(`within ${appliedFilters.distanceKm} km`);
+    for (const id of appliedFilters.interestIds) {
+      const interestMatch = taxonomy.interests.find((i) => i.id === id);
+      if (interestMatch) appliedFilterChips.push(`${interestMatch.emoji} ${interestMatch.label}`);
+    }
+    for (const id of appliedFilters.tribeIds) {
+      const tribeMatch = taxonomy.tribes.find((t) => t.id === id);
+      if (tribeMatch) appliedFilterChips.push(`${tribeMatch.emoji} ${tribeMatch.label}`);
+    }
+  }
+
   return (
     <div className="min-h-screen pb-24 sm:pb-10">
       <Navbar />
       <InactivityLogout />
       <main className="mx-auto max-w-3xl px-4 py-6">
         <h1 className="mb-1 font-display text-2xl font-extrabold">Discover</h1>
+
+        {/* Search (item 5, Sept 2026) -- a free-text box backed by a
+            deterministic parser (see lib/searchQueryParser.ts; no LLM, no
+            paid API, per the user's explicit "keep it free/rule-based"
+            scoping) plus an explicit filter panel for when plain text
+            isn't precise enough. Both feed the same endpoint and combine
+            there -- see app/api/discover/search/route.ts. */}
+        <div className="mb-4 rounded-2xl border border-line bg-white p-3">
+          <div className="flex gap-2">
+            <input
+              id="discover-search-text"
+              type="text"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+              placeholder="Try 'women 24-29 within 10km who love travel'"
+              className="flex-1 rounded-full border border-line px-4 py-2 text-sm outline-none"
+            />
+            <button
+              type="button"
+              onClick={runSearch}
+              disabled={searchBusy}
+              className="gradient-btn shrink-0 rounded-full px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
+            >
+              {searchBusy ? 'Searching…' : '🔎 Search'}
+            </button>
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((v) => !v)}
+              className="text-xs font-bold text-inkSoft underline"
+            >
+              {filtersOpen ? 'Hide filters' : 'Filters (age, distance, interests…)'}
+            </button>
+            {searchActive && (
+              <button type="button" onClick={clearSearch} className="text-xs font-bold text-magenta underline">
+                Clear search
+              </button>
+            )}
+          </div>
+
+          {filtersOpen && (
+            <div className="mt-3 flex flex-col gap-3 border-t border-line pt-3">
+              <div className="flex flex-wrap gap-3">
+                <label className="flex items-center gap-1 text-xs text-inkSoft">
+                  Age
+                  <input
+                    id="discover-filter-age-min"
+                    type="number"
+                    min={18}
+                    value={filterAgeMin}
+                    onChange={(e) => setFilterAgeMin(e.target.value)}
+                    placeholder="18"
+                    className="w-16 rounded-full border border-line px-2 py-1 text-xs outline-none"
+                  />
+                  to
+                  <input
+                    id="discover-filter-age-max"
+                    type="number"
+                    min={18}
+                    value={filterAgeMax}
+                    onChange={(e) => setFilterAgeMax(e.target.value)}
+                    placeholder="99"
+                    className="w-16 rounded-full border border-line px-2 py-1 text-xs outline-none"
+                  />
+                </label>
+
+                <label className="flex items-center gap-1 text-xs text-inkSoft">
+                  Within
+                  <input
+                    id="discover-filter-distance"
+                    type="number"
+                    min={1}
+                    value={filterDistanceKm}
+                    onChange={(e) => setFilterDistanceKm(e.target.value)}
+                    placeholder="km"
+                    className="w-16 rounded-full border border-line px-2 py-1 text-xs outline-none"
+                  />
+                  km
+                </label>
+
+                <label className="flex items-center gap-1 text-xs text-inkSoft">
+                  Gender
+                  <select
+                    id="discover-filter-gender"
+                    value={filterGender}
+                    onChange={(e) => setFilterGender(e.target.value)}
+                    className="rounded-full border border-line px-2 py-1 text-xs outline-none"
+                  >
+                    <option value="">Any</option>
+                    <option value="WOMAN">Women</option>
+                    <option value="MAN">Men</option>
+                    <option value="NON_BINARY">Non-binary</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </label>
+
+                <label className="flex items-center gap-1 text-xs text-inkSoft">
+                  Intent
+                  <select
+                    id="discover-filter-intent"
+                    value={filterIntent}
+                    onChange={(e) => setFilterIntent(e.target.value)}
+                    className="rounded-full border border-line px-2 py-1 text-xs outline-none"
+                  >
+                    <option value="">Any</option>
+                    <option value="JUST_VIBING">Just Vibing</option>
+                    <option value="SOMETHING_REAL">Something Real</option>
+                    <option value="RISHTA_READY">Rishta Ready</option>
+                  </select>
+                </label>
+              </div>
+
+              {taxonomy.interests.length > 0 && (
+                <div>
+                  <p className="mb-1 text-xs font-bold text-inkSoft">Interests</p>
+                  <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto">
+                    {taxonomy.interests.map((i) => {
+                      const selected = filterInterestIds.includes(i.id);
+                      return (
+                        <button
+                          key={i.id}
+                          type="button"
+                          onClick={() => setFilterInterestIds((prev) => toggleFilterId(prev, i.id))}
+                          className={`rounded-full border px-2.5 py-1 text-xs ${
+                            selected ? 'border-magenta bg-magenta/10 text-magenta' : 'border-line'
+                          }`}
+                        >
+                          {i.emoji} {i.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {taxonomy.tribes.length > 0 && (
+                <div>
+                  <p className="mb-1 text-xs font-bold text-inkSoft">Tribes</p>
+                  <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto">
+                    {taxonomy.tribes.map((t) => {
+                      const selected = filterTribeIds.includes(t.id);
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setFilterTribeIds((prev) => toggleFilterId(prev, t.id))}
+                          className={`rounded-full border px-2.5 py-1 text-xs ${
+                            selected ? 'border-mint bg-mint/10 text-mint' : 'border-line'
+                          }`}
+                        >
+                          {t.emoji} {t.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {searchError && <p className="mt-2 text-xs text-magenta">{searchError}</p>}
+
+          {searchActive && appliedFilterChips.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {appliedFilterChips.map((c) => (
+                <span key={c} className="rounded-full bg-paper px-2.5 py-1 text-xs font-semibold text-inkSoft">
+                  {c}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Wild Card -- see docs/WILD_CARD.md. Same intent, same city, but
             the opposite of what the ranked feed below favors: someone you
@@ -149,7 +449,7 @@ export default function DiscoverPage() {
             the button doubles as a reminder of the daily cap. The caption
             is the one-line version of that -- docs/WILD_CARD.md has the
             full writeup. */}
-        {meta && (
+        {meta && !searchActive && (
           <div className="mb-6">
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -205,7 +505,9 @@ export default function DiscoverPage() {
           </div>
         )}
 
-        <p className="mb-1 text-sm text-inkSoft">Ranked by shared interests, city, and intent.</p>
+        <p className="mb-1 text-sm text-inkSoft">
+          {searchActive ? `Showing ${feed?.length ?? 0} search result${feed?.length === 1 ? '' : 's'}.` : 'Ranked by shared interests, city, and intent.'}
+        </p>
 
         {feed === null && <p className="text-sm text-inkSoft">Loading your feed...</p>}
 
@@ -217,9 +519,11 @@ export default function DiscoverPage() {
             plainly instead of suggesting a fix that doesn't exist. */}
         {feed !== null && feed.length === 0 && (
           <div className="rounded-card border border-line bg-white p-8 text-center">
-            <p className="font-display text-lg font-bold">No one here yet</p>
+            <p className="font-display text-lg font-bold">{searchActive ? 'No one matches that search' : 'No one here yet'}</p>
             <p className="mt-1 text-sm text-inkSoft">
-              There's no one new to show you in your city right now — check back soon as more people join findmyVybe.
+              {searchActive
+                ? 'Try widening the age range or distance, or clear the search to see your usual feed.'
+                : "There's no one new to show you in your city right now — check back soon as more people join findmyVybe."}
             </p>
           </div>
         )}
@@ -229,7 +533,15 @@ export default function DiscoverPage() {
         {feed !== null && feed.length > 0 && !current && (
           <div className="rounded-card border border-line bg-white p-8 text-center">
             <p className="font-display text-lg font-bold">That&apos;s everyone for now</p>
-            <p className="mt-1 text-sm text-inkSoft">Check back later, or try Quiet Mode from your profile.</p>
+            <p className="mt-1 text-sm text-inkSoft">
+              {searchActive ? (
+                <button type="button" onClick={clearSearch} className="font-bold text-magenta underline">
+                  Clear search
+                </button>
+              ) : (
+                'Check back later, or try Quiet Mode from your profile.'
+              )}
+            </p>
           </div>
         )}
       </main>

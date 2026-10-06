@@ -22,6 +22,11 @@ export interface FeedProfile {
   // Discover card. Changes only the badge + "why" framing below; the
   // swipe mechanics are identical either way.
   isWildCard?: boolean;
+  // Only present on results from /api/discover/search (see
+  // app/api/discover/search/route.ts) -- the ordinary feed doesn't
+  // compute/send it today, so this stays optional rather than forcing a
+  // schema change on that unrelated route.
+  age?: number;
 }
 
 const HUE_GRADIENTS: Record<number, string> = {
@@ -80,7 +85,9 @@ export default function VibeCard({
         </div>
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4 text-white">
           <div className="flex items-center gap-2">
-            <h3 className="font-display text-xl font-bold">{profile.displayName}</h3>
+            <h3 className="font-display text-xl font-bold">
+              {profile.displayName}{profile.age != null ? `, ${profile.age}` : ''}
+            </h3>
             <span className="text-xs opacity-80">
               · {profile.city}
               {profile.distance ? ` · ${profile.distance}` : ''}
