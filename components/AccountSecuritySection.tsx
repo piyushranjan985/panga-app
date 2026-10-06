@@ -48,6 +48,10 @@ export default function AccountSecuritySection({
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
   const [removingPasskeyId, setRemovingPasskeyId] = useState<string | null>(null);
 
+  const [signOutOtherBusy, setSignOutOtherBusy] = useState(false);
+  const [signOutOtherError, setSignOutOtherError] = useState<string | null>(null);
+  const [signOutOtherDone, setSignOutOtherDone] = useState(false);
+
   if (!account) return null;
 
   async function sendPhoneCode(e: React.FormEvent) {
@@ -131,6 +135,23 @@ export default function AccountSecuritySection({
       setPasskeyError(err instanceof Error ? err.message : 'Could not remove that passkey');
     } finally {
       setRemovingPasskeyId(null);
+    }
+  }
+
+  async function signOutOtherDevices() {
+    setSignOutOtherBusy(true);
+    setSignOutOtherError(null);
+    try {
+      const res = await fetch('/api/profile/sign-out-other-devices', { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? 'Could not sign out other devices');
+      }
+      setSignOutOtherDone(true);
+    } catch (err) {
+      setSignOutOtherError(err instanceof Error ? err.message : 'Could not sign out other devices');
+    } finally {
+      setSignOutOtherBusy(false);
     }
   }
 
@@ -310,6 +331,33 @@ export default function AccountSecuritySection({
                 </li>
               ))}
             </ul>
+          )}
+        </div>
+
+        {/* Device sessions -- see app/api/profile/sign-out-other-devices/route.ts.
+            Signing in on a new device never logs out your other ones (that's
+            normal -- phone and web side by side is expected), so this is the
+            self-service way to end every OTHER session at once if you lose a
+            device or sign in somewhere you don't trust. This device stays
+            signed in. */}
+        <div className="rounded-2xl border border-line p-3">
+          <p className="text-sm font-bold">Device sessions</p>
+          <p className="mt-1 text-sm text-inkSoft">
+            Signed in on more than one device? That's normal. If you lost a device or signed in somewhere you don't
+            trust, this signs out every device except this one.
+          </p>
+          {signOutOtherError && <p className="mt-2 text-sm text-magenta">{signOutOtherError}</p>}
+          {signOutOtherDone ? (
+            <p className="mt-2 text-sm font-semibold text-green-700">Done — every other device is signed out.</p>
+          ) : (
+            <button
+              type="button"
+              onClick={signOutOtherDevices}
+              disabled={signOutOtherBusy}
+              className="mt-2 rounded-full border border-line px-4 py-2 text-xs font-bold disabled:opacity-60"
+            >
+              {signOutOtherBusy ? 'Signing out other devices...' : 'Sign out of all other devices'}
+            </button>
           )}
         </div>
       </div>
