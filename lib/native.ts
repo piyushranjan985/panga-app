@@ -28,6 +28,49 @@ export async function isNativeApp(): Promise<boolean> {
   }
 }
 
+/**
+ * Turns on @capacitor/privacy-screen -- what each platform actually gets
+ * is NOT the same, and that difference is a real Apple platform
+ * restriction, not a gap in this integration:
+ *
+ *  - Android: FLAG_SECURE, a real OS-level block. Screenshots and screen
+ *    recording both fail outright while this app is in the foreground,
+ *    and the app-switcher/recents preview shows a splash screen instead
+ *    of a live snapshot of the last thing on screen (chat, photos,
+ *    OTPs).
+ *  - iOS: Apple gives third-party apps no API to block or prevent the
+ *    screenshot gesture itself -- full stop, no plugin or native code
+ *    change anywhere can do that on iOS. All this (or anything else) can
+ *    do is blur the app-switcher/background preview, so a backgrounded
+ *    app at least doesn't leak content there.
+ *  - Plain web/mobile browser tab (isNativeApp() false): nothing, by
+ *    design. There is no browser API, on any browser, to detect or
+ *    block an OS-level screenshot -- this plugin's own web
+ *    implementation is a documented no-op. Deliberately not adding a
+ *    JS/CSS "anti-screenshot" trick (blur-on-blur-event, canvas
+ *    rendering, etc.) as a fallback here -- those are trivially
+ *    bypassed and would only give members a false sense of security
+ *    about who can capture their photos.
+ *
+ * Call once, as early as possible (see components/ScreenshotProtection.
+ * tsx, mounted in app/layout.tsx so it covers every screen including
+ * login/verify/vouch, not just the authenticated app shell). Fails open
+ * -- a hardening feature should never be able to crash the app.
+ */
+export async function enableScreenshotProtection(): Promise<void> {
+  if (!(await isNativeApp())) return;
+  try {
+    const { PrivacyScreen } = await import('@capacitor/privacy-screen');
+    await PrivacyScreen.enable({
+      android: { preventScreenshots: true, privacyModeOnActivityHidden: 'splash' },
+      ios: { blurEffect: 'dark' },
+    });
+  } catch {
+    // Native call failed on this particular device/OS version -- fail
+    // open rather than taking the app down over a hardening feature.
+  }
+}
+
 export interface NativeCoords {
   latitude: number;
   longitude: number;
