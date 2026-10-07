@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import SiteFooter from '@/components/SiteFooter';
 
 /**
  * Real, published Privacy Policy -- required before Google will let
@@ -21,6 +22,7 @@ import Link from 'next/link';
  */
 export default function PrivacyPolicyPage() {
   return (
+    <>
     <main className="mx-auto max-w-2xl px-6 py-12 text-sm leading-relaxed text-ink">
       <Link href="/" className="text-xs font-semibold uppercase tracking-wide text-magenta">
         &larr; findmyVybe
@@ -204,5 +206,7 @@ export default function PrivacyPolicyPage() {
         .
       </p>
     </main>
+    <SiteFooter />
+    </>
   );
 }

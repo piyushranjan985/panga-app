@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
+import SiteFooter from '@/components/SiteFooter';
 import InactivityLogout from '@/components/InactivityLogout';
 import { HELP_CATEGORIES, HELP_ENTRIES, entryById, searchHelp, type HelpEntry } from '@/lib/helpCenter';
 
@@ -165,6 +166,7 @@ function HelpCenterContent() {
           </div>
         )}
       </main>
+      <SiteFooter />
     </div>
   );
 }

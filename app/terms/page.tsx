@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import SiteFooter from '@/components/SiteFooter';
 
 /**
  * Real, published Terms of Service -- required alongside app/privacy/
@@ -32,6 +33,7 @@ import Link from 'next/link';
  */
 export default function TermsOfServicePage() {
   return (
+    <>
     <main className="mx-auto max-w-2xl px-6 py-12 text-sm leading-relaxed text-ink">
       <Link href="/" className="text-xs font-semibold uppercase tracking-wide text-magenta">
         &larr; findmyVybe
@@ -245,5 +247,7 @@ export default function TermsOfServicePage() {
         .
       </p>
     </main>
+    <SiteFooter />
+    </>
   );
 }

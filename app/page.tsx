@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import SiteFooter from '@/components/SiteFooter';
 
 export default function LandingPage() {
   return (
@@ -64,6 +65,7 @@ export default function LandingPage() {
           </p>
         </div>
       </main>
+      <SiteFooter />
     </>
   );
 }
