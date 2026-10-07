@@ -39,6 +39,14 @@ export default function SiteFooter() {
         <a href="mailto:support@findmyvybe.com" className="hover:text-magenta">
           support@findmyvybe.com
         </a>
+        <a
+          href="https://instagram.com/findmyvybe"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-magenta"
+        >
+          @findmyvybe
+        </a>
       </div>
       <p className="mt-4 text-center text-[11px] text-inkSoft">
         findmyVybe -- MVP, rolling out city by city, currently Bengaluru.

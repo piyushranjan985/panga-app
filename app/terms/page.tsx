@@ -18,13 +18,16 @@ import SiteFooter from '@/components/SiteFooter';
  * "intermediary" under those rules once user-to-user messaging is
  * live), and the DPDP Act, 2023.
  *
- * TWO PLACEHOLDERS TO FILL IN BEFORE RELYING ON THIS FOR REAL:
+ * ONE PLACEHOLDER LEFT TO FILL IN BEFORE RELYING ON THIS FOR REAL:
  *  1. "findmyVybe ('we', 'us')" below doesn't name a registered legal
  *     entity, because none exists in this codebase or anywhere else in
  *     this project yet -- same approach privacy/page.tsx already takes
  *     for the same reason. Once incorporated (or if run as a sole
  *     proprietorship under GST registration), add the real entity
- *     name/address to the "Who we are" section.
+ *     name/address to the "Who we are" section. (The Grievance Officer
+ *     section below is separate -- Rule 3(2) doesn't require a
+ *     registered entity to name one, so P K Ranjan/support@findmyvybe.com,
+ *     supplied directly by the project owner, is already filled in.)
  *  2. "Governing law" names the courts of Ranchi, Jharkhand -- an
  *     explicit choice for this project, not a generic default. Still
  *     worth confirming with counsel once a registered entity exists,
@@ -229,6 +232,25 @@ export default function TermsOfServicePage() {
       <p className="mt-2 text-inkSoft">
         These terms are governed by the laws of India, and any dispute arising from them or your use of
         findmyVybe is subject to the exclusive jurisdiction of the courts of Ranchi, Jharkhand.
+      </p>
+
+      <h2 className="mt-8 font-display text-xl font-bold">Grievance Officer</h2>
+      <p className="mt-2 text-inkSoft">
+        In accordance with the Information Technology (Intermediary Guidelines and Digital Media Ethics Code)
+        Rules, 2021, the Grievance Officer for findmyVybe is:
+      </p>
+      <p className="mt-2 text-inkSoft">
+        <span className="font-semibold">P K Ranjan</span>
+        <br />
+        Grievance Officer
+        <br />
+        Email:{' '}
+        <a href="mailto:support@findmyvybe.com" className="font-semibold text-magenta">
+          support@findmyvybe.com
+        </a>
+      </p>
+      <p className="mt-2 text-inkSoft">
+        We'll acknowledge a complaint within 24 hours of receiving it and work to resolve it within 15 days.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">Changes to these terms</h2>

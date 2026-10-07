@@ -203,6 +203,10 @@ export default function PrivacyPolicyPage() {
         <a href="mailto:support@findmyvybe.com" className="font-semibold text-magenta">
           support@findmyvybe.com
         </a>
+        . For the designated Grievance Officer under India's IT Rules, 2021, see the{' '}
+        <Link href="/terms" className="font-semibold text-magenta">
+          Terms of Service
+        </Link>
         .
       </p>
     </main>
