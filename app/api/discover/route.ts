@@ -4,7 +4,7 @@ import { getSession } from '@/lib/session';
 import { rankCandidates } from '@/lib/matching';
 import { distanceLabel } from '@/lib/geo';
 import { checkAccountActive } from '@/lib/accountEnforcement';
-import { getCityCandidatePool, toMatchable } from '@/lib/discoverPool';
+import { getEligibleCandidatePool, toMatchable } from '@/lib/discoverPool';
 import { wildCardQuota } from '@/lib/wildCard';
 
 const FEED_SIZE = 15;
@@ -36,10 +36,16 @@ export async function GET() {
     return NextResponse.json({ error: 'Finish onboarding first' }, { status: 409 });
   }
 
+  // Built before the pool fetch below -- getEligibleCandidatePool needs
+  // the viewer's own gender/lookingFor/intent/effective-coords to push
+  // eligibility into the SQL query (see lib/discoverPool.ts), not just
+  // their city.
+  const viewer = toMatchable({ ...viewerProfile, userId: viewerProfile.userId });
+
   const [blockedByMe, blockedMe, candidatePool, wildCard] = await Promise.all([
     db.block.findMany({ where: { blockerId: session.userId }, select: { blockedId: true } }),
     db.block.findMany({ where: { blockedId: session.userId }, select: { blockerId: true } }),
-    getCityCandidatePool(viewerProfile.city),
+    getEligibleCandidatePool(viewer),
     // Just a count for the Discover page's "🃏 Wild Card (N left)" button --
     // see docs/WILD_CARD.md. The actual wildcard fetch/scoring happens in
     // app/api/discover/wildcard/route.ts; this route never ranks a Wild
@@ -71,12 +77,14 @@ export async function GET() {
     ...blockedByMe.map((b) => b.blockedId),
     ...blockedMe.map((b) => b.blockerId),
   ]);
-  const viewer = toMatchable({ ...viewerProfile, userId: viewerProfile.userId });
-
-  // isEligibleCandidate() already drops the viewer's own id (see
-  // lib/matching.ts), so getCityCandidatePool() -- shared across every
-  // viewer in the city -- doesn't need a per-viewer "not me" filter at the
-  // DB level; that's what makes it cacheable across viewers at all.
+  // rankCandidates() runs isEligibleCandidate() again over candidatePool
+  // (see lib/matching.ts) even though getEligibleCandidatePool() already
+  // filtered by gender/intent/distance-or-city in SQL -- deliberately not
+  // redundant: the SQL filter queries from a grid cell's center (for
+  // cacheability) and pads its radius accordingly, so it's a little
+  // generous on purpose. This is what applies the real cutoff against the
+  // viewer's exact coordinates. See lib/discoverPool.ts and lib/geo.ts's
+  // gridCellFor doc comment.
   const ranked = rankCandidates(viewer, candidatePool, excluded).slice(0, FEED_SIZE);
   const winnerIds = ranked.map((r) => r.userId);
 

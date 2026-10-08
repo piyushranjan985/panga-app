@@ -4,15 +4,15 @@ import { getSession } from '@/lib/session';
 import { isEligibleCandidate, scoreCandidate, type Gender, type IntentType } from '@/lib/matching';
 import { distanceLabel, effectiveCoords, haversineKm } from '@/lib/geo';
 import { checkAccountActive } from '@/lib/accountEnforcement';
-import { toMatchable } from '@/lib/discoverPool';
+import { toMatchable, queryEligiblePool, ELIGIBLE_POOL_LIMIT } from '@/lib/discoverPool';
 import { ageFromDateOfBirth } from '@/lib/age';
 import { parseSearchQuery } from '@/lib/searchQueryParser';
 import { buildBehaviorWeights, behaviorBoost } from '@/lib/searchBehaviorBoost';
 
-// Upper bound on same-city rows considered per search request -- same cap
-// as lib/discoverPool.ts's ordinary feed pool, for the same reason (a city
-// large enough to hit this is already well past what any UI shows at once).
-const SEARCH_POOL_LIMIT = 500;
+// Same eligible-pool size as lib/discoverPool.ts's ordinary feed pool
+// (imported, not duplicated, so the two can't drift) -- for the same
+// reason: a city large enough to hit this is already well past what any
+// UI shows at once.
 const SEARCH_FEED_SIZE = 30; // generous vs. the ordinary feed's 15 -- a search is a deliberate, lower-frequency action
 
 const GENDERS: Gender[] = ['WOMAN', 'MAN', 'NON_BINARY', 'OTHER'];
@@ -36,14 +36,18 @@ function asEnum<T extends string>(v: string | null, allowed: T[]): T | undefined
  *
  * Deliberately a standalone route rather than a change to
  * app/api/discover/route.ts: that route's candidate pool (lib/
- * discoverPool.ts) is cached and intentionally lightweight (no dateOfBirth
- * / tribe ids -- see its MatchableProfile shape), which is exactly right
- * for the feed every user loads constantly, but wrong for an explicit,
- * occasional search that needs age + tribe filtering. This route queries
- * fresh instead of sharing that cache, and reuses isEligibleCandidate /
- * scoreCandidate UNCHANGED so search never surfaces someone the ordinary
- * feed's hard rules wouldn't otherwise allow -- it only narrows further
- * and re-ranks on top.
+ * discoverPool.ts) is cached, which is exactly right for the feed every
+ * user loads constantly, but wrong for an explicit, occasional search
+ * that also needs age + tribe filtering (not part of the cached pool's
+ * lightweight shape) and can't tolerate a stale cache the way a quick
+ * browse can. This route calls lib/discoverPool.ts's queryEligiblePool()
+ * directly -- same gender/intent/distance-or-city SQL filter as the
+ * ordinary feed, just run fresh against the viewer's exact coordinates
+ * instead of a cached, grid-cell-bucketed one -- then fetches the extra
+ * per-candidate fields (dateOfBirth, tribes) that filter needs. Reuses
+ * isEligibleCandidate() / scoreCandidate() UNCHANGED so search never
+ * surfaces someone the ordinary feed's hard rules wouldn't otherwise
+ * allow -- it only narrows further and re-ranks on top.
  */
 export async function GET(req: Request) {
   const session = await getSession();
@@ -94,55 +98,91 @@ export async function GET(req: Request) {
     if (filters.tribeIds.length === 0) filters.tribeIds = parsed.tribeIds;
   }
 
-  const [blockedByMe, blockedMe, poolRows, behaviorWeights] = await Promise.all([
+  // Built before the pool fetch below -- queryEligiblePool needs the
+  // viewer's own gender/lookingFor/intent/effective-coords, same as
+  // lib/discoverPool.ts's cached pool, just queried from the viewer's
+  // exact point instead of a grid cell's center (no cache here to share
+  // across viewers, so there's no reason to bucket).
+  const viewerMatchable = toMatchable({ ...viewerProfile, userId: viewerProfile.userId });
+  const viewerCoords = effectiveCoords(viewerProfile);
+
+  const [blockedByMe, blockedMe, eligibleRows, behaviorWeights] = await Promise.all([
     db.block.findMany({ where: { blockerId: session.userId }, select: { blockedId: true } }),
     db.block.findMany({ where: { blockedId: session.userId }, select: { blockerId: true } }),
-    db.profile.findMany({
-      where: {
-        city: viewerProfile.city,
-        quietMode: false,
-        user: { status: 'ACTIVE', discoveryRestricted: false, profileHidden: false },
-      },
-      select: {
-        userId: true,
-        gender: true,
-        lookingFor: true,
-        city: true,
-        intent: true,
-        quietMode: true,
-        latitude: true,
-        longitude: true,
-        dateOfBirth: true,
-        interests: { select: { id: true } },
-        tribes: { select: { id: true } },
-        user: { select: { lastActiveAt: true } },
-      },
-      orderBy: { user: { lastActiveAt: 'desc' } },
-      take: SEARCH_POOL_LIMIT,
-    }),
+    // Should always resolve (every supported city has a centroid
+    // fallback -- see lib/geo.ts) -- guarded anyway rather than letting a
+    // malformed point reach Postgres as the ST_DWithin origin.
+    viewerCoords
+      ? queryEligiblePool(
+          {
+            city: viewerProfile.city,
+            viewerUserId: session.userId,
+            viewerGender: viewerProfile.gender,
+            viewerLookingFor: viewerProfile.lookingFor,
+            viewerIntent: viewerProfile.intent,
+            viewerLat: viewerCoords.lat,
+            viewerLng: viewerCoords.lng,
+          },
+          ELIGIBLE_POOL_LIMIT,
+        )
+      : Promise.resolve([]),
     buildBehaviorWeights(session.userId),
   ]);
 
-  // Scoped to this request's pool rows, not the viewer's entire swipe
-  // history -- see app/api/discover/route.ts's identical comment. The
-  // for-loop below only ever checks `excluded` against poolRows, so this
-  // is exactly the same exclusion set, just bounded by SEARCH_POOL_LIMIT
-  // instead of growing forever with how many times someone's searched.
-  const poolUserIds = poolRows.map((r) => r.userId);
-  const alreadySwiped = poolUserIds.length
-    ? await db.swipe.findMany({
-        where: { fromUserId: session.userId, toUserId: { in: poolUserIds } },
-        select: { toUserId: true },
-      })
-    : [];
+  // queryEligiblePool's shared SQL doesn't select dateOfBirth/interests/
+  // tribes (the cached ordinary-feed pool never needed them -- see
+  // lib/discoverPool.ts's MatchableProfile), so fetch those for just the
+  // rows it returned, same batched-by-userId shape as the rest of this
+  // codebase uses for "detail for a pool of ids" (see
+  // app/api/discover/route.ts's winners fetch).
+  const poolUserIds = eligibleRows.map((r) => r.userId);
+  const [alreadySwiped, extraFieldRows] = await Promise.all([
+    // Scoped to this request's pool, not the viewer's entire swipe
+    // history -- see app/api/discover/route.ts's identical comment.
+    poolUserIds.length
+      ? db.swipe.findMany({
+          where: { fromUserId: session.userId, toUserId: { in: poolUserIds } },
+          select: { toUserId: true },
+        })
+      : Promise.resolve([]),
+    poolUserIds.length
+      ? db.profile.findMany({
+          where: { userId: { in: poolUserIds } },
+          select: {
+            userId: true,
+            dateOfBirth: true,
+            interests: { select: { id: true } },
+            tribes: { select: { id: true } },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+  const extraFieldsByUserId = new Map(extraFieldRows.map((f) => [f.userId, f]));
+  const poolRows = eligibleRows
+    .map((r) => {
+      const extra = extraFieldsByUserId.get(r.userId);
+      // Defensive only: would mean a profile was deleted between the two
+      // queries above -- skip rather than throw.
+      if (!extra) return null;
+      // toMatchable() (called on this row below) expects user.lastActiveAt
+      // nested, matching the shape db.profile.findMany's `include` used to
+      // produce here before this route switched to queryEligiblePool's
+      // flat row shape.
+      return {
+        ...r,
+        user: { lastActiveAt: r.lastActiveAt },
+        dateOfBirth: extra.dateOfBirth,
+        interests: extra.interests,
+        tribes: extra.tribes,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
 
   const excluded = new Set([
     ...alreadySwiped.map((s) => s.toUserId),
     ...blockedByMe.map((b) => b.blockedId),
     ...blockedMe.map((b) => b.blockerId),
   ]);
-  const viewerMatchable = toMatchable({ ...viewerProfile, userId: viewerProfile.userId });
-  const viewerCoords = effectiveCoords(viewerProfile);
 
   const scored: { userId: string; score: number; reasons: string[] }[] = [];
   for (const row of poolRows) {

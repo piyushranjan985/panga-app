@@ -79,6 +79,60 @@ export function effectiveCoords(p: DistanceSource | null | undefined): { lat: nu
 }
 
 /**
+ * Grid-cell bucketing for lib/discoverPool.ts's candidate-pool cache.
+ *
+ * That pool query now filters candidates by real distance from the
+ * VIEWER's point (ST_DWithin against Profile.geoLocation -- see
+ * prisma/migrations/20261011090000_discovery_swipe_indexes). A viewer's
+ * exact coordinates are effectively unique per person, so caching the
+ * query result per exact point would mean one cache entry per viewer --
+ * no sharing, no point in caching at all. Rounding each viewer's point to
+ * a fixed-size cell lets every viewer in the same cell (with the same
+ * gender/lookingFor/intent) share one cached pool instead, which is what
+ * actually matters once a city has far more people than any one request
+ * needs to consider.
+ *
+ * The trade is a small amount of positional precision: everyone in a cell
+ * queries from that cell's CENTER, not their own exact point, so someone
+ * near a cell's edge gets a circle drawn from a point up to roughly one
+ * cell-diagonal away from where they actually are. GRID_CELL_RADIUS_PADDING_KM
+ * is added to the SQL radius specifically to absorb that -- it only ever
+ * makes the SQL fetch a little more inclusive, never less, because the
+ * final, exact eligibility decision still comes from
+ * lib/matching.ts's isEligibleCandidate() (run again, in JS, against the
+ * viewer's real coordinates, over whatever SQL returns) -- the same
+ * function that's always decided this, unchanged. SQL's job here is only
+ * to compose a far more relevant pool out of a huge table; it was never
+ * meant to be the exact cutoff by itself.
+ */
+const GRID_CELL_KM = 2;
+const KM_PER_DEGREE_LAT = 111.32; // ~constant at any latitude
+
+export interface GridCell {
+  /** Stable, cache-key-safe identifier for this cell. */
+  key: string;
+  centerLat: number;
+  centerLng: number;
+}
+
+export function gridCellFor(lat: number, lng: number, cellSizeKm: number = GRID_CELL_KM): GridCell {
+  const kmPerDegLng = KM_PER_DEGREE_LAT * Math.cos((lat * Math.PI) / 180);
+  const latIndex = Math.round((lat * KM_PER_DEGREE_LAT) / cellSizeKm);
+  const lngIndex = Math.round((lng * kmPerDegLng) / cellSizeKm);
+  return {
+    key: `${latIndex}:${lngIndex}`,
+    centerLat: (latIndex * cellSizeKm) / KM_PER_DEGREE_LAT,
+    centerLng: (lngIndex * cellSizeKm) / kmPerDegLng,
+  };
+}
+
+// A full cell-diagonal, rounded up -- deliberately generous (see the doc
+// comment above): over-padding just means SQL fetches a few more
+// candidates than strictly necessary, which costs nothing correctness-
+// wise since isEligibleCandidate() makes the real cutoff afterward.
+export const GRID_CELL_RADIUS_PADDING_KM = Math.ceil(GRID_CELL_KM * Math.SQRT2);
+
+/**
  * Distance label between two profiles. Uses real haversine distance when
  * both sides have shared precise location; otherwise falls back to a
  * same-city estimate (prefixed with "~") so the field still shows

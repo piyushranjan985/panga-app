@@ -130,9 +130,15 @@ from the user's point of view:
    for the day.
 3. Build the exclusion set: already swiped + blocked both directions +
    today's `WildCardUse` candidates.
-4. Rank the viewer's city candidate pool (shared with ordinary Discover
-   via `lib/discoverPool.ts` — same cached pool, same 45s TTL, just two
-   different scoring functions) with `rankWildCardCandidates`.
+4. Rank the viewer's eligible candidate pool (shared with ordinary
+   Discover via `lib/discoverPool.ts` — same cached pool, same 45s TTL,
+   just two different scoring functions) with `rankWildCardCandidates`.
+   As of the discovery-scale rewrite, that pool is no longer "everyone
+   in the city": it's SQL-filtered by gender/lookingFor/intent/distance-
+   or-city first (cached per city+gender+lookingFor+intent+grid-cell,
+   not just per city — see lib/geo.ts's `gridCellFor`), so it stays
+   relevant instead of arbitrary once a city has far more profiles than
+   any one request needs to rank.
 5. Take the top result. None left → 404, quota untouched (see §3).
 6. Fetch full profile detail for the winner, write the `WildCardUse` row,
    return `{ card, remaining, limit }`. `card` is shaped exactly like a

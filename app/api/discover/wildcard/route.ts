@@ -4,7 +4,7 @@ import { getSession } from '@/lib/session';
 import { rankWildCardCandidates } from '@/lib/matching';
 import { distanceLabel } from '@/lib/geo';
 import { checkAccountActive } from '@/lib/accountEnforcement';
-import { getCityCandidatePool, toMatchable } from '@/lib/discoverPool';
+import { getEligibleCandidatePool, toMatchable } from '@/lib/discoverPool';
 import { wildCardQuota, todaysWildCardCandidateIds } from '@/lib/wildCard';
 
 /**
@@ -41,11 +41,15 @@ export async function GET() {
     return NextResponse.json({ error: 'No Wild Cards left today', remaining: 0, limit: quota.limit }, { status: 403 });
   }
 
+  // Built before the pool fetch below -- see
+  // app/api/discover/route.ts's identical comment.
+  const viewer = toMatchable({ ...viewerProfile, userId: viewerProfile.userId });
+
   const [blockedByMe, blockedMe, usedToday, candidatePool] = await Promise.all([
     db.block.findMany({ where: { blockerId: session.userId }, select: { blockedId: true } }),
     db.block.findMany({ where: { blockedId: session.userId }, select: { blockerId: true } }),
     todaysWildCardCandidateIds(session.userId, now),
-    getCityCandidatePool(viewerProfile.city),
+    getEligibleCandidatePool(viewer),
   ]);
 
   // Scoped to this request's candidate pool rather than the viewer's
@@ -69,8 +73,6 @@ export async function GET() {
     ...blockedMe.map((b) => b.blockerId),
     ...usedToday,
   ]);
-  const viewer = toMatchable({ ...viewerProfile, userId: viewerProfile.userId });
-
   const ranked = rankWildCardCandidates(viewer, candidatePool, excluded, now);
   const winner = ranked[0];
   if (!winner) {

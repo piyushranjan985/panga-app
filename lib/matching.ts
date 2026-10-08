@@ -57,6 +57,21 @@ export const INTENT_LABELS: Record<IntentType, string> = {
   RISHTA_READY: 'Rishta Ready',
 };
 
+/**
+ * Every candidate intent with compatibility > 0 for a given viewer intent
+ * (i.e. everything isEligibleCandidate's compatibility check wouldn't
+ * reject outright), derived from INTENT_COMPATIBILITY so there's exactly
+ * one source of truth. Used by lib/discoverPool.ts / the search route to
+ * push this half of eligibility into the SQL WHERE clause -- the SQL
+ * filter is a performance/pool-composition optimization only; the actual
+ * eligibility decision shown to users still comes from isEligibleCandidate
+ * below, unchanged, run again over whatever SQL returns.
+ */
+export function compatibleIntents(viewerIntent: IntentType): IntentType[] {
+  const row = INTENT_COMPATIBILITY[viewerIntent];
+  return (Object.keys(row) as IntentType[]).filter((candidateIntent) => row[candidateIntent] > 0);
+}
+
 const WEIGHTS = {
   sharedInterest: 7, // per shared interest
   sameCity: 12,
