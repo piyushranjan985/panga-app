@@ -270,6 +270,15 @@ model Profile {
   longitude         Float?
   locationUpdatedAt DateTime?
 
+  // Postgres-generated (STORED) geography(Point,4326) derived from
+  // latitude/longitude by prisma/migrations/20261011090000_discovery_swipe_indexes
+  // -- always in sync automatically, never written by the app. Prisma has
+  // no native geography type, so this is Unsupported: present in the
+  // schema for documentation/introspection accuracy, invisible on
+  // `db.profile.*` calls. A future SQL-side radius query ($queryRaw
+  // against "Profile"."geoLocation" with ST_DWithin) is what this is for.
+  geoLocation Unsupported("geography(Point, 4326)")?
+
   interests          Interest[]          @relation("ProfileInterests")
   tribes             Tribe[]             @relation("ProfileTribes")
   subCommunities     SubCommunity[]      @relation("ProfileSubCommunities")
@@ -296,6 +305,9 @@ model Profile {
   updatedAt DateTime @updatedAt
 
   @@index([city, intent, quietMode])
+  // The actual filter every discovery/search/wildcard pool query runs
+  // (lib/discoverPool.ts) -- see migration 20261011090000's notes.
+  @@index([city, quietMode])
 }
 
 // 1-5 photos per profile (enforced in app/api/profile/route.ts and
@@ -554,6 +566,9 @@ model Swipe {
 
   @@unique([fromUserId, toUserId])
   @@index([toUserId, action])
+  // lib/searchBehaviorBoost.ts: WHERE fromUserId = ? AND action = 'VYBE'
+  // ORDER BY createdAt DESC LIMIT 200 -- see migration 20261011090000.
+  @@index([fromUserId, action, createdAt])
 }
 
 model Match {
