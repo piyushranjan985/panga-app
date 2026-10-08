@@ -1,0 +1,25 @@
+{
+  "name": "findmyvybe-moderation-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Phase-1 microservice extraction from the findmyvybe-app monolith: ONLY the ML inference step of photo moderation (nsfwjs nudity classification + face-api face counting). It has no database of its own and makes no policy decisions -- it takes an image, returns raw signals, and the main app's lib/safety/policyEngine.ts still decides APPROVED/REJECTED/MANUAL_REVIEW and still owns the Photo/ModerationCase rows. See ../docs/MODERATION_SERVICE.md for the full extraction writeup and deployment steps.",
+  "scripts": {
+    "prebuild": "node scripts/download-face-api-models.mjs",
+    "predev": "node scripts/download-face-api-models.mjs",
+    "dev": "vercel dev",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tensorflow/tfjs": "^4.22.0",
+    "@tensorflow/tfjs-backend-wasm": "^4.22.0",
+    "@vladmandic/face-api": "^1.7.15",
+    "heic-convert": "^2.1.0",
+    "nsfwjs": "^4.2.1",
+    "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.10",
+    "@vercel/node": "^23.0.0",
+    "typescript": "^5.6.2"
+  }
+}

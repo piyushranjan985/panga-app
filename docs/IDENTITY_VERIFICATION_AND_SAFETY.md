@@ -40,6 +40,14 @@ lib/safety/
   duplicateIdentity.ts      # HMAC document-hash check
 ```
 
+`imageModeration.ts`'s nsfwjs + face-api inference also now has an
+optional third home: `moderation-service/`, a standalone Vercel project
+with no database of its own, reachable via a new `remote`
+`ImageModerationProvider` alongside the in-process `self-hosted` one —
+see `MODERATION_SERVICE.md` for the full writeup. `self-hosted` stays
+the default everywhere until that's deliberately cut over; nothing
+below this point changes either way.
+
 Upload flow (every image, every path — onboarding, profile photos, any
 future chat/story attachment):
 

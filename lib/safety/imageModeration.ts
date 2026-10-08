@@ -215,6 +215,76 @@ export const selfHostedImageModerationProvider: ImageModerationProvider = {
 };
 
 /**
+ * Thin HTTP client for the extracted moderation microservice (see
+ * ../../docs/MODERATION_SERVICE.md and ../../moderation-service/) --
+ * the phase-1 split of this exact ML inference step (nsfwjs + face-api)
+ * into its own deployable, with its own Vercel project and no database
+ * of its own. Everything downstream of `analyze()` -- the policy
+ * decision in policyEngine.ts, every Photo/ModerationCase write in
+ * moderateAndUpload.ts -- is completely unaware this provider exists;
+ * that's the point of ImageModerationProvider being an interface in the
+ * first place (see this file's top comment).
+ *
+ * Deliberately NOT the default -- getImageModerationProvider() only
+ * returns this when IMAGE_MODERATION_PROVIDER=remote is explicitly set,
+ * so cutting over is a one-env-var flip you control, with
+ * selfHostedImageModerationProvider (same models, in-process) still
+ * right there as an instant rollback.
+ */
+export const remoteImageModerationProvider: ImageModerationProvider = {
+  name: 'remote-moderation-service',
+  modelVersion: 'nsfwjs-mobilenet-v2+faceapi-ssd-mobilenetv1-4',
+  async analyze(imageBuffer) {
+    const url = process.env.IMAGE_MODERATION_SERVICE_URL;
+    const secret = process.env.IMAGE_MODERATION_SERVICE_SECRET;
+    if (!url || !secret) {
+      throw new Error(
+        '[imageModeration] IMAGE_MODERATION_PROVIDER=remote but IMAGE_MODERATION_SERVICE_URL and/or ' +
+          'IMAGE_MODERATION_SERVICE_SECRET are not set -- see docs/MODERATION_SERVICE.md.',
+      );
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(`${url.replace(/\/+$/, '')}/api/analyze`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/octet-stream' },
+        // Buffer IS a Uint8Array at runtime -- Node's fetch (undici) sends it
+        // fine -- but lib.dom.d.ts's BodyInit doesn't model that overload
+        // cleanly, hence the cast.
+        body: imageBuffer as unknown as BodyInit,
+      });
+    } catch (err) {
+      // Network failure reaching the service at all (DNS, timeout, the
+      // service is down) -- this is "our infra is broken," the exact
+      // same bucket moderateAndUpload.ts already puts a self-hosted
+      // model-loading failure in (hard REJECTED, logged, never
+      // MANUAL_REVIEW -- see that file's catch block for why).
+      throw new Error(`[imageModeration] could not reach moderation service: ${err instanceof Error ? err.message : err}`);
+    }
+
+    // Mirrors api/analyze.ts's response contract in moderation-service/
+    // exactly: 422 means "this file isn't a photo we can analyze at
+    // all," the one case moderateAndUpload.ts treats differently (hard
+    // REJECTED with no human-reviewable case, since there's nothing for
+    // a reviewer to look at) -- same distinction UndecodableImageError
+    // already exists to carry for the self-hosted provider below.
+    if (res.status === 422) {
+      const body: { message?: string } = await res.json().catch(() => ({}));
+      throw new UndecodableImageError(body.message ?? 'Image could not be decoded by the moderation service.');
+    }
+    if (!res.ok) {
+      const body: { error?: string; message?: string } = await res.json().catch(() => ({}));
+      throw new Error(
+        `[imageModeration] moderation service returned ${res.status}: ${body.message ?? body.error ?? 'unknown error'}`,
+      );
+    }
+
+    return (await res.json()) as ModerationSignals;
+  },
+};
+
+/**
  * ISOBMFF ("ftyp" box) sniff for HEIC/HEIF -- the same check the `file-type`
  * npm package and most format sniffers use. HEIC containers share MP4's
  * container format, so this can't be a simple magic-byte prefix check the
@@ -279,6 +349,7 @@ async function decodeToRgb(
 
 export function getImageModerationProvider(): ImageModerationProvider {
   const provider = process.env.IMAGE_MODERATION_PROVIDER ?? 'mock';
+  if (provider === 'remote') return remoteImageModerationProvider;
   if (provider === 'self-hosted') return selfHostedImageModerationProvider;
   return mockImageModerationProvider;
 }
