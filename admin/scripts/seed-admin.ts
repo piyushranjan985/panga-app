@@ -217,7 +217,12 @@ async function seedSampleContent(ctx: Awaited<ReturnType<typeof main>>) {
       retentionDays: 90,
       legalBasis:
         'DPDP Act 2023 storage-limitation principle (retain only as long as necessary for the purpose; the purpose -- an active conversation -- ends at unmatch) + DPDP Rules 2025 Rule 14(3)\'s 90-day data-principal-request response window, used here as the same grace period for a safety/dispute investigation window before permanent deletion. Matches Tinder\'s and Hinge\'s own published ~3-month post-closure safety-retention window (see docs/DATA_RETENTION.md, main app, for the competitor research). NOT LEGAL ADVICE -- confirm the exact figure with counsel.',
-      autoDeleteEnabled: false,
+      // ON (PKR decision, 2026-10-08, after the irreversibility/
+      // late-report/DPDP-access-right tradeoffs in docs/DATA_RETENTION.md
+      // S4 were raised explicitly and accepted). update: {} below means
+      // this only sets the INITIAL value for a fresh DB -- it never
+      // reverts an already-live row back to false on a re-seed.
+      autoDeleteEnabled: true,
     },
     update: {},
   });

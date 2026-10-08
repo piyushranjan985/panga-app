@@ -54,16 +54,18 @@ export async function getSwipeRetentionPolicy(): Promise<{ floorDays: number; au
 }
 
 // ---------------------------------------------------------------------------
-// Ended-match conversation messages -- same deliberate off-by-default
-// shape. Scoped to matches that have actually ended (Match.unmatchedAt
-// set), measured from unmatchedAt, NOT from each message's own createdAt
-// -- an active, ongoing match's history is never touched by this policy
-// no matter how old, matching how every competitor researched in
-// docs/DATA_RETENTION.md (main app) treats it: retain while the
-// relationship is live, purge only after it's explicitly over, with a
-// grace window first (90 days here, matching Tinder's and Hinge's own
-// published ~3-month post-closure safety-retention window) in case a
-// report or dispute needs the content.
+// Ended-match conversation messages. Scoped to matches that have
+// actually ended (Match.unmatchedAt set), measured from unmatchedAt, NOT
+// from each message's own createdAt -- an active, ongoing match's
+// history is never touched by this policy no matter how old, matching
+// how every competitor researched in docs/DATA_RETENTION.md (main app)
+// treats it: retain while the relationship is live, purge only after
+// it's explicitly over, with a grace window first (90 days here,
+// matching Tinder's and Hinge's own published ~3-month post-closure
+// safety-retention window) in case a report or dispute needs the
+// content. autoDeleteEnabled is ON (PKR decision, 2026-10-08) -- the
+// irreversibility/late-report/DPDP-access-right tradeoffs in
+// docs/DATA_RETENTION.md S4 were raised explicitly and accepted.
 export const MESSAGE_RETENTION_CATEGORY = 'Ended-match conversation messages';
 export const DEFAULT_MESSAGE_RETENTION_DAYS = 90;
 

@@ -134,11 +134,15 @@ happen.
   categories are wired up today -- `'Deleted-account data
   (pre-anonymization hold)'` (ON, pre-existing), `'Expired/unmatched
   swipes'` (ON, 2026-10-08 -- PKR decision; see `docs/DATA_RETENTION.md`
-  §1-§2, main app), and `'Ended-match conversation messages'` (OFF,
-  pending a separate decision -- see that same doc §4 for why permanent
-  message deletion is being treated more cautiously than swipe recycling).
-  `'OTP codes'` and `'Login/session history'` still have no purge job --
-  those rows remain documentation-only.
+  §1-§2, main app), and `'Ended-match conversation messages'` (ON,
+  2026-10-08 -- also a PKR decision, made after the irreversibility/
+  late-report/DPDP-access-right tradeoffs in that same doc's §4 were
+  raised explicitly and accepted; permanent message deletion past a
+  90-day grace period is a materially bigger commitment than swipe
+  recycling, which is why it was called out separately rather than
+  bundled into the same decision). `'OTP codes'` and `'Login/session
+  history'` still have no purge job -- those rows remain
+  documentation-only.
 - **Record of processing activities:** `ProcessingActivity` / Privacy &
   Compliance -> Processing Activities -- the lightweight documentation
   inventory most privacy regimes (and DPDP by implication, through its
@@ -163,13 +167,15 @@ happen.
 
 1. The Grievance Officer's name and published contact details (Section
    13(1)) -- a product/legal action, not a code change.
-1a. Whether to turn on the two new Retention Policies toggles --
-    `'Expired/unmatched swipes'` and `'Ended-match conversation
-    messages'` -- and whether 180/90 days are the right windows. See
-    `docs/DATA_RETENTION.md` (main app) for the disclosed product-
-    behavior consequence of each (a passed-on profile can resurface; an
-    ended match's messages are permanently deleted after the grace
-    period) before flipping either on.
+1a. Both new Retention Policies toggles -- `'Expired/unmatched
+    swipes'` and `'Ended-match conversation messages'` -- were turned ON
+    2026-10-08 (PKR decision, after the disclosed product-behavior
+    consequence of each was raised explicitly: a passed-on profile can
+    resurface after 180 days; an ended match's messages are permanently
+    deleted after a 90-day grace period). Revisit whether 180/90 days
+    remain the right windows as real usage data comes in -- see
+    `docs/DATA_RETENTION.md` (main app) §7 for the current on/off state
+    and how to change it.
 2. Confirming `anonymizeUserAccount()`'s scrub-and-retain approach actually
    satisfies "erasure" for every data category findmyVybe holds, or whether
    some fields need harder deletion once a request is `COMPLETED`.

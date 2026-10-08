@@ -1,6 +1,6 @@
 # Data Retention, Archiving & Volume Limits — Design Spec
 
-Status: **Built — swipe purge ON (2026-10-08, PKR decision), message purge still OFF pending a separate decision**
+Status: **Built — both purges ON (2026-10-08, PKR decision)**
 Owner: Platform
 Related: `lib/swipeRateLimit.ts`, `app/api/swipe/route.ts`,
 `admin/lib/retentionEnforcement.ts`, `admin/app/api/cron/retention-purge/route.ts`,
@@ -44,12 +44,15 @@ separate sign-off closer to launch. Flipping it now means it's already
 working correctly by the time it starts actually removing anything,
 instead of relying on someone remembering to turn it on six months in.
 
-**Message purge stays OFF** (`autoDeleteEnabled: false`) -- see §4 for
-why this one is a materially different decision (irreversible content
-deletion, a 90-day window a late-arriving report could fall outside of,
-and a possible tension with a user's own DPDP right to access their
-historical data). This one is left for a deliberate, separate decision
-rather than bundled into the same "turn it on" judgment as swipes.
+**Message purge is also ON** (`autoDeleteEnabled: true`, flipped
+2026-10-08). §4 lays out why this is a materially different decision
+from swipes -- irreversible content deletion, a 90-day window a
+late-arriving report could fall outside of, and a possible tension with
+a user's own DPDP right to access their historical data. That tradeoff
+was raised explicitly and PKR chose to accept it rather than wait; it's
+recorded here, not glossed over, since "we decided the risk was
+acceptable" and "nobody considered the risk" should never look the same
+in a doc like this one.
 
 ## 2. Why Swipe rows can't just be deleted outright
 
@@ -174,13 +177,23 @@ visibility). Noted here for the record, not as an open question.
 
 ## 7. Current on/off state, and how to change it
 
-`'Expired/unmatched swipes'` is ON. `'Ended-match conversation
-messages'` is OFF, pending the separate decision in §4 -- turn it on
-from the admin portal's Retention Policies page (flip
-`autoDeleteEnabled`) once satisfied with the 90-day window and the
-permanent-deletion/late-report risk it carries. The existing daily cron
-(`admin/vercel.json`, `0 3 * * *`, `/api/cron/retention-purge`) picks up
-either toggle's change on its next run with no deploy needed -- both
-purge blocks respect `LegalHold` the same way the existing
-deletion-purge does, and each writes one aggregate `AuditLogEntry` per
-run (not one per row) when anything was actually purged.
+Both `'Expired/unmatched swipes'` and `'Ended-match conversation
+messages'` are ON as of 2026-10-08. Either can be turned back off from
+the admin portal's Retention Policies page (flip `autoDeleteEnabled`) if
+the behavior in §2/§4 ever needs reconsidering -- turning one off stops
+future purging immediately but does not restore anything already
+deleted. The existing daily cron (`admin/vercel.json`, `0 3 * * *`,
+`/api/cron/retention-purge`) picks up either toggle's change on its next
+run with no deploy needed -- both purge blocks respect `LegalHold` the
+same way the existing deletion-purge does, and each writes one aggregate
+`AuditLogEntry` per run (not one per row) when anything was actually
+purged.
+
+Both are also event-based, not a one-time cutoff tied to when the
+toggle was flipped: the cron recomputes "now minus the window" fresh on
+every run, compared against each row's own timestamp (a swipe's
+`createdAt`, a match's `unmatchedAt`). Nothing is old enough to be
+purged yet -- findmyVybe is pre-launch -- so turning both on today has
+zero effect today; purging begins as a steady trickle once individual
+rows actually cross their own 180-/90-day mark, never a mass deletion
+on a single future date.
