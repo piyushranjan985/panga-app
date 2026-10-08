@@ -6,6 +6,7 @@ import { getSession } from '@/lib/session';
 import { assertParticipant, otherUserId } from '@/lib/matchAuthz';
 import { checkMessagingAllowed } from '@/lib/accountEnforcement';
 import { isChatOpenRecently, isPushCategoryEnabled, sendPushToUser } from '@/lib/notifications/push';
+import { publishNewMessage } from '@/lib/realtime/ably';
 
 // Most-recent messages returned, not the full history. A chat with months
 // of real back-and-forth has no natural cap otherwise -- this used to
@@ -125,6 +126,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ matchId
   if (parsed.data.noGhostClose) {
     await db.match.update({ where: { id: matchId }, data: { unmatchedAt: new Date() } });
   }
+
+  // Realtime delivery -- independent of (not a replacement for) the push
+  // side effect below. Never throws (see lib/realtime/ably.ts); the
+  // message is already durably written at this point, so a failed/absent
+  // publish just means this one message relies on the chat page's
+  // fallback poll instead of arriving instantly. Fire-and-forget would
+  // risk never running on a frozen serverless function, same reasoning as
+  // why the push send below is awaited, so this is awaited too.
+  await publishNewMessage(matchId, message);
 
   // New-message push -- see docs/PUSH_NOTIFICATIONS.md §4/§7. Generic
   // copy (no content preview, per §7's trigger-list decision), suppressed

@@ -20,6 +20,7 @@ import {
   type PlanStep,
   type StarterOption,
 } from '@/lib/vybeContent';
+import * as Ably from 'ably';
 
 interface PromptMeta {
   question: string;
@@ -154,6 +155,11 @@ export default function ChatPage() {
   const [readyOfflineDismissed, setReadyOfflineDismissed] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  // Whether the Ably realtime client currently has a live connection for
+  // this chat -- see the subscription effect below. Drives the message-
+  // poll interval's cadence (fast fallback poll when false/unconfigured,
+  // slow reconciliation-only poll when realtime is doing the real work).
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Every overlay this screen can show, one at a time -- keeps "keep the
@@ -193,11 +199,6 @@ export default function ChatPage() {
     const [meRes, msgRes] = await Promise.all([
       fetch('/api/me').then((r) => r.json()),
       fetch(`/api/matches/${params.matchId}/messages`).then((r) => r.json()),
-      // Piggybacks on this existing 4s poll rather than a dedicated timer --
-      // see app/api/matches/[matchId]/heartbeat/route.ts. Fire-and-forget:
-      // a missed beat just means a push arrives that could've been
-      // suppressed, never a broken chat.
-      fetch(`/api/matches/${params.matchId}/heartbeat`, { method: 'POST' }).catch(() => {}),
       loadPartner(),
     ]);
     setMyUserId(meRes.userId ?? null);
@@ -206,10 +207,92 @@ export default function ChatPage() {
 
   useEffect(() => {
     load();
-    // Simple polling for the MVP — swap for a WebSocket/Pusher channel
-    // before real launch (see the scaling section of the strategy doc).
-    const interval = setInterval(load, 4000);
+    // New messages arrive instantly over the Ably realtime subscription
+    // below when it's connected -- this poll becomes a reconciliation
+    // safety net at that point (missed events, a connection blip, a
+    // message sent while Ably was briefly down), so it can run much less
+    // often. Falls back to the original fast cadence whenever realtime
+    // isn't connected (unconfigured, still connecting, or dropped) --
+    // see realtimeConnected's doc comment above.
+    const pollMs = realtimeConnected ? 30000 : 4000;
+    const interval = setInterval(load, pollMs);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.matchId, realtimeConnected]);
+
+  useEffect(() => {
+    // Decoupled from the message poll above (that poll's cadence now
+    // varies with realtimeConnected) -- "this chat is open" needs its own
+    // steady heartbeat regardless, to keep
+    // app/api/matches/[matchId]/heartbeat/route.ts's chatOpenAAt/BAt
+    // fresh for lib/notifications/push.ts's 15s isChatOpenRecently()
+    // trust window. 10s comfortably beats that window with room for a
+    // missed beat. Fire-and-forget, same reasoning as before: a missed
+    // beat just means a push arrives that could've been suppressed,
+    // never a broken chat.
+    const beat = () => {
+      fetch(`/api/matches/${params.matchId}/heartbeat`, { method: 'POST' }).catch(() => {});
+    };
+    beat();
+    const interval = setInterval(beat, 10000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.matchId]);
+
+  useEffect(() => {
+    // Realtime chat delivery -- see lib/realtime/ably.ts and
+    // app/api/realtime/auth/route.ts for the server side. authCallback
+    // (rather than a static key) means the browser never holds an Ably
+    // credential wider than "subscribe to this one match's channel for
+    // up to an hour" -- see createTokenRequest's doc comment. If Ably
+    // isn't configured, /api/realtime/auth answers 503, the connection
+    // fails once, realtimeConnected stays false, and the poll above just
+    // keeps running at its normal fast cadence -- this chat was never
+    // depending on realtime to function, only to feel instant.
+    let cancelled = false;
+    const client = new Ably.Realtime({
+      authCallback: async (_tokenParams, callback) => {
+        try {
+          const res = await fetch('/api/realtime/auth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ matchId: params.matchId }),
+          });
+          if (!res.ok) {
+            callback(`realtime auth failed (${res.status})`, null);
+            return;
+          }
+          const tokenRequest = await res.json();
+          callback(null, tokenRequest);
+        } catch (err) {
+          callback(err instanceof Error ? err.message : 'realtime auth failed', null);
+        }
+      },
+    });
+
+    client.connection.on('connected', () => {
+      if (!cancelled) setRealtimeConnected(true);
+    });
+    client.connection.on(['disconnected', 'suspended', 'failed', 'closed'], () => {
+      if (!cancelled) setRealtimeConnected(false);
+    });
+
+    const channel = client.channels.get(`private-match-${params.matchId}`);
+    channel.subscribe('new-message', (msg) => {
+      const incoming = msg.data as Message;
+      // Dedup by id: the sender's own browser receives this same event
+      // (the server publishes once, every subscriber including the
+      // sender gets it), and the next reconciliation poll's full
+      // replace-from-server already includes it too.
+      setMessages((prev) => (prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming]));
+    });
+
+    return () => {
+      cancelled = true;
+      setRealtimeConnected(false);
+      channel.unsubscribe();
+      client.close();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.matchId]);
 
