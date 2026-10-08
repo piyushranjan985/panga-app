@@ -160,13 +160,14 @@ export default function ChatPage() {
   // poll interval's cadence (fast fallback poll when false/unconfigured,
   // slow reconciliation-only poll when realtime is doing the real work).
   const [realtimeConnected, setRealtimeConnected] = useState(false);
-  // True once this tab has gone IDLE_MS with no mouse/keyboard/touch/
-  // scroll activity, or the tab itself is backgrounded -- see the idle-
-  // detection effect below. While true, the poll, the heartbeat, and the
-  // Ably connection all pause entirely (not just slow down): someone who
-  // isn't actually looking shouldn't be billed-for/costing a live
-  // connection, AND shouldn't keep suppressing push notifications for
-  // themselves via the heartbeat -- see that effect's own comment.
+  // True once this tab has gone IDLE_MS (3 minutes) with no mouse/
+  // keyboard/touch/scroll activity, or the tab itself is backgrounded --
+  // see the idle-detection effect below. While true, the poll, the
+  // heartbeat, and the Ably connection all pause entirely (not just slow
+  // down): someone who isn't actually looking shouldn't be billed-for/
+  // costing a live connection, AND shouldn't keep suppressing push
+  // notifications for themselves via the heartbeat -- see that effect's
+  // own comment.
   const [isIdle, setIsIdle] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -213,14 +214,14 @@ export default function ChatPage() {
     setMessages(msgRes.messages ?? []);
   }
 
-  // Idle detection -- 5 minutes of no mouse/keyboard/touch/scroll
+  // Idle detection -- 3 minutes of no mouse/keyboard/touch/scroll
   // activity, OR the tab going to the background (switching apps/tabs is
   // an instant, unambiguous "not looking" signal, no need to wait out
   // the timer for that case). Deliberately just ONE timer shared by every
   // consumer below (poll/heartbeat/Ably) rather than three separate idle
   // clocks -- "idle" is one fact about this tab, not three.
   useEffect(() => {
-    const IDLE_MS = 5 * 60 * 1000;
+    const IDLE_MS = 3 * 60 * 1000;
     let timer: ReturnType<typeof setTimeout>;
 
     const markActive = () => {

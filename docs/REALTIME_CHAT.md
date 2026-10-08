@@ -113,7 +113,7 @@ normal cadence regardless of whether a human was actually looking.
 `app/matches/[matchId]/page.tsx` now tracks one `isIdle` flag, shared by
 all three:
 
-- **Triggers:** 5 minutes with no mousemove/keydown/touchstart/scroll/
+- **Triggers:** 3 minutes with no mousemove/keydown/touchstart/scroll/
   click, OR the tab going to the background (`document.visibilityState
   === 'hidden'` fires immediately, no reason to wait out the timer for an
   unambiguous signal).

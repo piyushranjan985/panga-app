@@ -32,3 +32,46 @@ export function daysSince(date: Date): number {
 export function retentionEligibleOn(deletedAt: Date, floorDays: number): Date {
   return new Date(deletedAt.getTime() + floorDays * 86_400_000);
 }
+
+// ---------------------------------------------------------------------------
+// Expired/unmatched swipes -- see docs/DATA_RETENTION.md (main app) S1/S2
+// and admin/docs/DPDP_COMPLIANCE.md S7. Same "row exists, autoDeleteEnabled
+// starts false" shape as the deletion-retention policy above: the purge
+// logic is fully built and wired into the cron job below, but it stays a
+// no-op until a human flips the toggle on the Retention Policies page,
+// since this one has a real, disclosed product-behavior consequence (a
+// profile you passed on, or an unreciprocated like, becomes swipeable
+// again once its row ages out) that deserves a deliberate decision, not a
+// silent default-on.
+export const SWIPE_RETENTION_CATEGORY = 'Expired/unmatched swipes';
+export const DEFAULT_SWIPE_RETENTION_DAYS = 180;
+
+export async function getSwipeRetentionPolicy(): Promise<{ floorDays: number; autoDeleteEnabled: boolean }> {
+  const policy = await db.retentionPolicy.findUnique({ where: { dataCategory: SWIPE_RETENTION_CATEGORY } });
+  return {
+    floorDays: policy?.retentionDays ?? DEFAULT_SWIPE_RETENTION_DAYS,
+    autoDeleteEnabled: policy?.autoDeleteEnabled ?? false,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Ended-match conversation messages -- same deliberate off-by-default
+// shape. Scoped to matches that have actually ended (Match.unmatchedAt
+// set), measured from unmatchedAt, NOT from each message's own createdAt
+// -- an active, ongoing match's history is never touched by this policy
+// no matter how old, matching how every competitor researched in
+// docs/DATA_RETENTION.md (main app) treats it: retain while the
+// relationship is live, purge only after it's explicitly over, with a
+// grace window first (90 days here, matching Tinder's and Hinge's own
+// published ~3-month post-closure safety-retention window) in case a
+// report or dispute needs the content.
+export const MESSAGE_RETENTION_CATEGORY = 'Ended-match conversation messages';
+export const DEFAULT_MESSAGE_RETENTION_DAYS = 90;
+
+export async function getMessageRetentionPolicy(): Promise<{ floorDays: number; autoDeleteEnabled: boolean }> {
+  const policy = await db.retentionPolicy.findUnique({ where: { dataCategory: MESSAGE_RETENTION_CATEGORY } });
+  return {
+    floorDays: policy?.retentionDays ?? DEFAULT_MESSAGE_RETENTION_DAYS,
+    autoDeleteEnabled: policy?.autoDeleteEnabled ?? false,
+  };
+}

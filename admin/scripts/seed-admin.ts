@@ -203,6 +203,24 @@ async function seedSampleContent(ctx: Awaited<ReturnType<typeof main>>) {
     },
     update: {},
   });
+  // Same upsert-unconditionally treatment -- new in this engagement, so
+  // it needs to land even on a DB already past the count===0 gate above.
+  // autoDeleteEnabled stays false: the purge logic is fully built (see
+  // admin/app/api/cron/retention-purge/route.ts and
+  // docs/DATA_RETENTION.md, main app), but turning it on is a deliberate
+  // product/legal decision for a human to make on the Retention Policies
+  // page, not something a seed script should flip silently.
+  await db.retentionPolicy.upsert({
+    where: { dataCategory: 'Ended-match conversation messages' },
+    create: {
+      dataCategory: 'Ended-match conversation messages',
+      retentionDays: 90,
+      legalBasis:
+        'DPDP Act 2023 storage-limitation principle (retain only as long as necessary for the purpose; the purpose -- an active conversation -- ends at unmatch) + DPDP Rules 2025 Rule 14(3)\'s 90-day data-principal-request response window, used here as the same grace period for a safety/dispute investigation window before permanent deletion. Matches Tinder\'s and Hinge\'s own published ~3-month post-closure safety-retention window (see docs/DATA_RETENTION.md, main app, for the competitor research). NOT LEGAL ADVICE -- confirm the exact figure with counsel.',
+      autoDeleteEnabled: false,
+    },
+    update: {},
+  });
   if ((await db.processingActivity.count()) === 0) {
     await db.processingActivity.createMany({
       data: [

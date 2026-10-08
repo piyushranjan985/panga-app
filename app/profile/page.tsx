@@ -92,7 +92,7 @@ const INTENT_LABEL: Record<string, string> = {
   SOMETHING_REAL: 'Something Real',
   RISHTA_READY: 'Rishta Ready',
 };
-const MAX_PHOTOS = 5;
+const MAX_PHOTOS = 6;
 const TRIBE_MAX = 4; // matches app/onboarding/page.tsx's tribeMax
 
 // slug -> {label, emoji} lookups for the intent-specific tag fields, which

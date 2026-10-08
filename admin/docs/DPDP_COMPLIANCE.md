@@ -127,11 +127,18 @@ happen.
 
 - **Retention:** `RetentionPolicy` / Privacy & Compliance -> Retention
   Policies -- one row per data category, with a retention period, legal
-  basis, and an `autoDeleteEnabled` flag. No automatic purge job exists
-  yet; the flag only records intent for when one is built (deliberately --
-  standing up an automatic bulk-delete job against production data is
-  exactly the kind of functionality the original brief says not to invent
-  without it being asked for).
+  basis, and an `autoDeleteEnabled` flag. A purge job now exists and runs
+  daily (`admin/app/api/cron/retention-purge`), but it is per-category:
+  it only acts on a row whose own `autoDeleteEnabled` is on, so adding a
+  new policy row never silently starts deleting anything. Three
+  categories are wired up today -- `'Deleted-account data
+  (pre-anonymization hold)'` (on by default, pre-existing),
+  `'Expired/unmatched swipes'`, and `'Ended-match conversation messages'`
+  (both new, both OFF by default pending product/legal sign-off -- see
+  `docs/DATA_RETENTION.md`, main app, for the full design and the
+  competitor/DPDP research behind those two). `'OTP codes'` and
+  `'Login/session history'` still have no purge job -- those rows remain
+  documentation-only.
 - **Record of processing activities:** `ProcessingActivity` / Privacy &
   Compliance -> Processing Activities -- the lightweight documentation
   inventory most privacy regimes (and DPDP by implication, through its
@@ -156,6 +163,13 @@ happen.
 
 1. The Grievance Officer's name and published contact details (Section
    13(1)) -- a product/legal action, not a code change.
+1a. Whether to turn on the two new Retention Policies toggles --
+    `'Expired/unmatched swipes'` and `'Ended-match conversation
+    messages'` -- and whether 180/90 days are the right windows. See
+    `docs/DATA_RETENTION.md` (main app) for the disclosed product-
+    behavior consequence of each (a passed-on profile can resurface; an
+    ended match's messages are permanently deleted after the grace
+    period) before flipping either on.
 2. Confirming `anonymizeUserAccount()`'s scrub-and-retain approach actually
    satisfies "erasure" for every data category findmyVybe holds, or whether
    some fields need harder deletion once a request is `COMPLETED`.

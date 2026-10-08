@@ -3,7 +3,12 @@ import { db } from '@/lib/db';
 import { writeAudit } from '@/lib/audit';
 import { getRequestContext } from '@/lib/requestContext';
 import { anonymizeUserAccount } from '@/lib/userLifecycle';
-import { getDeletionRetentionPolicy, DELETION_RETENTION_CATEGORY } from '@/lib/retentionEnforcement';
+import {
+  getDeletionRetentionPolicy,
+  DELETION_RETENTION_CATEGORY,
+  getSwipeRetentionPolicy,
+  getMessageRetentionPolicy,
+} from '@/lib/retentionEnforcement';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,9 +22,17 @@ export const dynamic = 'force-dynamic';
 // retentionEnforcement.ts), provided no active LegalHold blocks it, and
 // only while that policy row's autoDeleteEnabled is on -- so the toggle on
 // the Retention Policies page is this job's actual on/off switch, not
-// just an intent flag, for this one data category. Every other
-// RetentionPolicy row (OTP codes, expired swipes, login history) is
-// unaffected -- no purge job exists for those yet.
+// just an intent flag, for this one data category.
+//
+// Two more RetentionPolicy categories are handled further down in this
+// same job -- "Expired/unmatched swipes" and "Ended-match conversation
+// messages" (see docs/DATA_RETENTION.md, main app, for the full design
+// and the competitor/regulatory research behind the numbers). Both
+// follow the identical shape: fully built, each independently gated by
+// its own row's autoDeleteEnabled (both start false), each skipping any
+// user under an active LegalHold. OTP codes and login/session history
+// still have no purge job -- those RetentionPolicy rows remain
+// documentation-only for now.
 //
 // Trust-and-safety-driven removals (the admin "Delete account" user
 // action) are a different, deliberately-immediate path
@@ -89,5 +102,95 @@ export async function GET(req: Request) {
     processed++;
   }
 
-  return NextResponse.json({ ok: true, processed, skippedForLegalHold, floorDays });
+  // --- Expired/unmatched swipes -------------------------------------
+  // Raw SQL (same Prisma.sql/$executeRaw pattern lib/discoverPool.ts
+  // introduced this engagement) -- a correlated NOT EXISTS/anti-join
+  // like this isn't expressible through the normal query builder. Only
+  // ever deletes a PASS swipe, or a VYBE swipe that never became a
+  // Match -- a VYBE that DID lead to a Match is the origin of a real,
+  // possibly still-active relationship and is never touched by this
+  // policy regardless of age. Deliberately changes product behavior
+  // when turned on: a profile passed on (or liked-but-not-reciprocated)
+  // more than floorDays ago becomes swipeable/visible in Discover again,
+  // since nothing else records "already seen" -- see
+  // docs/DATA_RETENTION.md (main app) S1 for why that's the intended
+  // trade, not a bug.
+  const { floorDays: swipeFloorDays, autoDeleteEnabled: swipePurgeEnabled } = await getSwipeRetentionPolicy();
+  let swipesPurged = 0;
+  if (swipePurgeEnabled) {
+    const swipeCutoff = new Date(Date.now() - swipeFloorDays * 86_400_000);
+    swipesPurged = await db.$executeRaw`
+      DELETE FROM "Swipe" s
+      WHERE s."createdAt" < ${swipeCutoff}
+        AND (
+          s.action = 'PASS'
+          OR NOT EXISTS (
+            SELECT 1 FROM "Match" m
+            WHERE (m."userAId" = s."fromUserId" AND m."userBId" = s."toUserId")
+               OR (m."userAId" = s."toUserId" AND m."userBId" = s."fromUserId")
+          )
+        )
+        AND s."fromUserId" NOT IN (SELECT "userId" FROM "LegalHold" WHERE active = true AND "userId" IS NOT NULL)
+        AND s."toUserId" NOT IN (SELECT "userId" FROM "LegalHold" WHERE active = true AND "userId" IS NOT NULL)
+    `;
+    if (swipesPurged > 0) {
+      await writeAudit({
+        actorId: null,
+        actorEmail: 'system:retention-cron',
+        action: 'retention.swipes.purged',
+        category: 'privacy',
+        targetType: 'RetentionPolicy',
+        newValue: { purged: swipesPurged, floorDays: swipeFloorDays },
+        reason: `Automatic ${swipeFloorDays}-day expired/unmatched-swipe purge`,
+        context,
+      });
+    }
+  }
+
+  // --- Ended-match conversation messages ------------------------------
+  // Scoped by the MATCH's unmatchedAt, not each message's own createdAt
+  // -- an active match's history, however old, is never touched. Only
+  // Message rows are deleted; the Match row itself is kept (tiny, and
+  // useful for aggregate "you've had N matches" history/safety
+  // investigations without retaining conversation content). MessageLike
+  // rows cascade-delete automatically (see the schema's onDelete:
+  // Cascade on MessageLike.messageId).
+  const { floorDays: messageFloorDays, autoDeleteEnabled: messagePurgeEnabled } = await getMessageRetentionPolicy();
+  let messagesPurged = 0;
+  if (messagePurgeEnabled) {
+    const messageCutoff = new Date(Date.now() - messageFloorDays * 86_400_000);
+    messagesPurged = await db.$executeRaw`
+      DELETE FROM "Message"
+      WHERE "matchId" IN (
+        SELECT m.id FROM "Match" m
+        WHERE m."unmatchedAt" IS NOT NULL
+          AND m."unmatchedAt" < ${messageCutoff}
+          AND m."userAId" NOT IN (SELECT "userId" FROM "LegalHold" WHERE active = true AND "userId" IS NOT NULL)
+          AND m."userBId" NOT IN (SELECT "userId" FROM "LegalHold" WHERE active = true AND "userId" IS NOT NULL)
+      )
+    `;
+    if (messagesPurged > 0) {
+      await writeAudit({
+        actorId: null,
+        actorEmail: 'system:retention-cron',
+        action: 'retention.messages.purged',
+        category: 'privacy',
+        targetType: 'RetentionPolicy',
+        newValue: { purged: messagesPurged, floorDays: messageFloorDays },
+        reason: `Automatic ${messageFloorDays}-day ended-match-message purge`,
+        context,
+      });
+    }
+  }
+
+  return NextResponse.json({
+    ok: true,
+    processed,
+    skippedForLegalHold,
+    floorDays,
+    swipesPurged,
+    swipePurgeEnabled,
+    messagesPurged,
+    messagePurgeEnabled,
+  });
 }

@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { checkAccountActive } from '@/lib/accountEnforcement';
 import { isPushCategoryEnabled, sendPushToUser } from '@/lib/notifications/push';
+import { getSwipeDailyLimit, evaluateSwipeCount } from '@/lib/swipeRateLimit';
 
 const bodySchema = z.object({
   toUserId: z.string(),
@@ -30,6 +31,21 @@ export async function POST(req: Request) {
 
   if (toUserId === session.userId) {
     return NextResponse.json({ error: "You can't swipe on yourself" }, { status: 400 });
+  }
+
+  // Cost/abuse safety valve, not a monetization gate -- see
+  // lib/swipeRateLimit.ts and docs/DATA_RETENTION.md S3. Rolling 24h
+  // window via createdAt (which the upsert below never touches on an
+  // update to an existing pair -- see the Swipe model -- so re-swiping
+  // someone already in this user's history never counts twice).
+  const dailyLimit = getSwipeDailyLimit();
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const countLast24h = await db.swipe.count({ where: { fromUserId: session.userId, createdAt: { gte: dayAgo } } });
+  if (!evaluateSwipeCount(dailyLimit, countLast24h).ok) {
+    return NextResponse.json(
+      { error: `You've hit today's swipe limit (${dailyLimit}). More will unlock in a bit -- come back soon!` },
+      { status: 429 },
+    );
   }
 
   await db.swipe.upsert({
