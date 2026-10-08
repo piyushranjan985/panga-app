@@ -132,13 +132,13 @@ happen.
   it only acts on a row whose own `autoDeleteEnabled` is on, so adding a
   new policy row never silently starts deleting anything. Three
   categories are wired up today -- `'Deleted-account data
-  (pre-anonymization hold)'` (on by default, pre-existing),
-  `'Expired/unmatched swipes'`, and `'Ended-match conversation messages'`
-  (both new, both OFF by default pending product/legal sign-off -- see
-  `docs/DATA_RETENTION.md`, main app, for the full design and the
-  competitor/DPDP research behind those two). `'OTP codes'` and
-  `'Login/session history'` still have no purge job -- those rows remain
-  documentation-only.
+  (pre-anonymization hold)'` (ON, pre-existing), `'Expired/unmatched
+  swipes'` (ON, 2026-10-08 -- PKR decision; see `docs/DATA_RETENTION.md`
+  §1-§2, main app), and `'Ended-match conversation messages'` (OFF,
+  pending a separate decision -- see that same doc §4 for why permanent
+  message deletion is being treated more cautiously than swipe recycling).
+  `'OTP codes'` and `'Login/session history'` still have no purge job --
+  those rows remain documentation-only.
 - **Record of processing activities:** `ProcessingActivity` / Privacy &
   Compliance -> Processing Activities -- the lightweight documentation
   inventory most privacy regimes (and DPDP by implication, through its

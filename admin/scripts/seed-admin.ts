@@ -181,7 +181,7 @@ async function seedSampleContent(ctx: Awaited<ReturnType<typeof main>>) {
     await db.retentionPolicy.createMany({
       data: [
         { dataCategory: 'OTP codes', retentionDays: 1, legalBasis: 'Necessary for authentication; no purpose after expiry.', autoDeleteEnabled: false },
-        { dataCategory: 'Expired/unmatched swipes', retentionDays: 180, legalBasis: 'Product analytics and abuse detection.', autoDeleteEnabled: false },
+        { dataCategory: 'Expired/unmatched swipes', retentionDays: 180, legalBasis: 'Product analytics and abuse detection; DPDP Act 2023 storage-limitation principle.', autoDeleteEnabled: true },
         { dataCategory: 'Deleted-account residual data', retentionDays: 30, legalBasis: 'Legal/fraud hold window after DPDP deletion request completion.', autoDeleteEnabled: false },
         { dataCategory: 'Login/session history', retentionDays: 365, legalBasis: 'Security investigation and account-recovery support.', autoDeleteEnabled: false },
       ],

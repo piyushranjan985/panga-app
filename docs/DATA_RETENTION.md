@@ -1,6 +1,6 @@
 # Data Retention, Archiving & Volume Limits — Design Spec
 
-Status: **Built, purge jobs OFF by default pending product/legal sign-off — 2026-10-08**
+Status: **Built — swipe purge ON (2026-10-08, PKR decision), message purge still OFF pending a separate decision**
 Owner: Platform
 Related: `lib/swipeRateLimit.ts`, `app/api/swipe/route.ts`,
 `admin/lib/retentionEnforcement.ts`, `admin/app/api/cron/retention-purge/route.ts`,
@@ -30,12 +30,26 @@ A `RetentionPolicy` table and a Retention Policies admin page already
 existed before this work (see `admin/docs/DPDP_COMPLIANCE.md` §7) --
 including a row already seeded for `'Expired/unmatched swipes'`
 (180 days) -- but no purge job read it. This work builds that job for
-both Swipe and a new Message category, wires it into the existing daily
-`admin/app/api/cron/retention-purge` cron, and leaves both switched OFF
-(`autoDeleteEnabled: false`) until a human turns them on from the
-Retention Policies page -- the same "fully built, deliberately not
-defaulted on" pattern this codebase already uses for the account-
-deletion purge.
+both Swipe and a new Message category, and wires it into the existing
+daily `admin/app/api/cron/retention-purge` cron.
+
+**Swipe purge is ON** (`autoDeleteEnabled: true`, flipped 2026-10-08).
+The reasoning: nothing in the live dataset is old enough to be purged
+yet -- findmyVybe is pre-launch, so this has zero effect today -- and
+the disclosed behavior change once real 180-day-old data exists (a
+passed-on or unreciprocated-liked profile becomes swipeable again) was
+judged low-risk and reversible-in-spirit (nobody is harmed by seeing an
+old profile resurface), so it didn't need to wait for a second,
+separate sign-off closer to launch. Flipping it now means it's already
+working correctly by the time it starts actually removing anything,
+instead of relying on someone remembering to turn it on six months in.
+
+**Message purge stays OFF** (`autoDeleteEnabled: false`) -- see §4 for
+why this one is a materially different decision (irreversible content
+deletion, a 90-day window a late-arriving report could fall outside of,
+and a possible tension with a user's own DPDP right to access their
+historical data). This one is left for a deliberate, separate decision
+rather than bundled into the same "turn it on" judgment as swipes.
 
 ## 2. Why Swipe rows can't just be deleted outright
 
@@ -51,14 +65,12 @@ that profile swipeable again. The purge therefore only ever removes:
 
 A VYBE swipe that DID lead to a Match is never touched, at any age --
 that swipe is the origin of a real (possibly still-active) relationship,
-not "expired." This is a deliberate, disclosed product-behavior change
-once turned on: a profile you passed on, or liked without it being
+not "expired." This is a deliberate, disclosed product-behavior change,
+now live: a profile you passed on, or liked without it being
 reciprocated, more than `retentionDays` ago becomes visible/swipeable
 again, since nothing else records "already seen." That's intentional,
 not a bug -- profiles change over months, and several competitors do
-something similar (resurfacing older passes) -- but it's exactly the
-kind of thing that should be a deliberate "yes, turn it on" decision, not
-a side effect nobody signed off on.
+something similar (resurfacing older passes).
 
 ## 3. Swipe volume limit (not a paywall)
 
@@ -160,15 +172,15 @@ Bumble/Hinge; that change was reverted at PKR's explicit instruction --
 (enforcement) and `app/profile/page.tsx` (the "+ Add" tile's
 visibility). Noted here for the record, not as an open question.
 
-## 7. How to turn the purge jobs on
+## 7. Current on/off state, and how to change it
 
-Nothing above runs automatically. From the admin portal's Retention
-Policies page, flip `autoDeleteEnabled` for `'Expired/unmatched swipes'`
-and/or `'Ended-match conversation messages'` once satisfied with the
-retention windows and the resurfacing-after-expiry behavior in §2. The
-existing daily cron (`admin/vercel.json`, `0 3 * * *`,
-`/api/cron/retention-purge`) picks up the change on its next run with no
-deploy needed -- both new purge blocks respect `LegalHold` the same way
-the existing deletion-purge does, and each writes one aggregate
-`AuditLogEntry` per run (not one per row) when anything was actually
-purged.
+`'Expired/unmatched swipes'` is ON. `'Ended-match conversation
+messages'` is OFF, pending the separate decision in §4 -- turn it on
+from the admin portal's Retention Policies page (flip
+`autoDeleteEnabled`) once satisfied with the 90-day window and the
+permanent-deletion/late-report risk it carries. The existing daily cron
+(`admin/vercel.json`, `0 3 * * *`, `/api/cron/retention-purge`) picks up
+either toggle's change on its next run with no deploy needed -- both
+purge blocks respect `LegalHold` the same way the existing
+deletion-purge does, and each writes one aggregate `AuditLogEntry` per
+run (not one per row) when anything was actually purged.

@@ -35,14 +35,13 @@ export function retentionEligibleOn(deletedAt: Date, floorDays: number): Date {
 
 // ---------------------------------------------------------------------------
 // Expired/unmatched swipes -- see docs/DATA_RETENTION.md (main app) S1/S2
-// and admin/docs/DPDP_COMPLIANCE.md S7. Same "row exists, autoDeleteEnabled
-// starts false" shape as the deletion-retention policy above: the purge
-// logic is fully built and wired into the cron job below, but it stays a
-// no-op until a human flips the toggle on the Retention Policies page,
-// since this one has a real, disclosed product-behavior consequence (a
-// profile you passed on, or an unreciprocated like, becomes swipeable
-// again once its row ages out) that deserves a deliberate decision, not a
-// silent default-on.
+// and admin/docs/DPDP_COMPLIANCE.md S7. autoDeleteEnabled is ON (PKR
+// decision, 2026-10-08): nothing in the dataset is old enough to be
+// purged yet (findmyVybe is pre-launch), and the disclosed consequence
+// -- a profile passed on, or an unreciprocated like, becomes swipeable
+// again 180 days later -- was judged low-risk/reversible enough not to
+// need re-confirmation once real data exists. Contrast
+// MESSAGE_RETENTION_CATEGORY below, which stays off.
 export const SWIPE_RETENTION_CATEGORY = 'Expired/unmatched swipes';
 export const DEFAULT_SWIPE_RETENTION_DAYS = 180;
 
