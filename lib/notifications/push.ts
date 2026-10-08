@@ -26,6 +26,7 @@
 
 import { SignJWT, importPKCS8 } from 'jose';
 import { db } from '@/lib/db';
+import { raiseOpsAlert, resolveOpsAlert, shouldAlertNow } from '@/lib/ops/alerts';
 
 interface ServiceAccount {
   project_id: string;
@@ -154,9 +155,36 @@ export async function sendPushToUser(userId: string, templateKey: string, vars: 
   try {
     accessToken = await getAccessToken(account);
   } catch (err) {
+    // Systemic, not per-user: this is the ONE step every push send in
+    // the app goes through first, so a failure here means new matches,
+    // messages, Mystery Match, and Vybe Vouch notifications are ALL
+    // silently not reaching anyone right now -- exactly the kind of
+    // failure docs/OPS_ALERTS.md exists for. Throttled (shouldAlertNow)
+    // since sendPushToUser is called on the hot path of ordinary user
+    // actions, not just a cron -- without it, an outage would write one
+    // OpsAlert row per blocked push instead of one every few minutes.
     console.error('[push] could not get an FCM access token', err);
+    if (shouldAlertNow('fcm-access-token')) {
+      await raiseOpsAlert({
+        category: 'OUTAGE',
+        severity: 'CRITICAL',
+        title: 'FCM access token fetch failing -- all push notifications blocked',
+        detail: `getAccessToken() has started failing, which blocks every push notification app-wide (new matches, messages, Mystery Match, Vybe Vouch, date-feedback nudges -- everything that calls sendPushToUser). Error: ${err instanceof Error ? err.message : String(err)}`,
+        sourceType: 'system',
+        sourceId: 'integration:fcm-push',
+        fingerprint: 'integration:fcm-push',
+      });
+    }
     return;
   }
+  // Reaching here means getAccessToken just succeeded -- close out a
+  // prior FCM-outage incident if one is open. Deliberately unconditional
+  // (no shouldAlertNow gate, unlike the failure branch above): this is
+  // one cheap indexed lookup on the fingerprint+resolvedAt index, a
+  // no-op write in the overwhelming common case of "nothing was open,"
+  // and auto-resolution actually firing promptly is worth that one
+  // extra read on every send -- see docs/OPS_ALERTS.md.
+  await resolveOpsAlert({ fingerprint: 'integration:fcm-push', resolutionDetail: 'FCM access token fetch succeeded again.' });
 
   const title = template.subject ? fillTemplate(template.subject, vars) : 'findmyVybe';
   const body = fillTemplate(template.body, vars);

@@ -1,11 +1,14 @@
 # Mystery Match — Design Spec
 
-Status: **Decided — built 2026-10-03** (names and mechanics confirmed by
-PKR across chat; see §9 for the full decision trail)
+Status: **Decided — built 2026-10-03, delivery pipeline added 2026-10-08**
+(names and mechanics confirmed by PKR across chat; see §11 for the full
+decision trail)
 Owner: Product / Platform
 Related: `lib/mysteryMatch.ts`, `lib/matching.ts` (the discovery engine this
 deliberately does NOT reuse, see §1), `app/api/cron/mystery-match/route.ts`,
-`prisma/schema.prisma` (`Profile.mysteryCategory`, `MysteryMatchHistory`),
+`app/api/cron/mystery-match-deliver/route.ts`, `lib/mysteryMatchDelivery.ts`,
+`lib/queue/qstash.ts` (§10 — the delivery pipeline), `prisma/schema.prisma`
+(`Profile.mysteryCategory`, `MysteryMatchHistory`, `MysteryMatchNotification`),
 `docs/VYBE_VOUCH.md` (the other opt-in, advisory, non-gating social feature
 this is built in the same spirit as), `docs/PUSH_NOTIFICATIONS.md`
 
@@ -131,12 +134,14 @@ that same day's run. `OPTED_OUT` is excluded from the query entirely —
 rotation never touches it in either direction. Someone who opts out stays
 opted out until they personally change it; inaction never reopens it.
 
-## 5. The daily batch (8:00pm IST)
+## 5. The daily pairing run (7:15pm IST)
 
 `app/api/cron/mystery-match/route.ts`, triggered by `vercel.json`'s
-`"30 14 * * *"` (14:30 UTC = 8:00pm IST year-round — India has no DST, so
+`"45 13 * * *"` (13:45 UTC = 7:15pm IST year-round — India has no DST, so
 this fixed offset never drifts). Same `CRON_SECRET` bearer-auth pattern as
-the existing `date-feedback-nudge` cron.
+the existing `date-feedback-nudge` cron. Runs 15 minutes before the 7:30pm
+reveal window even opens, on purpose — see §11 for why pairing and
+notifying are now two separate phases, not one.
 
 1. Auto-rotate stale selections (§4).
 2. Build one combined exclusion set, pair-keyed (`a:b`, `a < b`), from:
@@ -157,9 +162,12 @@ the existing `date-feedback-nudge` cron.
 5. For each resulting pair: upsert a real `Match` row (ordered pair, same
    as `app/api/swipe/route.ts`), upsert a `MysteryMatchHistory` row (so a
    retried/duplicate cron run or any future day can never re-suggest this
-   pair), then push `push.mystery_match` to both sides via the existing
-   `matchesMessages` notification category (no new toggle — a Mystery
-   Match pairing IS a new match, same category fits).
+   pair), then write ONE `MysteryMatchNotification` outbox row per side —
+   never send a push directly from this route. See §11: a separate
+   worker, woken on its own schedule, is what actually delivers
+   `push.mystery_match` (still via the existing `matchesMessages`
+   notification category — no new toggle, a Mystery Match pairing IS a
+   new match).
 
 **Dry days.** A category with fewer than 2 eligible people that day simply
 produces zero pairs — no error, no special-cased notification. Worth
@@ -192,10 +200,11 @@ One new card on the Profile screen ("🎭 Mystery Match"), four buttons in a
 2×2 grid, active selection highlighted, changeable any time. The one-time
 No-Labels explainer is a modal, same visual pattern as `MatchModal`
 (`fixed inset-0 ... bg-ink/60 backdrop-blur-sm`). The pairing notification
-at 8pm — "Your Mystery Match is here 🎭 — Say hi to {{name}}" — lands
-exactly like any other new-match push, opening straight into the new
-match's chat, where the blind-reveal banner (see §8) is now the first
-thing shown.
+— "Your Mystery Match is here 🎭 — Say hi to {{name}}" — lands sometime
+in the 7:30-8:30pm IST reveal window (see §11; not literally 8:00:00pm
+for everyone at once anymore), opening straight into the new match's
+chat, where the blind-reveal banner (see §8) is now the first thing
+shown.
 
 ## 8. The blind reveal mechanic (built)
 
@@ -251,7 +260,74 @@ differently-sourced ordinary match.
 - Any monetization lever (more than one pick a day, unlocking a category as
   a paid perk) — deliberately not considered until there's real usage data.
 
-## 10. Decision trail (chat, 2026-10-03)
+## 10. Delivery pipeline (notification fan-out)
+
+**The problem this replaced.** Until 2026-10-08, §5's cron did everything
+in one request: compute pairs, THEN loop over every pair and `await` a
+push send to both sides, one pair at a time, inside the same 60s
+`maxDuration`. Two issues, both about scale rather than correctness: (1)
+that loop is a thundering herd by design — the whole feature's identity
+is "everyone finds out at once" — and a single Vercel function fanning
+out thousands of pushes synchronously risks hitting its own time limit
+long before it risks running out of people to notify; (2) PKR asked for
+the reveal to land across a 7:30-8:30pm IST window instead of one literal
+instant, which an inline loop can't do at all — it finishes as fast as it
+finishes.
+
+**The fix: two phases, never one request doing both.**
+
+1. **Pairing** (`app/api/cron/mystery-match`, §5, 7:15pm IST) computes
+   pairs exactly as before, but instead of sending anything, writes one
+   `MysteryMatchNotification` row per side — an outbox, not a log — with
+   `scheduledFor` set to a uniformly random instant inside
+   `[7:30pm, 8:30pm]` IST (`jitterWithinWindow()`,
+   `lib/mysteryMatchDelivery.ts`). This step is pure DB writes, no
+   outbound network calls per pair, so it stays fast and bounded
+   regardless of how large the pool gets.
+2. **Delivery** (`app/api/cron/mystery-match-deliver`) drains due,
+   `PENDING` rows in bounded batches (500 at a time, 50-way concurrency)
+   and marks each `SENT`/`FAILED`. It is never scheduled by Vercel Cron —
+   it's woken by Upstash QStash (`lib/queue/qstash.ts`), first by the
+   pairing cron once it finishes writing the outbox, then by itself,
+   roughly every 5 minutes, until either the outbox is empty or
+   8:45pm IST (the window's own 8:30pm end + 15min grace) passes, at
+   which point anything still `PENDING` is swept to `FAILED` and logged
+   loudly rather than left to pile up or burst out late tomorrow.
+
+**Why QStash, not more Vercel Cron entries.** Vercel Cron on the Hobby
+plan is capped at once-a-day per job, with the trigger time itself
+accurate only to within about an hour — adding eleven more cron entries
+five minutes apart (one way to spread delivery) simply isn't available
+without Pro. QStash messages aren't Vercel Cron Jobs at all — they're
+just authenticated HTTP calls to our own route, so neither Hobby
+restriction applies, on any plan. It's also deliberately NOT one QStash
+message per push (that would scale QStash's own cost with user count,
+and blow past its free tier — 1,000 messages/day — the moment a city's
+pool gets large); it's a flat ~12-15 "drain whatever's due" wake-ups for
+the whole day's run, regardless of whether 50 or 500,000 people are
+opted in that day.
+
+**Graceful degrade.** Same stance `lib/cache.ts` already takes for
+Redis: if `QSTASH_TOKEN` isn't set, the pairing cron notices
+(`queueConfigured` is `false`) and sends everything immediately, inline,
+right after writing the outbox — the feature fully works at $0 before
+QStash is ever configured, it just loses the hour-long spread (every
+push lands in one burst, like before 2026-10-08) until it is. The same
+fallback also fires if a QStash *publish* call itself fails after
+pairing succeeds — the matches are already safely written either way;
+only the spread-out timing is at risk.
+
+**What this does and doesn't fix.** This removes the single-request
+thundering-herd risk and adds the requested time spread — both real
+scale wins. It does NOT make the 7:15pm pairing step itself scale
+indefinitely: it still loads the day's whole eligible pool into memory
+and pairs each city/category combination with an O(n²) in-memory scan.
+That's fine as long as pools stay city-sized (this was never a
+global-pool scan), but if a single city's opted-in pool ever gets large
+enough for that to matter, it's a separate, later problem from the one
+this section solves.
+
+## 11. Decision trail (chat, 2026-10-03)
 
 - Names: **Mystery Match**, **Vybe Flip**, **No-Labels Match** (over
   Chalk & Cheese Match, Wildcard Match, Curveball Match — kept for the

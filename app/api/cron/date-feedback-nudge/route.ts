@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { isPushCategoryEnabled, sendPushToUser } from '@/lib/notifications/push';
+import { raiseCronFailureAlert, resolveCronFailureAlert } from '@/lib/ops/alerts';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,52 +33,67 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const windowStart = new Date(Date.now() - WINDOW_END_HOURS * 3600_000);
-  const windowEnd = new Date(Date.now() - WINDOW_START_HOURS * 3600_000);
+  try {
+    const windowStart = new Date(Date.now() - WINDOW_END_HOURS * 3600_000);
+    const windowEnd = new Date(Date.now() - WINDOW_START_HOURS * 3600_000);
 
-  const planMessages = await db.message.findMany({
-    where: { kind: 'PLAN', createdAt: { gte: windowStart, lt: windowEnd }, match: { unmatchedAt: null } },
-    select: { matchId: true, createdAt: true, match: { select: { userAId: true, userBId: true } } },
-    orderBy: { createdAt: 'desc' },
-  });
+    const planMessages = await db.message.findMany({
+      where: { kind: 'PLAN', createdAt: { gte: windowStart, lt: windowEnd }, match: { unmatchedAt: null } },
+      select: { matchId: true, createdAt: true, match: { select: { userAId: true, userBId: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
 
-  // Dedup to the latest PLAN message per match -- a match could in
-  // principle have more than one PLAN message land in the same window.
-  const byMatch = new Map<string, { userAId: string; userBId: string }>();
-  for (const m of planMessages) {
-    if (!byMatch.has(m.matchId)) byMatch.set(m.matchId, m.match);
-  }
-  if (byMatch.size === 0) {
-    return NextResponse.json({ ok: true, matchesScanned: 0, nudged: 0 });
-  }
+    // Dedup to the latest PLAN message per match -- a match could in
+    // principle have more than one PLAN message land in the same window.
+    const byMatch = new Map<string, { userAId: string; userBId: string }>();
+    for (const m of planMessages) {
+      if (!byMatch.has(m.matchId)) byMatch.set(m.matchId, m.match);
+    }
+    if (byMatch.size === 0) {
+      await resolveCronFailureAlert('date-feedback-nudge');
+      return NextResponse.json({ ok: true, matchesScanned: 0, nudged: 0 });
+    }
 
-  const matchIds = [...byMatch.keys()];
-  const allUserIds = [...new Set([...byMatch.values()].flatMap((m) => [m.userAId, m.userBId]))];
+    const matchIds = [...byMatch.keys()];
+    const allUserIds = [...new Set([...byMatch.values()].flatMap((m) => [m.userAId, m.userBId]))];
 
-  const [existingFeedback, profiles] = await Promise.all([
-    db.dateFeedback.findMany({ where: { matchId: { in: matchIds } }, select: { matchId: true, userId: true } }),
-    db.profile.findMany({ where: { userId: { in: allUserIds } }, select: { userId: true, displayName: true } }),
-  ]);
-  const alreadySubmitted = new Set(existingFeedback.map((f) => `${f.matchId}:${f.userId}`));
-  const nameByUser = new Map(profiles.map((p) => [p.userId, p.displayName]));
+    const [existingFeedback, profiles] = await Promise.all([
+      db.dateFeedback.findMany({ where: { matchId: { in: matchIds } }, select: { matchId: true, userId: true } }),
+      db.profile.findMany({ where: { userId: { in: allUserIds } }, select: { userId: true, displayName: true } }),
+    ]);
+    const alreadySubmitted = new Set(existingFeedback.map((f) => `${f.matchId}:${f.userId}`));
+    const nameByUser = new Map(profiles.map((p) => [p.userId, p.displayName]));
 
-  let nudged = 0;
-  for (const [matchId, { userAId, userBId }] of byMatch) {
-    for (const [userId, otherId] of [
-      [userAId, userBId],
-      [userBId, userAId],
-    ] as const) {
-      if (alreadySubmitted.has(`${matchId}:${userId}`)) continue;
-      try {
-        if (await isPushCategoryEnabled(userId, 'reminders')) {
-          await sendPushToUser(userId, 'push.date_feedback_nudge', { name: nameByUser.get(otherId) ?? 'your match' });
-          nudged++;
+    let nudged = 0;
+    for (const [matchId, { userAId, userBId }] of byMatch) {
+      for (const [userId, otherId] of [
+        [userAId, userBId],
+        [userBId, userAId],
+      ] as const) {
+        if (alreadySubmitted.has(`${matchId}:${userId}`)) continue;
+        try {
+          if (await isPushCategoryEnabled(userId, 'reminders')) {
+            await sendPushToUser(userId, 'push.date_feedback_nudge', { name: nameByUser.get(otherId) ?? 'your match' });
+            nudged++;
+          }
+        } catch (err) {
+          // Per-user, deliberately NOT escalated to an ops alert -- one
+          // person's stale device token failing is routine (see
+          // lib/notifications/push.ts), not an operational incident.
+          // The systemic version of this (FCM itself unreachable) is
+          // already caught once, loudly, inside sendPushToUser/
+          // getAccessToken rather than here per match -- see
+          // docs/OPS_ALERTS.md.
+          console.error('[push] date-feedback-nudge trigger failed', { matchId, userId, err });
         }
-      } catch (err) {
-        console.error('[push] date-feedback-nudge trigger failed', { matchId, userId, err });
       }
     }
-  }
 
-  return NextResponse.json({ ok: true, matchesScanned: byMatch.size, nudged });
+    await resolveCronFailureAlert('date-feedback-nudge');
+    return NextResponse.json({ ok: true, matchesScanned: byMatch.size, nudged });
+  } catch (err) {
+    console.error('[cron] date-feedback-nudge failed', err);
+    await raiseCronFailureAlert('date-feedback-nudge', err);
+    return NextResponse.json({ error: 'internal error' }, { status: 500 });
+  }
 }

@@ -2,6 +2,7 @@ import { db } from '@/lib/db';
 import { evaluatePhoto, type PhotoModerationDecision } from './policyEngine';
 import { getImageModerationProvider, isUnsafeProductionMock, UndecodableImageError } from './imageModeration';
 import { moderationSlaDueAt } from '@/lib/moderationSla';
+import { raiseOpsAlert, resolveOpsAlert, shouldAlertNow } from '@/lib/ops/alerts';
 
 export interface ModerationOutcome {
   decision: PhotoModerationDecision;
@@ -80,6 +81,23 @@ export async function moderateImageBuffer(imageBuffer: Buffer): Promise<Moderati
     // recordPhotoModeration, which only ever runs for a Photo row that
     // was actually created, and a REJECTED photo never is.
     console.error('[moderateImageBuffer] provider analysis failed, rejecting upload', err);
+    // Every photo upload hard-rejects while this is happening (see the
+    // comment above) -- that's a silent, total outage of photo uploads
+    // with nothing in the uploader's error message to say so, and
+    // nothing anywhere that would otherwise surface it. CRITICAL, and
+    // throttled (shouldAlertNow) since this runs on the hot path of
+    // every photo upload attempt, not a cron -- see docs/OPS_ALERTS.md.
+    if (shouldAlertNow('image-moderation-provider')) {
+      await raiseOpsAlert({
+        category: 'OUTAGE',
+        severity: 'CRITICAL',
+        title: `Image moderation provider (${provider.name}) failing -- all photo uploads are being hard-rejected`,
+        detail: `moderateImageBuffer()'s provider.analyze() call is throwing, which means every photo upload right now is rejected with 'moderation_unavailable' regardless of actual content (this is deliberate fail-safe behavior, see this function's comment above -- but it's still a total outage of photo uploads until the provider is fixed). Provider: ${provider.name}. Error: ${err instanceof Error ? err.message : String(err)}`,
+        sourceType: 'system',
+        sourceId: 'integration:image-moderation',
+        fingerprint: 'integration:image-moderation',
+      });
+    }
     return {
       decision: 'REJECTED',
       reasons: ['moderation_unavailable'],
@@ -92,6 +110,12 @@ export async function moderateImageBuffer(imageBuffer: Buffer): Promise<Moderati
       errorDetail: err instanceof Error ? err.message : String(err),
     };
   }
+
+  // Reaching here means provider.analyze() just succeeded -- close out
+  // a prior "moderation provider is down" incident if one is open.
+  // Deliberately unconditional, same reasoning as push.ts/otp.ts's own
+  // resolve calls -- see docs/OPS_ALERTS.md.
+  await resolveOpsAlert({ fingerprint: 'integration:image-moderation', resolutionDetail: 'Image moderation provider analysis succeeded again.' });
 
   const result = evaluatePhoto(signals);
 

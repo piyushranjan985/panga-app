@@ -17,3 +17,16 @@ export function startOfTodayIST(now: Date): Date {
   const istMidnight = new Date(Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate()));
   return new Date(istMidnight.getTime() - IST_OFFSET_MS);
 }
+
+/**
+ * A specific wall-clock time on "today" in IST, as a real UTC Date --
+ * e.g. istTimeToday(now, 19, 30) for 7:30pm IST today. Built from
+ * startOfTodayIST so it shares the exact same "today" boundary; only
+ * valid for a `now` that's actually on the IST calendar day you mean
+ * (both Mystery Match crons that use this -- the pairing cron and its
+ * delivery worker -- run well inside one IST day of each other, so this
+ * never needs to reason about crossing midnight).
+ */
+export function istTimeToday(now: Date, hour: number, minute: number): Date {
+  return new Date(startOfTodayIST(now).getTime() + (hour * 60 + minute) * 60_000);
+}

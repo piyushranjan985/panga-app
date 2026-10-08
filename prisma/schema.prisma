@@ -68,6 +68,20 @@ enum MysteryCategory {
   OPTED_OUT
 }
 
+// Delivery pipeline for Mystery Match's push notifications -- see
+// docs/MYSTERY_MATCH.md S10. PENDING rows are an outbox, not a log: the
+// pairing cron (app/api/cron/mystery-match) writes them the instant a
+// pair is created, jittered across the 7:30-8:30pm IST reveal window, and
+// never sends a push itself -- app/api/cron/mystery-match-deliver drains
+// due rows in small batches, woken on a schedule by QStash (see
+// lib/queue/qstash.ts) rather than by trying to do everything inline in
+// one request.
+enum MysteryNotificationStatus {
+  PENDING
+  SENT
+  FAILED // either category disabled / no device tokens (never retried), or 3 send attempts all failed
+}
+
 enum PhotoModerationDecision {
   APPROVED
   REJECTED
@@ -172,6 +186,7 @@ model User {
   matchesAsUserB          Match[]               @relation("MatchUserB")
   mysteryHistoryAsUserA   MysteryMatchHistory[] @relation("MysteryHistoryUserA")
   mysteryHistoryAsUserB   MysteryMatchHistory[] @relation("MysteryHistoryUserB")
+  mysteryNotifications    MysteryMatchNotification[]
   wildCardUsesAsViewer    WildCardUse[]         @relation("WildCardUseViewer")
   wildCardUsesAsCandidate WildCardUse[]         @relation("WildCardUseCandidate")
   trustedDevices          TrustedDevice[]
@@ -590,7 +605,8 @@ model Match {
   revealedAAt     DateTime?
   revealedBAt     DateTime?
 
-  messages         Message[]
+  messages              Message[]
+  mysteryNotifications  MysteryMatchNotification[]
   dateFeedback     DateFeedback[]
   vybeVouchInvites VybeVouchInvite[]
 
@@ -622,6 +638,34 @@ model MysteryMatchHistory {
 
   @@unique([userAId, userBId])
   @@index([userBId])
+}
+
+// One row per (match, side) still owed a push -- the outbox app/api/cron/
+// mystery-match writes to and app/api/cron/mystery-match-deliver drains.
+// runId groups one day's whole batch (an IST date string, e.g.
+// "2026-10-08") purely for observability/sweeping stuck rows -- the
+// deliver route itself just queries PENDING + due, runId or not.
+model MysteryMatchNotification {
+  id            String                     @id @default(cuid())
+  runId         String
+  matchId       String
+  match         Match                      @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId        String // who gets notified
+  user          User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  otherUserId   String // whose displayName fills the push template -- denormalized so delivery needs no extra join back to Match
+  category      MysteryCategory
+  scheduledFor  DateTime // jittered send time inside the 7:30-8:30pm IST window
+  status        MysteryNotificationStatus  @default(PENDING)
+  attempts      Int                        @default(0)
+  sentAt        DateTime?
+  createdAt     DateTime                   @default(now())
+
+  // (status, scheduledFor) is the drain query's exact shape: "due PENDING
+  // rows, oldest first". runId is separate (not folded into the same
+  // index) since the sweep-stuck-rows path filters by runId alone,
+  // across any status.
+  @@index([status, scheduledFor])
+  @@index([runId])
 }
 
 // =============================================================================
@@ -1518,6 +1562,28 @@ model OpsAlert {
   sourceType String? // 'ModerationCase' | 'SupportTicket' | 'PrivacyIncident' | 'system'
   sourceId   String?
 
+  // Incident lifecycle for SYSTEM-raised alerts only (lib/ops/alerts.ts)
+  // -- see docs/OPS_ALERTS.md S2. Always null on a human-logged alert
+  // (admin/app/api/notifications/alerts/route.ts's "Log as alert"
+  // button never sets these), which is also why none of them can be
+  // required: this one table serves both a human's one-off record and
+  // a system's tracked, re-occurring incident.
+  //
+  // fingerprint identifies "this specific recurring issue" (e.g.
+  // "integration:fcm-push") -- raiseOpsAlert() UPDATES the existing OPEN
+  // row for a fingerprint instead of inserting a new one on every
+  // occurrence, which is what keeps a flapping integration from
+  // flooding this table with duplicates. occurrenceCount/lastSeenAt
+  // track that ongoing incident; lastNotifiedAt is when the last email
+  // actually went out for it (vs. just a dashboard-row update), gating
+  // the re-notify cadence; resolvedAt is set the moment the system
+  // itself observes the underlying call succeed again.
+  fingerprint     String?
+  occurrenceCount Int       @default(1)
+  lastSeenAt      DateTime?
+  lastNotifiedAt  DateTime?
+  resolvedAt      DateTime?
+
   acknowledgedById String?
   acknowledgedBy   AdminUser? @relation(fields: [acknowledgedById], references: [id], onDelete: SetNull)
   acknowledgedAt   DateTime?
@@ -1526,6 +1592,13 @@ model OpsAlert {
 
   @@index([category, severity, createdAt])
   @@index([acknowledgedAt])
+  // The exact lookup raiseOpsAlert()/resolveOpsAlert() do on every call:
+  // "is there a currently-open incident for this fingerprint". Partial
+  // on fingerprint IS NOT NULL would be ideal (most rows are human-
+  // logged and never queried this way) but Prisma's declarative index
+  // syntax doesn't support a WHERE clause, so this is a plain composite
+  // index instead.
+  @@index([fingerprint, resolvedAt])
 }
 
 // Login/session history for the User Management detail page ("Login/session

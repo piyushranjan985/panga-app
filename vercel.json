@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/mystery-match",
-      "schedule": "30 14 * * *"
+      "schedule": "45 13 * * *"
     },
     {
       "path": "/api/cron/otp-cleanup",

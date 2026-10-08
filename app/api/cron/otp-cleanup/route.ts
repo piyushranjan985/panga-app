@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { raiseCronFailureAlert, resolveCronFailureAlert } from '@/lib/ops/alerts';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -27,8 +28,19 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const cutoff = new Date(Date.now() - RETENTION_HOURS * 60 * 60 * 1000);
-  const { count } = await db.otpCode.deleteMany({ where: { expiresAt: { lt: cutoff } } });
+  try {
+    const cutoff = new Date(Date.now() - RETENTION_HOURS * 60 * 60 * 1000);
+    const { count } = await db.otpCode.deleteMany({ where: { expiresAt: { lt: cutoff } } });
 
-  return NextResponse.json({ ok: true, deleted: count });
+    await resolveCronFailureAlert('otp-cleanup');
+    return NextResponse.json({ ok: true, deleted: count });
+  } catch (err) {
+    // A failure here is low-stakes on its own (old rows just pile up a
+    // bit longer), but it's also a cheap, reliable canary for "this
+    // Vercel project's DB connection is broken right now" -- see
+    // docs/OPS_ALERTS.md. Worth a CRITICAL alert on that basis alone.
+    console.error('[cron] otp-cleanup failed', err);
+    await raiseCronFailureAlert('otp-cleanup', err);
+    return NextResponse.json({ error: 'internal error' }, { status: 500 });
+  }
 }

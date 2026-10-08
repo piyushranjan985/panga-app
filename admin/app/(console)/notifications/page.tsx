@@ -14,9 +14,19 @@ export default async function NotificationsPage() {
   const admin = await requirePageAccess('notifications.view');
   const canAcknowledge = hasPermission(admin.role, 'notifications.acknowledge');
 
-  const [signals, openAlerts, recentlyAcknowledged] = await Promise.all([
+  const [signals, openAlerts, recentlyResolved, recentlyAcknowledged] = await Promise.all([
     getLiveSignals(),
-    db.opsAlert.findMany({ where: { acknowledgedAt: null }, orderBy: [{ severity: 'desc' }, { createdAt: 'desc' }], take: 100 }),
+    // resolvedAt: null -- a system-raised incident that auto-resolved
+    // (lib/ops/alerts.ts) drops out of this list even if nobody's
+    // acknowledged it yet; it shows in "Recently resolved" below
+    // instead. A human-logged alert never has resolvedAt set, so this
+    // filter is a no-op for it -- same list as before, same ordering.
+    db.opsAlert.findMany({ where: { acknowledgedAt: null, resolvedAt: null }, orderBy: [{ severity: 'desc' }, { createdAt: 'desc' }], take: 100 }),
+    db.opsAlert.findMany({
+      where: { resolvedAt: { not: null }, acknowledgedAt: null },
+      orderBy: { resolvedAt: 'desc' },
+      take: 10,
+    }),
     db.opsAlert.findMany({
       where: { acknowledgedAt: { not: null } },
       include: { acknowledgedBy: { select: { name: true } } },
@@ -86,6 +96,11 @@ export default async function NotificationsPage() {
                       <td className="px-4 py-2.5">
                         <p className="font-semibold">{a.title}</p>
                         {a.detail && <p className="text-xs text-inkFaint">{a.detail}</p>}
+                        {a.occurrenceCount > 1 && (
+                          <p className="mt-0.5 text-xs text-inkFaint">
+                            Ongoing -- {a.occurrenceCount}x since {a.createdAt.toISOString().slice(0, 16).replace('T', ' ')}, last seen {(a.lastSeenAt ?? a.createdAt).toISOString().slice(0, 16).replace('T', ' ')}
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-2.5 text-inkSoft">{a.category.replace(/_/g, ' ')}</td>
                       <td className="px-4 py-2.5"><Badge tone={SEVERITY_TONE[a.severity]}>{a.severity}</Badge></td>
@@ -98,6 +113,44 @@ export default async function NotificationsPage() {
             </div>
           )}
         </section>
+
+        {recentlyResolved.length > 0 && (
+          <section>
+            <h2 className="mb-3 text-sm font-bold">Recently resolved</h2>
+            <p className="mb-3 text-xs text-inkFaint">System-detected incidents that cleared on their own -- the underlying check started succeeding again. Still worth a look; acknowledge once reviewed.</p>
+            <div className="overflow-hidden rounded-card border border-border bg-surface">
+              <table className="w-full text-sm">
+                <thead className="border-b border-border bg-canvas text-left text-xs font-semibold uppercase tracking-wide text-inkFaint">
+                  <tr>
+                    <th className="px-4 py-2.5">Title</th>
+                    <th className="px-4 py-2.5">Duration</th>
+                    <th className="px-4 py-2.5">Occurrences</th>
+                    <th className="px-4 py-2.5">Resolved</th>
+                    {canAcknowledge && <th className="px-4 py-2.5" />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentlyResolved.map((a) => {
+                    const durationMin = a.resolvedAt ? Math.round((a.resolvedAt.getTime() - a.createdAt.getTime()) / 60_000) : 0;
+                    const durationLabel = durationMin < 60 ? `${durationMin}m` : `${Math.floor(durationMin / 60)}h ${durationMin % 60}m`;
+                    return (
+                      <tr key={a.id} className="border-b border-border last:border-0 hover:bg-canvas">
+                        <td className="px-4 py-2.5">
+                          <p className="font-semibold">{a.title}</p>
+                          <Badge tone="success">RESOLVED</Badge>
+                        </td>
+                        <td className="px-4 py-2.5 text-inkSoft">{durationLabel}</td>
+                        <td className="px-4 py-2.5 text-inkSoft">{a.occurrenceCount}</td>
+                        <td className="px-4 py-2.5 text-inkSoft">{a.resolvedAt?.toISOString().slice(0, 16).replace('T', ' ')}</td>
+                        {canAcknowledge && <td className="px-4 py-2.5"><AcknowledgeButton alertId={a.id} /></td>}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         {recentlyAcknowledged.length > 0 && (
           <section>

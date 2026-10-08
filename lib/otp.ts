@@ -12,6 +12,7 @@ import {
   type OtpRequestLimits,
   type OtpRequestCounts,
 } from '@/lib/otpRateLimit';
+import { raiseOpsAlert, resolveOpsAlert, shouldAlertNow } from '@/lib/ops/alerts';
 
 /**
  * Shared one-time-code logic used by both the phone flow and the email
@@ -324,6 +325,13 @@ export async function issueOtp(
           html: `<p>Your findmyVybe verification code is <strong style="font-size:1.2em;letter-spacing:0.1em">${code}</strong>.</p><p>It expires in ${otpTtlMinutes} minutes.</p><p style="color:#666;font-size:0.9em">If you didn't request this, you can safely ignore this email.</p>`,
         });
       }
+      // Reaching here means the provider send for THIS channel just
+      // succeeded -- close out a prior "this channel's OTP provider is
+      // down" incident if one is open. Deliberately unconditional, same
+      // reasoning as lib/notifications/push.ts's own resolve call: one
+      // cheap indexed lookup, no-op write in the common case, and
+      // prompt auto-resolution is worth it -- see docs/OPS_ALERTS.md.
+      await resolveOpsAlert({ fingerprint: `integration:otp-${channel}`, resolutionDetail: `${channel === 'phone' ? 'SMS' : 'Email'} OTP send succeeded again.` });
       // Rough provider-spend glance, not real billing -- see
       // docs/OTP_SECURITY.md §6. Neither StartMessaging, MSG91, nor
       // Brevo exposes a spend/usage API this app calls, so this counts
@@ -349,6 +357,22 @@ export async function issueOtp(
       // wrong sending that" message instead of the misleading cooldown
       // one.
       console.error(`[otp] ${channel} provider send failed`, err);
+      // CRITICAL, not per-attempt -- a failing OTP provider blocks
+      // every new signup/login on this channel, not just this one
+      // request. Throttled per channel (shouldAlertNow) since this runs
+      // on the hot path of every OTP request, not a cron -- see
+      // docs/OPS_ALERTS.md.
+      if (shouldAlertNow(`otp-provider-${channel}`)) {
+        await raiseOpsAlert({
+          category: 'OUTAGE',
+          severity: 'CRITICAL',
+          title: `OTP ${channel === 'phone' ? 'SMS' : 'email'} provider send failing -- blocks sign-in/sign-up on this channel`,
+          detail: `issueOtp()'s ${channel} send has started failing. Every ${channel === 'phone' ? 'phone OTP' : 'email OTP'} request is currently being issued (the OtpCode row is written) but never delivered -- affected users see a generic error and can't sign in or sign up via this channel until it's fixed. Error: ${err instanceof Error ? err.message : String(err)}`,
+          sourceType: 'system',
+          sourceId: `integration:otp-${channel}`,
+          fingerprint: `integration:otp-${channel}`,
+        });
+      }
       return { ok: false, reason: 'send_failed' };
     }
   }
