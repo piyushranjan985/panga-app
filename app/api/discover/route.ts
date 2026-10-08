@@ -36,8 +36,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Finish onboarding first' }, { status: 409 });
   }
 
-  const [alreadySwiped, blockedByMe, blockedMe, candidatePool, wildCard] = await Promise.all([
-    db.swipe.findMany({ where: { fromUserId: session.userId }, select: { toUserId: true } }),
+  const [blockedByMe, blockedMe, candidatePool, wildCard] = await Promise.all([
     db.block.findMany({ where: { blockerId: session.userId }, select: { blockedId: true } }),
     db.block.findMany({ where: { blockedId: session.userId }, select: { blockerId: true } }),
     getCityCandidatePool(viewerProfile.city),
@@ -47,6 +46,22 @@ export async function GET() {
     // Card candidate itself.
     wildCardQuota(session.userId, new Date()),
   ]);
+
+  // Scoped to just this request's candidate pool, not the viewer's entire
+  // swipe history. rankCandidates() below only ever checks `excluded`
+  // against members of candidatePool (see lib/matching.ts), so a swipe on
+  // a userId outside the pool can never change the result -- this is the
+  // same exclusion set, just computed without pulling someone's full
+  // lifetime swipe count (unbounded, growing forever) on every single
+  // Discover page load. Bounded by the pool's own cap (CANDIDATE_POOL_LIMIT
+  // in lib/discoverPool.ts) instead.
+  const poolUserIds = candidatePool.map((c) => c.userId);
+  const alreadySwiped = poolUserIds.length
+    ? await db.swipe.findMany({
+        where: { fromUserId: session.userId, toUserId: { in: poolUserIds } },
+        select: { toUserId: true },
+      })
+    : [];
 
   // Blocking (see app/api/matches/[matchId]/block/route.ts) excludes both
   // directions from discovery from then on, same as an already-swiped-on

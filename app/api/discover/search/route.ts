@@ -94,8 +94,7 @@ export async function GET(req: Request) {
     if (filters.tribeIds.length === 0) filters.tribeIds = parsed.tribeIds;
   }
 
-  const [alreadySwiped, blockedByMe, blockedMe, poolRows, behaviorWeights] = await Promise.all([
-    db.swipe.findMany({ where: { fromUserId: session.userId }, select: { toUserId: true } }),
+  const [blockedByMe, blockedMe, poolRows, behaviorWeights] = await Promise.all([
     db.block.findMany({ where: { blockerId: session.userId }, select: { blockedId: true } }),
     db.block.findMany({ where: { blockedId: session.userId }, select: { blockerId: true } }),
     db.profile.findMany({
@@ -123,6 +122,19 @@ export async function GET(req: Request) {
     }),
     buildBehaviorWeights(session.userId),
   ]);
+
+  // Scoped to this request's pool rows, not the viewer's entire swipe
+  // history -- see app/api/discover/route.ts's identical comment. The
+  // for-loop below only ever checks `excluded` against poolRows, so this
+  // is exactly the same exclusion set, just bounded by SEARCH_POOL_LIMIT
+  // instead of growing forever with how many times someone's searched.
+  const poolUserIds = poolRows.map((r) => r.userId);
+  const alreadySwiped = poolUserIds.length
+    ? await db.swipe.findMany({
+        where: { fromUserId: session.userId, toUserId: { in: poolUserIds } },
+        select: { toUserId: true },
+      })
+    : [];
 
   const excluded = new Set([
     ...alreadySwiped.map((s) => s.toUserId),

@@ -41,13 +41,23 @@ export async function GET() {
     return NextResponse.json({ error: 'No Wild Cards left today', remaining: 0, limit: quota.limit }, { status: 403 });
   }
 
-  const [alreadySwiped, blockedByMe, blockedMe, usedToday, candidatePool] = await Promise.all([
-    db.swipe.findMany({ where: { fromUserId: session.userId }, select: { toUserId: true } }),
+  const [blockedByMe, blockedMe, usedToday, candidatePool] = await Promise.all([
     db.block.findMany({ where: { blockerId: session.userId }, select: { blockedId: true } }),
     db.block.findMany({ where: { blockedId: session.userId }, select: { blockerId: true } }),
     todaysWildCardCandidateIds(session.userId, now),
     getCityCandidatePool(viewerProfile.city),
   ]);
+
+  // Scoped to this request's candidate pool rather than the viewer's
+  // entire swipe history -- see app/api/discover/route.ts's identical
+  // comment for why that's exactly the same exclusion set, just bounded.
+  const poolUserIds = candidatePool.map((c) => c.userId);
+  const alreadySwiped = poolUserIds.length
+    ? await db.swipe.findMany({
+        where: { fromUserId: session.userId, toUserId: { in: poolUserIds } },
+        select: { toUserId: true },
+      })
+    : [];
 
   // Same exclusion set as ordinary Discover (already-swiped + both block
   // directions), plus anyone already served as a Wild Card today -- see
