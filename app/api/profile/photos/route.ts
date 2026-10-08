@@ -13,13 +13,10 @@ import { moderateImageBuffer, recordPhotoModeration, photoRejectionMessage, manu
 // duration alone fixes.
 export const maxDuration = 60;
 
-// 6, not 5 -- matches Bumble/Hinge (both cap at 6 photos/videos), a
-// tested industry-standard rather than an arbitrary pick; Tinder allows
-// 9, but 6 is the more common modern norm and each extra photo is one
-// more moderateAndUpload.ts inference run (nsfwjs + face-api) per
-// upload, so this isn't free to raise indefinitely. See docs/DATA_RETENTION.md
-// for the competitor research this is based on.
-const MAX_PHOTOS = 6;
+// Kept at 5 -- Bumble/Hinge standardize on 6 and Tinder allows 9 (see
+// docs/DATA_RETENTION.md S6 for the competitor research), but 5 was a
+// deliberate choice to keep here, not changed.
+const MAX_PHOTOS = 5;
 
 /**
  * Add a photo to an already-onboarded profile (the profile settings

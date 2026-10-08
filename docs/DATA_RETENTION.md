@@ -142,7 +142,7 @@ The existing `'Deleted-account data (pre-anonymization hold)'` policy
 (180 days, already `autoDeleteEnabled: true`) cites IT Rules 2021 Rule
 3(1)(h) for that figure; this doc doesn't revisit that one.
 
-## 6. Profile photo limit: 5 -> 6
+## 6. Profile photo limit: kept at 5
 
 Checked against the same three competitors:
 
@@ -151,15 +151,14 @@ Checked against the same three competitors:
 | Tinder | 9 |
 | Bumble | 6 (photos/videos combined) |
 | Hinge | 6 (plus 3 required prompts, a separate element) |
-| **findmyVybe** | **5 -> 6 (this change)** |
+| **findmyVybe** | **5 (kept as-is)** |
 
-5 was on the low end, not high -- the two most comparable modern apps
-(Bumble, Hinge) both standardize on 6. Changed `MAX_PHOTOS` to 6 in both
-`app/api/profile/photos/route.ts` (enforcement) and `app/profile/page.tsx`
-(the "+ Add" tile's visibility) -- not Tinder's 9, since each additional
-photo is one more `moderateAndUpload.ts` ML inference run per upload
-(see the hidden-cost discussion this engagement's chat covered), and 6
-is the more common modern norm, not just the highest number available.
+5 is slightly below the Bumble/Hinge norm of 6 and well below Tinder's
+9. An earlier pass on this file bumped `MAX_PHOTOS` to 6 to match
+Bumble/Hinge; that change was reverted at PKR's explicit instruction --
+`MAX_PHOTOS` stays 5 in both `app/api/profile/photos/route.ts`
+(enforcement) and `app/profile/page.tsx` (the "+ Add" tile's
+visibility). Noted here for the record, not as an open question.
 
 ## 7. How to turn the purge jobs on
 
