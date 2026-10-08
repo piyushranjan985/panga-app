@@ -36,7 +36,6 @@
     "@capacitor/core": "^8.0.0",
     "@capacitor/geolocation": "^8.0.0",
     "@capacitor/ios": "^8.0.0",
-    "@capacitor/privacy-screen": "^2.0.1",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "@simplewebauthn/browser": "^14.0.0",

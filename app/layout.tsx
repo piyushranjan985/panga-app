@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import DevEnvironmentBadge from '@/components/DevEnvironmentBadge';
-import ScreenshotProtection from '@/components/ScreenshotProtection';
 
 export const metadata: Metadata = {
   title: 'findmyVybe — say the quiet part first',
@@ -30,7 +29,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="font-body antialiased">
         <DevEnvironmentBadge />
-        <ScreenshotProtection />
         {children}
       </body>
     </html>
