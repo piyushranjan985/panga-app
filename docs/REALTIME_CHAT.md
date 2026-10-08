@@ -104,7 +104,52 @@ independent 10-second interval (see the chat page's dedicated heartbeat
 connected client can't let that trust window go stale. The push-
 suppression behavior itself is unchanged.
 
-## 5. Scaling note
+## 5. Idle shutdown (added 2026-10-08)
+
+A tab that's open but abandoned -- backgrounded, or just not touched --
+used to keep paying full price forever: the message poll, the heartbeat,
+and (once Ably is configured) the realtime connection all ran at their
+normal cadence regardless of whether a human was actually looking.
+`app/matches/[matchId]/page.tsx` now tracks one `isIdle` flag, shared by
+all three:
+
+- **Triggers:** 5 minutes with no mousemove/keydown/touchstart/scroll/
+  click, OR the tab going to the background (`document.visibilityState
+  === 'hidden'` fires immediately, no reason to wait out the timer for an
+  unambiguous signal).
+- **While idle**, all three stop completely, not just slow down: the
+  message poll doesn't schedule at all, the heartbeat doesn't fire (see
+  below for why that's correct, not just cheaper), and the Ably
+  connection closes.
+- **On resume** (any activity, or the tab becoming visible again), all
+  three restart immediately -- the poll effect's first call to `load()`
+  on restart is also the "catch up on whatever arrived while idle" step,
+  for free, since nothing was lost: messages are durable in Postgres
+  regardless of whether anyone was subscribed to hear about them live.
+
+Two different motivations, not one:
+
+- **Cost.** An idle tab was still generating the same recurring load as
+  an actively-watched one -- the same poll/heartbeat requests against
+  Vercel+Neon, and, once Ably is on, the same billed connection-minutes.
+  None of that was buying anything for a tab nobody's looking at.
+- **Correctness.** The heartbeat is what keeps `chatOpenAAt`/`chatOpenBAt`
+  fresh for `lib/notifications/push.ts`'s `isChatOpenRecently()` 15s
+  trust window, which exists to suppress a push when you're already
+  looking at the conversation. Before this, "mounted" and "present" were
+  treated as the same thing -- someone who left a chat tab open on their
+  desk for an hour and stepped away would never get push-notified about a
+  new message, because the heartbeat kept firing regardless of whether
+  they were actually there. Idle detection fixes that: walk away for 5
+  minutes and the heartbeat stops, the trust window lapses, and a new
+  message correctly reaches them as a push again.
+
+Nothing here ends the match or the conversation -- "idle" is purely a
+client-side connection/presence state for this one tab. The conversation
+itself is untouched; reopening or returning to the tab picks up exactly
+where it left off.
+
+## 6. Scaling note
 
 Connection count is bounded by concurrently open chat screens, not total
 users or total messages -- a user who isn't currently looking at a chat

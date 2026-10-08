@@ -160,6 +160,14 @@ export default function ChatPage() {
   // poll interval's cadence (fast fallback poll when false/unconfigured,
   // slow reconciliation-only poll when realtime is doing the real work).
   const [realtimeConnected, setRealtimeConnected] = useState(false);
+  // True once this tab has gone IDLE_MS with no mouse/keyboard/touch/
+  // scroll activity, or the tab itself is backgrounded -- see the idle-
+  // detection effect below. While true, the poll, the heartbeat, and the
+  // Ably connection all pause entirely (not just slow down): someone who
+  // isn't actually looking shouldn't be billed-for/costing a live
+  // connection, AND shouldn't keep suppressing push notifications for
+  // themselves via the heartbeat -- see that effect's own comment.
+  const [isIdle, setIsIdle] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Every overlay this screen can show, one at a time -- keeps "keep the
@@ -205,7 +213,45 @@ export default function ChatPage() {
     setMessages(msgRes.messages ?? []);
   }
 
+  // Idle detection -- 5 minutes of no mouse/keyboard/touch/scroll
+  // activity, OR the tab going to the background (switching apps/tabs is
+  // an instant, unambiguous "not looking" signal, no need to wait out
+  // the timer for that case). Deliberately just ONE timer shared by every
+  // consumer below (poll/heartbeat/Ably) rather than three separate idle
+  // clocks -- "idle" is one fact about this tab, not three.
   useEffect(() => {
+    const IDLE_MS = 5 * 60 * 1000;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const markActive = () => {
+      setIsIdle(false);
+      clearTimeout(timer);
+      timer = setTimeout(() => setIsIdle(true), IDLE_MS);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        clearTimeout(timer);
+        setIsIdle(true);
+      } else {
+        markActive();
+      }
+    };
+
+    const ACTIVITY_EVENTS = ['mousemove', 'keydown', 'touchstart', 'scroll', 'click'] as const;
+    ACTIVITY_EVENTS.forEach((e) => window.addEventListener(e, markActive, { passive: true }));
+    document.addEventListener('visibilitychange', onVisibility);
+    markActive(); // starts the timer; also covers the initial mount
+
+    return () => {
+      clearTimeout(timer);
+      ACTIVITY_EVENTS.forEach((e) => window.removeEventListener(e, markActive));
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.matchId]);
+
+  useEffect(() => {
+    if (isIdle) return; // see the poll interval's own comment for why nothing is scheduled at all here
     load();
     // New messages arrive instantly over the Ably realtime subscription
     // below when it's connected -- this poll becomes a reconciliation
@@ -214,11 +260,17 @@ export default function ChatPage() {
     // often. Falls back to the original fast cadence whenever realtime
     // isn't connected (unconfigured, still connecting, or dropped) --
     // see realtimeConnected's doc comment above.
+    // Nothing is scheduled at all while isIdle -- not even the slow
+    // reconciliation cadence. An idle tab has nothing to reconcile until
+    // activity resumes, and this effect re-runs the moment isIdle flips
+    // back to false (see the idle-detection effect above), which calls
+    // load() immediately -- that's the "catch up on whatever happened
+    // while away" step, for free, with no extra code.
     const pollMs = realtimeConnected ? 30000 : 4000;
     const interval = setInterval(load, pollMs);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.matchId, realtimeConnected]);
+  }, [params.matchId, realtimeConnected, isIdle]);
 
   useEffect(() => {
     // Decoupled from the message poll above (that poll's cadence now
@@ -230,6 +282,15 @@ export default function ChatPage() {
     // missed beat. Fire-and-forget, same reasoning as before: a missed
     // beat just means a push arrives that could've been suppressed,
     // never a broken chat.
+    //
+    // Stops entirely while isIdle -- deliberately, not just to save the
+    // request. Someone who's walked away isn't "here" in the sense
+    // isChatOpenRecently() cares about, so letting chatOpenAAt/BAt go
+    // stale after the 15s window is the CORRECT behavior: a message that
+    // arrives while this tab is idle should push-notify them like normal,
+    // not get suppressed just because a mounted-but-abandoned tab kept
+    // claiming otherwise.
+    if (isIdle) return;
     const beat = () => {
       fetch(`/api/matches/${params.matchId}/heartbeat`, { method: 'POST' }).catch(() => {});
     };
@@ -237,7 +298,7 @@ export default function ChatPage() {
     const interval = setInterval(beat, 10000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.matchId]);
+  }, [params.matchId, isIdle]);
 
   useEffect(() => {
     // Realtime chat delivery -- see lib/realtime/ably.ts and
@@ -249,6 +310,15 @@ export default function ChatPage() {
     // fails once, realtimeConnected stays false, and the poll above just
     // keeps running at its normal fast cadence -- this chat was never
     // depending on realtime to function, only to feel instant.
+    //
+    // Also skipped entirely while isIdle -- an idle tab closes its
+    // connection (see the cleanup below, which runs the moment isIdle
+    // flips true) rather than paying Ably connection-minutes to stay
+    // subscribed for someone who isn't looking. Nothing is lost: messages
+    // sent while idle are already durable in Postgres, and the poll
+    // effect's immediate load() on resume (see its own comment) picks
+    // them up the moment this tab reconnects.
+    if (isIdle) return;
     let cancelled = false;
     const client = new Ably.Realtime({
       authCallback: async (_tokenParams, callback) => {
@@ -294,7 +364,7 @@ export default function ChatPage() {
       client.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.matchId]);
+  }, [params.matchId, isIdle]);
 
   useEffect(() => {
     // The signal engine's output doesn't change between two people's
