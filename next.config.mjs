@@ -1,3 +1,11 @@
+// withSentryConfig lives under the /config subpath specifically so
+// next.config.mjs doesn't have to pull in the full runtime SDK just to
+// wrap the config object -- importing it from the package root (as
+// Sentry's own older docs examples show) fails here with "withSentryConfig
+// is not a function", since the root export resolves to the server
+// runtime entrypoint, which doesn't include it.
+import { withSentryConfig } from '@sentry/nextjs/config';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -159,4 +167,29 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+/**
+ * Sentry build-time wrapping -- uploads source maps (so stack traces in
+ * the dashboard show real code, not minified output) and injects a
+ * couple of small runtime hooks. Every option below only does anything
+ * once the matching env var is actually set (see instrumentation-
+ * client.ts's setup note); until then this wrapper is a safe no-op,
+ * same "ships before configured" stance as the rest of this config file
+ * already uses for Prisma/tfjs.
+ *
+ * tunnelRoute: '/sentry-tunnel' matters specifically for THIS app: the
+ * security-headers Content-Security-Policy above is `connect-src 'self'`
+ * (see that block's comment), which would otherwise block the browser
+ * from ever reaching sentry.io directly. Routing error/trace reports
+ * through our own domain instead keeps that CSP unchanged -- no
+ * `connect-src` exception needed -- and incidentally also avoids ad
+ * blockers that filter known analytics/error-tracking domains.
+ */
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: true,
+  tunnelRoute: '/sentry-tunnel',
+  disableLogger: true,
+  widenClientFileUpload: true,
+});

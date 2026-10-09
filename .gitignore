@@ -53,3 +53,9 @@ admin/next-env.d.ts
 admin/.env
 admin/.env*.local
 admin/.vercel
+
+# Sentry -- only appears if someone later runs `npx @sentry/wizard`
+# locally (it writes the auth token here for local source-map uploads);
+# never committed, same reasoning as the root .env entries above.
+.env.sentry-build-plugin
+.sentryclirc
