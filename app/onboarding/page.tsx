@@ -585,7 +585,7 @@ function OnboardingForm() {
       {stepKey === 'intent' && (
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">What are you here for?</h1>
-          <p className="text-sm text-inkSoft">Pick your lane — we'll only show you people on the same page.</p>
+          <p className="text-sm text-inkSoft">Pick your lane — we&apos;ll only show you people on the same page.</p>
           {INTENTS.map((i) => (
             <button
               key={i.value}
@@ -689,8 +689,8 @@ function OnboardingForm() {
             <div className="rounded-2xl border border-line bg-white p-3">
               <p className="text-sm font-bold">Email address</p>
               <p className="mb-2 text-xs text-inkSoft">
-                So we can reach you if your phone's ever unreachable -- and so future sign-ins on a new
-                device usually won't need an SMS code at all.
+                So we can reach you if your phone&apos;s ever unreachable -- and so future sign-ins on a new
+                device usually won&apos;t need an SMS code at all.
               </p>
               {verifiedEmail ? (
                 <p className="text-sm font-semibold text-green-700">✓ {verifiedEmail}</p>
@@ -788,7 +788,7 @@ function OnboardingForm() {
 
       {stepKey === 'tribe' && (
         <div className="flex flex-col gap-4">
-          <h1 className="font-display text-2xl font-extrabold">What's your tribe?</h1>
+          <h1 className="font-display text-2xl font-extrabold">What&apos;s your tribe?</h1>
           <p className="text-sm text-inkSoft">
             Pick up to {tribeMax}, then tell us your specific corner of each one — this is the deep-cut layer
             under &quot;interests,&quot; the one that finds someone who games on your platform, not just someone
@@ -853,7 +853,7 @@ function OnboardingForm() {
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">❤️ Your relationship vibe</h1>
           <p className="text-sm text-inkSoft">
-            Pick exactly 3 — this is the values layer, separate from what you're into.
+            Pick exactly 3 — this is the values layer, separate from what you&apos;re into.
           </p>
           <div className="flex flex-wrap gap-2">
             {relationshipStyles.map((r) => {
@@ -881,7 +881,7 @@ function OnboardingForm() {
       {stepKey === 'datevibe' && (
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">Your vibe</h1>
-          <p className="text-sm text-inkSoft">What's your kind of date? Pick exactly 3.</p>
+          <p className="text-sm text-inkSoft">What&apos;s your kind of date? Pick exactly 3.</p>
           <div className="flex flex-wrap gap-2">
             {DATE_VIBES.map((d) => {
               const selected = form.dateVibeTags.includes(d.slug);
@@ -1132,7 +1132,7 @@ function OnboardingForm() {
       {stepKey === 'ready' && (
         <div className="flex flex-col gap-4">
           <h1 className="font-display text-2xl font-extrabold">⚡ Your Vybe is Ready</h1>
-          <p className="text-sm text-inkSoft">Here's what we've got — you can always change this later from your profile.</p>
+          <p className="text-sm text-inkSoft">Here&apos;s what we&apos;ve got — you can always change this later from your profile.</p>
           <div className="flex flex-col gap-2 rounded-card border border-line bg-white p-4 shadow">
             <div className="flex items-center justify-between">
               <p className="font-display text-lg font-extrabold">

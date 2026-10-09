@@ -748,7 +748,7 @@ export default function ProfilePage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="font-bold">🔔 Notifications</p>
-              <p className="text-sm text-inkSoft">Get a push when something happens, even when the app's closed.</p>
+              <p className="text-sm text-inkSoft">Get a push when something happens, even when the app&apos;s closed.</p>
             </div>
             <button
               type="button"
@@ -803,7 +803,7 @@ export default function ProfilePage() {
               every one of these. */}
           <p className="font-bold">🎭 Blind Match</p>
           <p className="text-sm text-inkSoft">
-            A new hidden match every night at 8pm — photo and name reveal only if you both want to. Pick how it's
+            A new hidden match every night at 8pm — photo and name reveal only if you both want to. Pick how it&apos;s
             chosen, or turn it off anytime.
           </p>
           <div className="mt-3 grid grid-cols-2 gap-2">
@@ -839,7 +839,7 @@ export default function ProfilePage() {
               <p className="text-lg font-bold">About No-Labels Match</p>
               <p className="mt-2 text-sm text-inkSoft">
                 This picks you a Mystery Match from OUTSIDE your usual intent -- you might get matched with someone looking
-                for something quite different from you (casual vs. serious vs. marriage-minded). It's meant as a fun,
+                for something quite different from you (casual vs. serious vs. marriage-minded). It&apos;s meant as a fun,
                 low-stakes one-off, not a signal about what either of you is looking for long-term. Go in with an open mind,
                 and no specific expectations.
               </p>
@@ -856,7 +856,7 @@ export default function ProfilePage() {
                   onClick={confirmNoLabelsExplainer}
                   className="gradient-btn flex-1 rounded-full px-3 py-2 text-sm font-bold text-white"
                 >
-                  Got it, let's try it
+                  Got it, let&apos;s try it
                 </button>
               </div>
             </div>
@@ -897,7 +897,7 @@ export default function ProfilePage() {
           </div>
           {locationError && <p className="mt-2 text-xs text-magenta">{locationError}</p>}
           <p className="mt-2 text-[11px] text-inkSoft/70">
-            Only a rounded distance (e.g. "3 km away") is ever shown to anyone else — never your exact location.
+            Only a rounded distance (e.g. &quot;3 km away&quot;) is ever shown to anyone else — never your exact location.
           </p>
         </section>
 
@@ -1648,7 +1648,7 @@ export default function ProfilePage() {
           {!confirmingDelete ? (
             <>
               <p className="mt-1 text-sm text-red-800">
-                Deleting your account signs you out everywhere and blocks sign-in right away. Your data isn't
+                Deleting your account signs you out everywhere and blocks sign-in right away. Your data isn&apos;t
                 erased instantly -- we keep it for the legally required minimum period, then anonymize it. See our{' '}
                 <Link href="/privacy#data-deletion" className="font-semibold underline">
                   Privacy Policy
@@ -1669,7 +1669,7 @@ export default function ProfilePage() {
           ) : (
             <>
               <p className="mt-1 text-sm font-semibold text-red-900">
-                Are you sure? You'll be signed out immediately and won't be able to sign back in until you contact
+                Are you sure? You&apos;ll be signed out immediately and won&apos;t be able to sign back in until you contact
                 support@findmyvybe.com.
               </p>
               {deleteError && <p className="mt-2 text-sm font-semibold text-red-700">{deleteError}</p>}

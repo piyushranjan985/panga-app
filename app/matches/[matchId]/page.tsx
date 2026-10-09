@@ -248,7 +248,6 @@ export default function ChatPage() {
       ACTIVITY_EVENTS.forEach((e) => window.removeEventListener(e, markActive));
       document.removeEventListener('visibilitychange', onVisibility);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.matchId]);
 
   useEffect(() => {
@@ -270,7 +269,6 @@ export default function ChatPage() {
     const pollMs = realtimeConnected ? 30000 : 4000;
     const interval = setInterval(load, pollMs);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.matchId, realtimeConnected, isIdle]);
 
   useEffect(() => {
@@ -298,7 +296,6 @@ export default function ChatPage() {
     beat();
     const interval = setInterval(beat, 10000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.matchId, isIdle]);
 
   useEffect(() => {
@@ -1617,7 +1614,7 @@ export default function ChatPage() {
                 maxLength={40}
                 className="w-full rounded-xl border border-line px-3 py-2.5 text-sm"
               />
-              <p className="text-xs text-inkSoft">Only you see this label -- it's never shown to them or your match.</p>
+              <p className="text-xs text-inkSoft">Only you see this label -- it&apos;s never shown to them or your match.</p>
               <button
                 type="button"
                 onClick={createVouchInvite}
