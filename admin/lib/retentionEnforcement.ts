@@ -76,3 +76,28 @@ export async function getMessageRetentionPolicy(): Promise<{ floorDays: number; 
     autoDeleteEnabled: policy?.autoDeleteEnabled ?? false,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Unlinked Mystery Match pairing history. Structurally the same shape as
+// Swipe above: MysteryMatchHistory.matchId is set only when a pairing
+// actually turned into a real Match, and is null otherwise -- purging a
+// null-matchId row just means those two people could be paired by
+// Mystery Match again later (the @@unique([userAId, userBId]) constraint
+// is the only thing stopping a repeat pairing, and deleting the row lifts
+// it), which is the same low-risk/reversible profile as a Swipe
+// resurfacing. A row WITH matchId set is never touched, at any age --
+// same reasoning as a VYBE swipe that led to a Match: it's the origin of
+// a real pairing, not "expired." autoDeleteEnabled is ON (PKR decision,
+// 2026-10-09) -- explicitly chosen to mirror the Swipe policy exactly
+// (180 days, same risk framework) rather than inventing a different
+// number; see docs/DATA_RETENTION.md S8.
+export const MYSTERY_MATCH_RETENTION_CATEGORY = 'Unlinked Mystery Match pairing history';
+export const DEFAULT_MYSTERY_MATCH_RETENTION_DAYS = 180;
+
+export async function getMysteryMatchRetentionPolicy(): Promise<{ floorDays: number; autoDeleteEnabled: boolean }> {
+  const policy = await db.retentionPolicy.findUnique({ where: { dataCategory: MYSTERY_MATCH_RETENTION_CATEGORY } });
+  return {
+    floorDays: policy?.retentionDays ?? DEFAULT_MYSTERY_MATCH_RETENTION_DAYS,
+    autoDeleteEnabled: policy?.autoDeleteEnabled ?? false,
+  };
+}

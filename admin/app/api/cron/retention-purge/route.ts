@@ -8,6 +8,7 @@ import {
   DELETION_RETENTION_CATEGORY,
   getSwipeRetentionPolicy,
   getMessageRetentionPolicy,
+  getMysteryMatchRetentionPolicy,
 } from '@/lib/retentionEnforcement';
 
 export const dynamic = 'force-dynamic';
@@ -24,15 +25,17 @@ export const dynamic = 'force-dynamic';
 // the Retention Policies page is this job's actual on/off switch, not
 // just an intent flag, for this one data category.
 //
-// Two more RetentionPolicy categories are handled further down in this
-// same job -- "Expired/unmatched swipes" and "Ended-match conversation
-// messages" (see docs/DATA_RETENTION.md, main app, for the full design
-// and the competitor/regulatory research behind the numbers). Both
-// follow the identical shape: fully built, each independently gated by
-// its own row's autoDeleteEnabled (both start false), each skipping any
-// user under an active LegalHold. OTP codes and login/session history
-// still have no purge job -- those RetentionPolicy rows remain
-// documentation-only for now.
+// Three more RetentionPolicy categories are handled further down in
+// this same job -- "Expired/unmatched swipes", "Ended-match conversation
+// messages", and "Unlinked Mystery Match pairing history" (see
+// docs/DATA_RETENTION.md, main app, for the full design and the
+// competitor/regulatory research behind the numbers). All three follow
+// the identical shape: fully built, each independently gated by its own
+// row's autoDeleteEnabled (all three start true per PKR decision --
+// see admin/scripts/seed-admin.ts), each skipping any user under an
+// active LegalHold. OTP codes and login/session history still have no
+// purge job -- those RetentionPolicy rows remain documentation-only for
+// now.
 //
 // Trust-and-safety-driven removals (the admin "Delete account" user
 // action) are a different, deliberately-immediate path
@@ -183,6 +186,43 @@ export async function GET(req: Request) {
     }
   }
 
+  // --- Unlinked Mystery Match pairing history -------------------------
+  // Mirrors the Swipe purge block above exactly (PKR decision,
+  // 2026-10-09: same 180-day window, same autoDeleteEnabled: true,
+  // same risk framework -- see docs/DATA_RETENTION.md S8 and
+  // retentionEnforcement.ts's MYSTERY_MATCH_RETENTION_CATEGORY doc
+  // comment). Only ever deletes a row whose matchId is still null --
+  // a pairing that never became a real Match. A row WITH matchId set
+  // is the origin of a real Match and is never touched by this policy,
+  // at any age, same as a VYBE swipe that led to a Match. Deleting an
+  // eligible row lifts the @@unique([userAId, userBId]) constraint,
+  // so those two people become re-pairable by Mystery Match again --
+  // the intended trade, not a bug.
+  const { floorDays: mysteryMatchFloorDays, autoDeleteEnabled: mysteryMatchPurgeEnabled } = await getMysteryMatchRetentionPolicy();
+  let mysteryMatchPurged = 0;
+  if (mysteryMatchPurgeEnabled) {
+    const mysteryMatchCutoff = new Date(Date.now() - mysteryMatchFloorDays * 86_400_000);
+    mysteryMatchPurged = await db.$executeRaw`
+      DELETE FROM "MysteryMatchHistory" h
+      WHERE h."matchedAt" < ${mysteryMatchCutoff}
+        AND h."matchId" IS NULL
+        AND h."userAId" NOT IN (SELECT "userId" FROM "LegalHold" WHERE active = true AND "userId" IS NOT NULL)
+        AND h."userBId" NOT IN (SELECT "userId" FROM "LegalHold" WHERE active = true AND "userId" IS NOT NULL)
+    `;
+    if (mysteryMatchPurged > 0) {
+      await writeAudit({
+        actorId: null,
+        actorEmail: 'system:retention-cron',
+        action: 'retention.mysteryMatch.purged',
+        category: 'privacy',
+        targetType: 'RetentionPolicy',
+        newValue: { purged: mysteryMatchPurged, floorDays: mysteryMatchFloorDays },
+        reason: `Automatic ${mysteryMatchFloorDays}-day unlinked-mystery-match-pairing purge`,
+        context,
+      });
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     processed,
@@ -192,5 +232,7 @@ export async function GET(req: Request) {
     swipePurgeEnabled,
     messagesPurged,
     messagePurgeEnabled,
+    mysteryMatchPurged,
+    mysteryMatchPurgeEnabled,
   });
 }

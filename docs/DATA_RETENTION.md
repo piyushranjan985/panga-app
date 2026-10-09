@@ -177,23 +177,67 @@ visibility). Noted here for the record, not as an open question.
 
 ## 7. Current on/off state, and how to change it
 
-Both `'Expired/unmatched swipes'` and `'Ended-match conversation
-messages'` are ON as of 2026-10-08. Either can be turned back off from
-the admin portal's Retention Policies page (flip `autoDeleteEnabled`) if
-the behavior in §2/§4 ever needs reconsidering -- turning one off stops
-future purging immediately but does not restore anything already
-deleted. The existing daily cron (`admin/vercel.json`, `0 3 * * *`,
-`/api/cron/retention-purge`) picks up either toggle's change on its next
-run with no deploy needed -- both purge blocks respect `LegalHold` the
-same way the existing deletion-purge does, and each writes one aggregate
-`AuditLogEntry` per run (not one per row) when anything was actually
-purged.
+`'Expired/unmatched swipes'` and `'Ended-match conversation messages'`
+are ON as of 2026-10-08; `'Unlinked Mystery Match pairing history'`
+(§8) is ON as of 2026-10-09. Any of the three can be turned back off
+from the admin portal's Retention Policies page (flip
+`autoDeleteEnabled`) if the behavior in §2/§4/§8 ever needs
+reconsidering -- turning one off stops future purging immediately but
+does not restore anything already deleted. The existing daily cron
+(`admin/vercel.json`, `0 3 * * *`, `/api/cron/retention-purge`) picks up
+any toggle's change on its next run with no deploy needed -- all three
+purge blocks respect `LegalHold` the same way the existing
+deletion-purge does, and each writes one aggregate `AuditLogEntry` per
+run (not one per row) when anything was actually purged.
 
-Both are also event-based, not a one-time cutoff tied to when the
+All three are also event-based, not a one-time cutoff tied to when the
 toggle was flipped: the cron recomputes "now minus the window" fresh on
 every run, compared against each row's own timestamp (a swipe's
-`createdAt`, a match's `unmatchedAt`). Nothing is old enough to be
-purged yet -- findmyVybe is pre-launch -- so turning both on today has
-zero effect today; purging begins as a steady trickle once individual
-rows actually cross their own 180-/90-day mark, never a mass deletion
-on a single future date.
+`createdAt`, a match's `unmatchedAt`, a Mystery Match pairing's
+`matchedAt`). Nothing is old enough to be purged yet -- findmyVybe is
+pre-launch -- so turning all three on today has zero effect today;
+purging begins as a steady trickle once individual rows actually cross
+their own 180-/90-day mark, never a mass deletion on a single future
+date.
+
+## 8. Unlinked Mystery Match pairing history
+
+`MysteryMatchHistory` records every pairing the Mystery Match feature
+has ever made between two users, keyed by `@@unique([userAId,
+userBId])` so the same two people are never re-paired while a row for
+them still exists. `matchId` is set only when a pairing actually turned
+into a real `Match` -- otherwise it's `null`.
+
+This is structurally the same shape as `Swipe` in §2: a nullable
+"did this lead anywhere" field distinguishing a row that's just
+matching exhaust from one that's the origin of a real relationship.
+The purge policy mirrors Swipe's deliberately, rather than deriving a
+separate number:
+
+- a row with `matchId` set is **never** touched, at any age -- same
+  reasoning as a VYBE swipe that led to a Match: it's the origin of a
+  real pairing, not "expired."
+- a row with `matchId` still `null`, once past the retention window, is
+  purged. The only effect is that the `@@unique` constraint it was
+  holding is lifted, so Mystery Match becomes free to pair those two
+  people again later -- the same low-risk, reversible profile as a
+  passed-on or unreciprocated swipe resurfacing in Discover.
+
+**Why mirror Swipe instead of a new number:** there's no DPDP-mandated
+floor that applies here -- `MysteryMatchHistory` is internal matching
+metadata, not one of the log categories DPDP Rules 2025 Rule 8(3) sets
+a minimum for. With no regulatory number to anchor to, the 180-day
+window and `autoDeleteEnabled: true` default were chosen deliberately
+to match Swipe's existing window and risk framework (PKR decision,
+2026-10-09) rather than invent a new, unrelated figure for a
+functionally identical situation. (General legal-research caveat: not
+legal advice -- confirm with counsel if this category's treatment ever
+needs re-examining.)
+
+Implementation: `admin/lib/retentionEnforcement.ts`
+(`MYSTERY_MATCH_RETENTION_CATEGORY`, `DEFAULT_MYSTERY_MATCH_RETENTION_DAYS
+= 180`, `getMysteryMatchRetentionPolicy()`), seeded by
+`admin/scripts/seed-admin.ts`, enforced by the fourth purge block in
+`admin/app/api/cron/retention-purge/route.ts` -- same raw-SQL
+`LegalHold`-excluding `DELETE`, same single aggregate `AuditLogEntry`
+per run, same JSON response shape as the Swipe block it mirrors.

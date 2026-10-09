@@ -226,6 +226,23 @@ async function seedSampleContent(ctx: Awaited<ReturnType<typeof main>>) {
     },
     update: {},
   });
+  // Same upsert-unconditionally treatment, new in this engagement.
+  // Deliberately mirrors the 'Expired/unmatched swipes' policy above --
+  // same 180-day window, same autoDeleteEnabled: true -- per PKR's
+  // explicit instruction (2026-10-09) to mirror Swipe exactly rather
+  // than pick a different number. See admin/lib/retentionEnforcement.ts's
+  // MYSTERY_MATCH_RETENTION_CATEGORY doc comment and docs/DATA_RETENTION.md S8.
+  await db.retentionPolicy.upsert({
+    where: { dataCategory: 'Unlinked Mystery Match pairing history' },
+    create: {
+      dataCategory: 'Unlinked Mystery Match pairing history',
+      retentionDays: 180,
+      legalBasis:
+        'DPDP Act 2023 storage-limitation principle. No DPDP-mandated minimum applies to this data (it is internal matching metadata, not one of the log categories DPDP Rules 2025 Rule 8(3) sets a floor for) -- the 180-day window is a product choice, deliberately matching the existing Swipe retention policy\'s window and risk framework rather than a separately-derived figure. NOT LEGAL ADVICE -- confirm with counsel if this data category\'s treatment ever needs re-examining.',
+      autoDeleteEnabled: true,
+    },
+    update: {},
+  });
   if ((await db.processingActivity.count()) === 0) {
     await db.processingActivity.createMany({
       data: [
