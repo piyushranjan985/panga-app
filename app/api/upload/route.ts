@@ -1,17 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { assertValidImage, normalizeImageForStorage, uploadImageBuffer } from '@/lib/upload';
-import { moderateImageBuffer, photoRejectionMessage, manualReviewMessage } from '@/lib/safety/moderateAndUpload';
-
-// Self-hosted image moderation (IMAGE_MODERATION_PROVIDER=self-hosted)
-// runs two small CNNs on pure-JS tfjs (no native/WASM acceleration, see
-// lib/safety/imageModeration.ts) -- slower than a native backend, so this
-// route gets more time than a Vercel default function allows. 60s is the
-// max most plans allow without Enterprise; if photo uploads still time
-// out in practice, that's the next thing to address, not something more
-// duration alone fixes.
-export const maxDuration = 60;
-
 
 /**
  * Generic authenticated image upload — returns a URL, writes nothing to the
@@ -22,14 +11,16 @@ export const maxDuration = 60;
  * Once a profile exists, app/api/profile/photos/route.ts is used instead
  * (uploads AND creates the Photo row in one step).
  *
- * Moderation happens twice for an onboarding photo, deliberately: once
- * here (REJECTED content is refused a URL at all -- "never trust the
- * client" means we don't trust that a URL collected here and handed back
- * to us later in the PUT body is still the same, unmodified image), and
- * again in app/api/profile/route.ts when the Photo rows are actually
- * created, which is what persists the real PhotoModerationResult/
- * moderationStatus. See docs/IDENTITY_VERIFICATION_AND_SAFETY.md
- * sections 1, 4, 7.
+ * No moderation happens here any more (it used to, inline, synchronously
+ * -- see docs/IDENTITY_VERIFICATION_AND_SAFETY.md S11 for why that
+ * changed). Moderation now happens exactly once, asynchronously, the
+ * moment a real Photo row exists for this URL -- app/api/profile/route.ts's
+ * PUT handler creates that row and enqueues it (lib/safety/moderationQueue.ts).
+ * This isn't a weaker check than before: that PUT handler never trusted a
+ * client-supplied URL as "already checked" anyway (same "never trust the
+ * client" reasoning this comment used to describe), it just used to
+ * re-check inline instead of handing off -- so there's one moderation
+ * pass either way, just later and off this request's critical path.
  */
 export async function POST(req: Request) {
   const session = await getSession();
@@ -44,22 +35,9 @@ export async function POST(req: Request) {
   try {
     assertValidImage(file);
     const buffer = Buffer.from(await file.arrayBuffer());
-    const outcome = await moderateImageBuffer(buffer);
-
-    if (outcome.decision === 'REJECTED') {
-      return NextResponse.json({ error: photoRejectionMessage(outcome) }, { status: 400 });
-    }
-
     const normalized = await normalizeImageForStorage(buffer, file.type);
     const url = await uploadImageBuffer(normalized, `onboarding/${session.userId}`);
-    return NextResponse.json({
-      url,
-      // MANUAL_REVIEW is still a successful upload (never rejected outright)
-      // but the uploader should know now, not discover it later as an
-      // unexplained "Under review" badge -- see manualReviewMessage's doc
-      // comment.
-      notice: outcome.decision === 'MANUAL_REVIEW' ? manualReviewMessage(outcome) : null,
-    });
+    return NextResponse.json({ url });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Upload failed' }, { status: 400 });
   }

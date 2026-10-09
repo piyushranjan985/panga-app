@@ -2,17 +2,18 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
-import { moderateImageUrl, recordPhotoModeration, photoRejectionMessage, manualReviewMessage, type ModerationOutcome } from '@/lib/safety/moderateAndUpload';
+import { enqueuePhotoModeration } from '@/lib/safety/moderationQueue';
 import { isRealIdentityCheck } from '@/lib/safety/identityVerification';
 import { DATE_VIBES, TONIGHT_OPTIONS, VALUES_OPTIONS, LIVING_PREFERENCES, FUTURE_VIBE_QUESTIONS, CHILDREN_OPTIONS } from '@/lib/constants';
 
-// This route's PUT handler moderates every onboarding photo sequentially
-// (see moderateImageUrl calls below) with the self-hosted, pure-JS-tfjs
-// provider (IMAGE_MODERATION_PROVIDER=self-hosted, see
-// lib/safety/imageModeration.ts) -- no native/WASM acceleration, so
-// several photos in one request can take a while. 60s is the max most
-// Vercel plans allow without Enterprise.
-export const maxDuration = 60;
+// Onboarding photos used to be moderated here, synchronously, before this
+// handler could even finish (see docs/IDENTITY_VERIFICATION_AND_SAFETY.md
+// S11) -- that's gone now; photos are stored as PENDING and handed off to
+// app/api/cron/moderate-photo to analyze asynchronously. maxDuration is
+// no longer load-bearing for moderation, but left at a generous value for
+// the rest of this handler's DB writes (profile + photos + interests/
+// tribes/answers all in one upsert).
+export const maxDuration = 30;
 
 
 // Intent-scoped pick-lists (see lib/constants.ts) validated as fixed
@@ -198,29 +199,20 @@ export async function PUT(req: Request) {
   // by `photos:` in `update` -- editing the rest of the profile later must
   // never silently touch photos added since via app/api/profile/photos).
   // So this is the one place onboarding's collected photoUrls actually
-  // become Photo rows, and the one place they need (re-)moderating --
-  // see lib/safety/moderateAndUpload.ts's moderateImageUrl doc comment for
-  // why this re-checks rather than trusting app/api/upload's earlier pass.
+  // become Photo rows. No moderation happens here any more -- every photo
+  // is created as PENDING (the schema default) and handed off to the
+  // async worker right after, same as app/api/profile/photos/route.ts.
+  // This means onboarding can no longer be blocked by "all your photos
+  // were rejected" (that gate required knowing the verdict synchronously,
+  // which this redesign deliberately gives up -- see
+  // docs/IDENTITY_VERIFICATION_AND_SAFETY.md S11). If every photo a new
+  // user submitted ends up REJECTED, they find out via notification like
+  // any other rejection and can add a new photo from the profile screen;
+  // a profile with zero APPROVED photos simply shows no photo in
+  // Discover until then, the same degraded-but-not-broken state an
+  // admin removing all of someone's photos already produces today.
   const isNewProfile = !(await db.profile.findUnique({ where: { userId: session.userId }, select: { id: true } }));
-  let moderatedPhotos: { url: string; position: number; outcome: ModerationOutcome }[] = [];
-  let rejectedCount = 0;
-  if (isNewProfile) {
-    const results = await Promise.all(
-      data.photoUrls.map(async (url, position) => ({ url, position, outcome: await moderateImageUrl(url) })),
-    );
-    moderatedPhotos = results.filter((p) => p.outcome.decision !== 'REJECTED');
-    rejectedCount = results.length - moderatedPhotos.length;
-    if (moderatedPhotos.length === 0) {
-      // All rejected -- surface the first one's specific reason (no face,
-      // explicit content, unreadable file, ...) rather than one generic
-      // sentence that doesn't tell the person what to actually fix.
-      const firstOutcome = results[0]?.outcome;
-      const message = firstOutcome
-        ? photoRejectionMessage(firstOutcome)
-        : "None of your photos passed our photo guidelines — try a clear photo of your face instead.";
-      return NextResponse.json({ error: message }, { status: 400 });
-    }
-  }
+  const newPhotos = data.photoUrls.map((url, position) => ({ url, position }));
 
   const profile = await db.profile.upsert({
     where: { userId: session.userId },
@@ -243,12 +235,7 @@ export async function PUT(req: Request) {
       relationshipStyles: { connect: data.relationshipStyleIds.map((id) => ({ id })) },
       answers: { create: data.promptAnswers.map((pa) => ({ promptId: pa.promptId, answer: pa.answer })) },
       photos: {
-        create: moderatedPhotos.map((p) => ({
-          url: p.url,
-          position: p.position,
-          moderationStatus: p.outcome.decision,
-          moderatedAt: new Date(),
-        })),
+        create: newPhotos.map((p) => ({ url: p.url, position: p.position })),
       },
       dateVibeTags: data.dateVibeTags,
       tonightTags: data.tonightTags,
@@ -296,34 +283,25 @@ export async function PUT(req: Request) {
   });
 
   if (isNewProfile) {
+    // No synchronous inline fallback here (unlike
+    // app/api/profile/photos/route.ts) -- onboarding already stores every
+    // photo as PENDING either way, so an unconfigured QStash just means
+    // these rows wait rather than lengthening this request; see
+    // lib/safety/moderationQueue.ts's doc comment on that trade-off.
     await Promise.all(
-      profile.photos.map((photo) => {
-        const match = moderatedPhotos.find((p) => p.url === photo.url);
-        if (!match) return Promise.resolve();
-        return recordPhotoModeration({ photoId: photo.id, subjectUserId: session.userId, outcome: match.outcome });
-      }),
+      profile.photos
+        .filter((photo) => newPhotos.some((p) => p.url === photo.url))
+        .map((photo) => enqueuePhotoModeration(photo.id)),
     );
   }
 
-  // Two separate things worth telling a first-time submitter, neither of
-  // which used to be surfaced at all: some photos were silently dropped
-  // (rejected -- e.g. no face, unreadable file), or some were accepted but
-  // are pending a human's quick look (MANUAL_REVIEW -- visible only to the
-  // owner until then, see manualReviewMessage). Both can be true at once.
-  const manualReviewPhotos = isNewProfile ? moderatedPhotos.filter((p) => p.outcome.decision === 'MANUAL_REVIEW') : [];
-  const notices: string[] = [];
-  if (rejectedCount > 0) {
-    notices.push(
-      rejectedCount === 1
-        ? "1 photo didn't meet our photo guidelines and wasn't added."
-        : `${rejectedCount} photos didn't meet our photo guidelines and weren't added.`,
-    );
-  }
-  if (manualReviewPhotos.length > 0) {
-    notices.push(manualReviewMessage(manualReviewPhotos[0]!.outcome));
-  }
-
-  return NextResponse.json({ ok: true, profile, notice: notices.length > 0 ? notices.join(' ') : null });
+  return NextResponse.json({
+    ok: true,
+    profile,
+    notice: isNewProfile
+      ? "We're verifying your photos now -- you'll get a notification as each one is approved, usually within a few minutes."
+      : null,
+  });
 }
 
 // Partial-update schema for everything editable straight from the profile

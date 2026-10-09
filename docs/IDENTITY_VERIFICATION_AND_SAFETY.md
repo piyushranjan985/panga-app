@@ -453,11 +453,22 @@ verification status):
     clear violation, OR the analysis
       pipeline itself failed to run
       (moderation_unavailable)      -> REJECTED
-                                     (no Photo row is ever created; blob
-                                      deleted; uploader sees rejection
-                                      reason, no ModerationCase opened)
+                                     (see S11: as of the async redesign, a
+                                      Photo row and blob DO exist briefly
+                                      -- PENDING, never shown to anyone --
+                                      before the worker resolves this;
+                                      REJECTED soft-removes the row and
+                                      deletes the blob immediately after.
+                                      No ModerationCase opened.)
 }
 ```
+
+PENDING (new, S11) sits before this diagram runs at all: every photo is
+stored and its Photo row created immediately, then the diagram above runs
+asynchronously, off the request that uploaded it. PENDING is excluded
+from every viewer-facing query exactly like MANUAL_REVIEW already was --
+nothing above changes about what's visible to other users, only when the
+decision actually gets made.
 
 Product decision (2026-09-26): a provider/analysis failure used to fail
 safe to MANUAL_REVIEW ("we don't know, a human should look"). Changed to a
@@ -685,3 +696,66 @@ name-token-overlap check against the profile's display name),
 human-face presence across every common upload format (JPEG, PNG, WebP,
 HEIC/HEIF), nudity/explicit content, and duplicate-account prevention — is
 enforced server-side, in one code path, regardless of client.
+
+## 11. Async moderation pipeline (upload no longer waits on analysis)
+
+Originally, every upload route ran `moderateImageBuffer`/`moderateImageUrl`
+inline and only responded once the self-hosted nsfwjs+face-api analysis
+(pure-JS tfjs, no native/WASM acceleration -- see §3) had finished. That
+analysis has a real but, pre-launch, *unmeasured* CPU cost per call; at
+real traffic, blocking every upload request (and, worse, onboarding's
+PUT, sequentially for up to 5 photos in one request) on it is both a
+latency problem for the uploader and a Vercel function-duration/cost risk
+that nothing was watching.
+
+**New flow**, for every upload path (`app/api/upload`, `app/api/profile/
+photos`, `app/api/profile`'s PUT):
+
+```
+upload -> validate (lib/imageValidation.ts) -> store blob -> create Photo
+   row (moderationStatus: PENDING, the schema default) -> respond to the
+   client immediately ("we'll let you know") -> enqueue
+   lib/safety/moderationQueue.ts's enqueuePhotoModeration(photoId)
+       |
+       v  (separate function invocation, woken by QStash --
+       |   lib/queue/qstash.ts, same mechanism Mystery Match's delivery
+       |   worker already uses)
+app/api/cron/moderate-photo -- runs the real analysis, calls the existing
+   recordPhotoModeration (unchanged), then:
+     REJECTED      -> deletes the blob, soft-removes the row (removedAt/
+                       removedReason: 'automated_rejection')
+     MANUAL_REVIEW  -> unchanged: ModerationCase opened, owner-only visible
+     APPROVED       -> unchanged: visible to other users
+   -> notifies the uploader (push via sendPushToUser('push.photo_moderation',
+      ...), and email via Brevo if they have a verified email on file) --
+      both best-effort, neither failure affects the recorded decision.
+```
+
+**Graceful degradation**: if `QSTASH_TOKEN` isn't configured,
+`enqueuePhotoModeration` returns `false` without throwing, and
+`app/api/profile/photos` falls back to the old inline, synchronous check
+right there (so a local dev environment without QStash still works
+correctly end to end). `app/api/profile`'s onboarding PUT does *not* have
+this inline fallback -- the photo is already stored as PENDING either
+way, so an unconfigured queue there just means those rows wait rather
+than lengthening the onboarding request.
+
+**What changed in the state machine (§6)**: the only new thing is PENDING
+as a starting state that didn't exist before -- everything downstream of
+"analysis actually ran" is identical. The meaningful behavior change is
+onboarding no longer blocking profile creation on "at least one photo
+must pass moderation": that gate required a synchronous verdict, which
+this redesign gives up by design. A first-time user whose photos all end
+up REJECTED now finds out via notification, like any other rejection,
+and adds a replacement from the profile screen; until they do, their
+profile simply shows no photo in Discover -- the same degraded-but-not-
+broken state that already existed whenever an admin removes all of
+someone's photos.
+
+**Cost note still applies**: this makes upload *requests* cheap and fast
+regardless of analysis duration, but the analysis itself still costs
+whatever it costs, once, per photo, somewhere -- it's just no longer on
+the user-facing request's clock. Measuring the worker's own real duration
+in Vercel's function logs is still the way to find out what that number
+actually is.
+

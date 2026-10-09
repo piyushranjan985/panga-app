@@ -1,17 +1,9 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
-import { assertValidImage, normalizeImageForStorage, uploadImageBuffer } from '@/lib/upload';
-import { moderateImageBuffer, recordPhotoModeration, photoRejectionMessage, manualReviewMessage } from '@/lib/safety/moderateAndUpload';
-
-// Self-hosted image moderation (IMAGE_MODERATION_PROVIDER=self-hosted)
-// runs two small CNNs on pure-JS tfjs (no native/WASM acceleration, see
-// lib/safety/imageModeration.ts) -- slower than a native backend, so this
-// route gets more time than a Vercel default function allows. 60s is the
-// max most plans allow without Enterprise; if photo uploads still time
-// out in practice, that's the next thing to address, not something more
-// duration alone fixes.
-export const maxDuration = 60;
+import { assertValidImage, normalizeImageForStorage, uploadImageBuffer, deleteImage } from '@/lib/upload';
+import { moderateImageBuffer, recordPhotoModeration } from '@/lib/safety/moderateAndUpload';
+import { enqueuePhotoModeration } from '@/lib/safety/moderationQueue';
 
 // Kept at 5 -- Bumble/Hinge standardize on 6 and Tinder allows 9 (see
 // docs/DATA_RETENTION.md S6 for the competitor research), but 5 was a
@@ -23,13 +15,24 @@ const MAX_PHOTOS = 5;
  * screen's "+ Add" tile). Onboarding uses app/api/upload/route.ts instead,
  * since a Profile row doesn't exist yet at that point to attach a Photo to.
  *
- * Every photo goes through lib/safety/moderateAndUpload.ts before it's
- * ever stored -- see docs/IDENTITY_VERIFICATION_AND_SAFETY.md sections 1,
- * 4. A REJECTED image is never uploaded to blob storage at all (no public
- * URL ever exists for it); MANUAL_REVIEW and APPROVED are both stored, but
- * only APPROVED photos are ever shown to another user (see
- * app/api/discover/route.ts and app/api/profile/[userId]/... photo
- * filtering, which reads Photo.moderationStatus).
+ * The photo is stored and the Photo row created immediately (moderationStatus:
+ * PENDING, the schema default), and moderation is handed off to run
+ * asynchronously (lib/safety/moderationQueue.ts) rather than inline here --
+ * see docs/IDENTITY_VERIFICATION_AND_SAFETY.md S11. This route used to
+ * block on the self-hosted nsfwjs+face-api analysis and refuse to even
+ * store a REJECTED photo; now every upload succeeds immediately and the
+ * uploader finds out the actual verdict via notification shortly after
+ * (push + email, see app/api/cron/moderate-photo/route.ts). A REJECTED
+ * result still never ends up visible to anyone else -- PENDING is
+ * excluded from every viewer-facing query exactly like MANUAL_REVIEW
+ * already was, and a REJECTED photo gets its blob deleted and the row
+ * soft-removed the moment the async check resolves.
+ *
+ * If QStash isn't configured (enqueuePhotoModeration returns false --
+ * e.g. local dev without QSTASH_TOKEN), this falls back to the old
+ * inline, synchronous check right here so nothing ships un-moderated;
+ * that's the only case where this request's duration still depends on
+ * the analysis.
  */
 export async function POST(req: Request) {
   const session = await getSession();
@@ -50,24 +53,30 @@ export async function POST(req: Request) {
   try {
     assertValidImage(file);
     const buffer = Buffer.from(await file.arrayBuffer());
-    const outcome = await moderateImageBuffer(buffer);
-
-    if (outcome.decision === 'REJECTED') {
-      return NextResponse.json({ error: photoRejectionMessage(outcome) }, { status: 400 });
-    }
-
     const normalized = await normalizeImageForStorage(buffer, file.type);
     const url = await uploadImageBuffer(normalized, `profiles/${session.userId}`);
     const nextPosition = profile.photos.reduce((max, p) => Math.max(max, p.position), -1) + 1;
     const photo = await db.photo.create({
-      data: { profileId: profile.id, url, position: nextPosition, moderationStatus: outcome.decision, moderatedAt: new Date() },
+      data: { profileId: profile.id, url, position: nextPosition },
     });
-    await recordPhotoModeration({ photoId: photo.id, subjectUserId: session.userId, outcome });
+
+    const queued = await enqueuePhotoModeration(photo.id);
+    if (!queued) {
+      // QStash isn't configured (e.g. local dev) -- fall back to the old
+      // inline, synchronous check so this photo still actually gets
+      // moderated. Mirrors app/api/cron/moderate-photo/route.ts's own
+      // REJECTED handling: scrub the blob, same as that worker does.
+      const outcome = await moderateImageBuffer(buffer);
+      await recordPhotoModeration({ photoId: photo.id, subjectUserId: session.userId, outcome });
+      if (outcome.decision === 'REJECTED') {
+        await deleteImage(url);
+      }
+    }
 
     return NextResponse.json({
       ok: true,
       photo,
-      notice: outcome.decision === 'MANUAL_REVIEW' ? manualReviewMessage(outcome) : null,
+      notice: "We're verifying this photo now -- you'll get a notification once it's approved, usually within a few minutes.",
     });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Upload failed' }, { status: 400 });

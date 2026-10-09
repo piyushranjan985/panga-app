@@ -455,9 +455,10 @@ function OnboardingForm() {
       const data = await safeJson(res);
       if (!res.ok) throw new Error(data.error ?? 'Upload failed');
       setForm((f) => ({ ...f, photoUrls: [...f.photoUrls, data.url].slice(0, 5) }));
-      // MANUAL_REVIEW isn't an error -- the photo was accepted -- but the
-      // uploader should know now that it's pending a quick human look,
-      // not find out later from an unexplained badge on their own profile.
+      // /api/upload no longer moderates at all (that happens once,
+      // asynchronously, when /api/profile's PUT below actually creates
+      // the Photo rows) -- so there's normally no notice at this step;
+      // this just stays defensive in case that ever changes.
       if (data.notice) setPhotoNotice(data.notice);
     } catch (err) {
       setPhotoError(err instanceof Error ? err.message : 'Upload failed');
@@ -502,8 +503,11 @@ function OnboardingForm() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Could not save profile');
       if (data.notice) {
-        // Give them a moment to actually read it (a dropped photo, or one
-        // pending manual review) before navigating away from it.
+        // "We're verifying your photos" -- moderation now runs
+        // asynchronously (see docs/IDENTITY_VERIFICATION_AND_SAFETY.md
+        // S11), so this submit can no longer fail with "all your photos
+        // were rejected"; give them a moment to actually read the notice
+        // before navigating away from it.
         setFinishNotice(data.notice);
         setTimeout(() => router.push(editMode ? '/profile' : '/discover'), 3500);
       } else {

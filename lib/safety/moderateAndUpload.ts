@@ -201,6 +201,18 @@ export function manualReviewMessage(outcome: ModerationOutcome): string {
   return "Your photo was uploaded and a person on our team will take a quick look before it's shown to others.";
 }
 
+/**
+ * The async worker's (app/api/cron/moderate-photo) success-path
+ * notification copy -- there was no equivalent string before, since
+ * APPROVED used to happen inline and needed no separate "it's done"
+ * message. Used for both the push body and the email, same reasoning as
+ * photoRejectionMessage/manualReviewMessage above: one source of truth
+ * per outcome, not duplicated inline at each send site.
+ */
+export function photoApprovedMessage(): string {
+  return "Good news -- your photo passed review and is now visible to others on findmyVybe.";
+}
+
 const SEVERITY_FOR_DECISION = (decision: PhotoModerationDecision): 'LOW' | 'MEDIUM' | 'HIGH' =>
   decision === 'REJECTED' ? 'HIGH' : 'LOW';
 
@@ -265,7 +277,20 @@ export async function recordPhotoModeration(params: {
     }),
     db.photo.update({
       where: { id: photoId },
-      data: { moderationStatus: outcome.decision, moderatedAt: new Date() },
+      data: {
+        moderationStatus: outcome.decision,
+        moderatedAt: new Date(),
+        // REJECTED photos used to never exist as a stored blob at all --
+        // the old synchronous checks ran before the file was ever
+        // uploaded. Now that moderation runs after the file is already
+        // in blob storage (see app/api/cron/moderate-photo/route.ts),
+        // a REJECTED decision has to retroactively scrub it: soft-remove
+        // the row the same way an admin's manual removal does (removedAt/
+        // removedReason -- already excluded from every viewer-facing
+        // query via `removedAt: null`), so this never leaves a rejected
+        // photo's row looking indistinguishable from a normal one.
+        ...(outcome.decision === 'REJECTED' ? { removedAt: new Date(), removedReason: 'automated_rejection' } : {}),
+      },
     }),
   ]);
 }

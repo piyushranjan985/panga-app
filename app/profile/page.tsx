@@ -658,6 +658,11 @@ export default function ProfilePage() {
                     Primary
                   </span>
                 )}
+                {photo.moderationStatus === 'PENDING' && (
+                  <span className="absolute inset-x-1 bottom-1 rounded-full bg-slate-500/90 px-2 py-0.5 text-center text-[10px] font-semibold text-white">
+                    Verifying — only visible to you
+                  </span>
+                )}
                 {photo.moderationStatus === 'MANUAL_REVIEW' && (
                   <span className="absolute inset-x-1 bottom-1 rounded-full bg-amber-500/90 px-2 py-0.5 text-center text-[10px] font-semibold text-white">
                     Under review — only visible to you

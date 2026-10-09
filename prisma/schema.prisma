@@ -83,6 +83,13 @@ enum MysteryNotificationStatus {
 }
 
 enum PhotoModerationDecision {
+  // Stored, but not yet analyzed -- the async moderation worker
+  // (app/api/cron/moderate-photo, enqueued via lib/safety/moderationQueue.ts)
+  // hasn't run yet. Every filter that already required moderationStatus:
+  // 'APPROVED' to show a photo to other users (see app/api/discover/*.ts,
+  // app/api/matches/*, app/api/preview/*) already excludes this exactly
+  // like it excludes MANUAL_REVIEW -- no change needed there.
+  PENDING
   APPROVED
   REJECTED
   MANUAL_REVIEW
@@ -331,9 +338,11 @@ model Photo {
   removedReason String?
 
   // See docs/IDENTITY_VERIFICATION_AND_SAFETY.md -- every photo starts as
-  // MANUAL_REVIEW until the moderation pipeline (or an admin) decides;
-  // nothing becomes visible to other users before that.
-  moderationStatus PhotoModerationDecision @default(MANUAL_REVIEW)
+  // PENDING (stored, not yet analyzed -- see PhotoModerationDecision) and
+  // moves to APPROVED/REJECTED/MANUAL_REVIEW once the async moderation
+  // worker (or an admin) decides; nothing becomes visible to other users
+  // before APPROVED.
+  moderationStatus PhotoModerationDecision @default(PENDING)
   moderatedAt      DateTime?
   results          PhotoModerationResult[]
 
