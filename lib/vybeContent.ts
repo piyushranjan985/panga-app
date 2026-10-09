@@ -412,7 +412,7 @@ export function getQuickHelloMessages(pairIntent: PairIntent): string[] {
 // for a real calendar picker, which this MVP doesn't have.
 // ---------------------------------------------------------------------
 
-export interface PlanOption extends StarterOption {}
+export type PlanOption = StarterOption;
 
 export interface PlanStep {
   stepId: string;
