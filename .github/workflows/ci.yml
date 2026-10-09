@@ -83,7 +83,30 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: admin/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            admin/package-lock.json
+
+      # prisma/schema.prisma (shared, lives at the repo root) declares two
+      # generator blocks -- "client" for the root app, "adminClient" for
+      # this one (see that file). Confirmed by reproducing in an isolated
+      # clone: `prisma generate` resolves @prisma/client relative to the
+      # SCHEMA FILE's location, not the CWD, and not per-generator even
+      # when scoped with --generator -- so admin's own @prisma/client
+      # being installed in admin/node_modules is not enough on its own.
+      # Without the root app's node_modules/@prisma/client present too,
+      # generate fails outright with "Could not resolve @prisma/client",
+      # which is what actually failed here before this fix (a separate,
+      # unrelated bug from the Node-20 issue fixed earlier -- that one
+      # crashed before ever reaching this check, which is why both looked
+      # like a single failure until Node 22 was in place to see past it).
+      # There's no way to generate admin's client in true isolation from
+      # the root app's node_modules given how this schema is structured,
+      # so this job installs the root app's dependencies too, not just
+      # admin's.
+      - name: Install root app dependencies (needed for prisma generate -- see comment above)
+        working-directory: .
+        run: npm ci
 
       # No postinstall hook here -- generate explicitly against the root
       # app's schema (admin/prisma.config.ts points one directory up).
