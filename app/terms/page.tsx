@@ -45,20 +45,20 @@ export default function TermsOfServicePage() {
       <p className="mt-2 text-xs uppercase tracking-wide text-inkSoft">Last updated: 4 October 2026</p>
 
       <p className="mt-6 text-inkSoft">
-        These terms are the agreement between you and findmyVybe ("we", "us") for using the findmyVybe app --
-        an early-stage (MVP) dating &amp; matrimony-lite app for India. We're rolling out city by city,
+        These terms are the agreement between you and findmyVybe (&quot;we&quot;, &quot;us&quot;) for using the findmyVybe app --
+        an early-stage (MVP) dating &amp; matrimony-lite app for India. We&apos;re rolling out city by city,
         starting with Bengaluru. By creating an account or otherwise using findmyVybe, you agree to these terms and to our{' '}
         <Link href="/privacy" className="font-semibold text-magenta">
           Privacy Policy
         </Link>
-        , which explains what we collect and why. If you don't agree, please don't use the app.
+        , which explains what we collect and why. If you don&apos;t agree, please don&apos;t use the app.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">Who can use findmyVybe</h2>
       <p className="mt-2 text-inkSoft">
         You must be 18 or older. Creating an account on behalf of someone under 18, or misrepresenting your age
-        or identity, is a breach of these terms and grounds for immediate account removal -- see "Identity
-        verification" below for how we check this. You may keep one personal account only; it's for your own
+        or identity, is a breach of these terms and grounds for immediate account removal -- see &quot;Identity
+        verification&quot; below for how we check this. You may keep one personal account only; it&apos;s for your own
         use, not for representing a business, a group, or someone else. The information you give us during
         onboarding and in your profile (name, date of birth, gender, city, bio, photos, and the rest) needs to
         be genuinely yours and accurate -- findmyVybe only works if the people on it are who they say they are.
@@ -66,23 +66,23 @@ export default function TermsOfServicePage() {
 
       <h2 className="mt-8 font-display text-xl font-bold">Your account</h2>
       <p className="mt-2 text-inkSoft">
-        You can sign in with a one-time code sent to your phone or email, or with "Continue with Google."
-        Whichever method you use, you're responsible for keeping access to that phone number, email inbox, or
+        You can sign in with a one-time code sent to your phone or email, or with &quot;Continue with Google.&quot;
+        Whichever method you use, you&apos;re responsible for keeping access to that phone number, email inbox, or
         Google account secure -- anyone who can complete your sign-in
         method can access your findmyVybe account. Tell us right away at{' '}
         <a href="mailto:support@findmyvybe.com" className="font-semibold text-magenta">
           support@findmyvybe.com
         </a>{' '}
-        if you think your account's been accessed without your permission.
+        if you think your account&apos;s been accessed without your permission.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">Identity verification</h2>
       <p className="mt-2 text-inkSoft">
         Discovery, matching, and messaging are only unlocked once your identity verification is complete and
         passes -- this is mandatory, not optional, and is how we keep the platform 18+ and reduce fake accounts.
-        Where a real government-ID verification provider is connected, this checks your document's own date of
+        Where a real government-ID verification provider is connected, this checks your document&apos;s own date of
         birth and a name consistent with your profile. If verification is still processing, fails, or is
-        rejected, the app will tell you plainly and won't let you skip ahead. See our{' '}
+        rejected, the app will tell you plainly and won&apos;t let you skip ahead. See our{' '}
         <Link href="/privacy" className="font-semibold text-magenta">
           Privacy Policy
         </Link>{' '}
@@ -95,14 +95,14 @@ export default function TermsOfServicePage() {
         Every photo you upload is automatically screened before anyone else can see it -- for a real, visible
         human face, and for nudity or sexually explicit content -- and a photo that fails either check is
         rejected or held for manual review. Photos must be genuinely of you, current, and not of anyone who
-        hasn't consented to being shown on your profile. Your bio, prompts, and other profile text follow the
-        same rule: they're yours, and they follow the conduct rules below.
+        hasn&apos;t consented to being shown on your profile. Your bio, prompts, and other profile text follow the
+        same rule: they&apos;re yours, and they follow the conduct rules below.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">Community conduct</h2>
       <p className="mt-2 text-inkSoft">
         findmyVybe exists for genuine dating and relationship-building, not for anything on this list, which is
-        also exactly what our safety team's review categories cover -- a report or automated flag in any of
+        also exactly what our safety team&apos;s review categories cover -- a report or automated flag in any of
         these areas can lead to a warning, message or discovery restrictions, suspension, or a ban depending on
         severity:
       </p>
@@ -115,15 +115,15 @@ export default function TermsOfServicePage() {
           gifts, investments, or financial details, however the request is framed.
         </li>
         <li>
-          <strong className="text-ink">Fake or "catfish" profiles</strong> -- someone else's photos, a fictional
-          identity, or an account you're not the real, sole user of.
+          <strong className="text-ink">Fake or &quot;catfish&quot; profiles</strong> -- someone else&apos;s photos, a fictional
+          identity, or an account you&apos;re not the real, sole user of.
         </li>
         <li>
           <strong className="text-ink">Underage users</strong> -- an account confirmed to belong to someone
           under 18 is removed the moment we know.
         </li>
         <li>
-          <strong className="text-ink">Sexual content</strong> shared without the other person's consent, or at
+          <strong className="text-ink">Sexual content</strong> shared without the other person&apos;s consent, or at
           all outside what identity/photo verification already screens for.
         </li>
         <li>
@@ -137,63 +137,63 @@ export default function TermsOfServicePage() {
       <h2 className="mt-8 font-display text-xl font-bold">Meeting in person</h2>
       <p className="mt-2 text-inkSoft">
         findmyVybe helps you connect with other members -- what happens if you choose to meet someone in person
-        is between you and them. We don't run background checks beyond the identity verification described
-        above, and we can't guarantee any other member's conduct, intentions, or safety. Meet in public places,
-        tell a friend where you're going, and trust your judgment. After a match, you can optionally leave
-        "Vybe Check" feedback (meet again / maybe / not for me) -- this helps your own future matching, not a
+        is between you and them. We don&apos;t run background checks beyond the identity verification described
+        above, and we can&apos;t guarantee any other member&apos;s conduct, intentions, or safety. Meet in public places,
+        tell a friend where you&apos;re going, and trust your judgment. After a match, you can optionally leave
+        &quot;Vybe Check&quot; feedback (meet again / maybe / not for me) -- this helps your own future matching, not a
         public rating of the other person.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">Mystery Match, Vybe Flip &amp; No-Labels Match</h2>
       <p className="mt-2 text-inkSoft">
-        These are optional, opt-in daily pairings you choose from your Profile screen -- you're only ever
+        These are optional, opt-in daily pairings you choose from your Profile screen -- you&apos;re only ever
         paired with someone who has independently chosen the same option as you, that same day. No-Labels
         Match can pair you with someone whose stated intent is different from yours; the first time you select
-        it, we'll show you a short explainer, and selecting it again means you understand and accept that. A
+        it, we&apos;ll show you a short explainer, and selecting it again means you understand and accept that. A
         Mystery Match pairing is a real match like any other (the same reporting, blocking, and conduct rules
         below apply in full) except that your photo and name stay masked to each other until you both choose
-        to reveal them in chat -- revealing is one-way and can't be undone, and we'll never pressure you to do
+        to reveal them in chat -- revealing is one-way and can&apos;t be undone, and we&apos;ll never pressure you to do
         it on any particular timeline.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">Vybe Vouch</h2>
       <p className="mt-2 text-inkSoft">
-        From a match's "…" menu, you can optionally invite one person you trust to look at a privacy-safe
-        summary of that specific match and share a quick reaction with you. That person doesn't need a
+        From a match&apos;s &quot;…&quot; menu, you can optionally invite one person you trust to look at a privacy-safe
+        summary of that specific match and share a quick reaction with you. That person doesn&apos;t need a
         findmyVybe account, and we never collect their contact details -- you share the link with them
-        yourself. Their response is shown only to you; it's advisory only and never affects your match,
-        messaging, or the other member in any way, and the other member is never told an invite happened. Don't
-        use Vybe Vouch to share someone else's information anywhere the privacy-safe summary wouldn't already
+        yourself. Their response is shown only to you; it&apos;s advisory only and never affects your match,
+        messaging, or the other member in any way, and the other member is never told an invite happened. Don&apos;t
+        use Vybe Vouch to share someone else&apos;s information anywhere the privacy-safe summary wouldn&apos;t already
         be appropriate to share.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">Reporting, blocking &amp; enforcement</h2>
       <p className="mt-2 text-inkSoft">
-        Any chat's "…" menu lets you block or report another member -- blocking is immediate and mutual (neither
+        Any chat&apos;s &quot;…&quot; menu lets you block or report another member -- blocking is immediate and mutual (neither
         of you will see the other again); a report opens a safety case our team reviews. If we take action on
         your account (a warning, a messaging or discovery restriction, a temporary suspension, or a permanent
-        ban), we'll tell you why where we reasonably can, and you can appeal by writing to{' '}
+        ban), we&apos;ll tell you why where we reasonably can, and you can appeal by writing to{' '}
         <a href="mailto:support@findmyvybe.com" className="font-semibold text-magenta">
           support@findmyvybe.com
         </a>
-        . We may act on a report or an automated flag before you're notified, where waiting would create a
+        . We may act on a report or an automated flag before you&apos;re notified, where waiting would create a
         safety risk.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">Cost</h2>
       <p className="mt-2 text-inkSoft">
-        findmyVybe is free -- there's no paid tier or subscription today, and every feature (matching, chat,
+        findmyVybe is free -- there&apos;s no paid tier or subscription today, and every feature (matching, chat,
         Vybe Check, verification, location distance) is available to everyone at no cost. If that changes in
-        the future, we'll update these terms and tell members clearly before anything is ever charged.
+        the future, we&apos;ll update these terms and tell members clearly before anything is ever charged.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">Your content, and our license to show it</h2>
       <p className="mt-2 text-inkSoft">
         You keep ownership of the photos, bio, prompts, and messages you post. By posting them, you give
-        findmyVybe a license to store, display, and transmit that content to other members as the app's
+        findmyVybe a license to store, display, and transmit that content to other members as the app&apos;s
         ordinary features require (showing your profile to potential matches, delivering your messages to the
         person you sent them to, and so on) -- nothing more, and never for third-party advertising. This license
-        ends when you delete that content or your account, except where we're required to retain something
+        ends when you delete that content or your account, except where we&apos;re required to retain something
         longer (for example, evidence tied to an open safety investigation), as described in our{' '}
         <Link href="/privacy" className="font-semibold text-magenta">
           Privacy Policy
@@ -203,29 +203,29 @@ export default function TermsOfServicePage() {
 
       <h2 className="mt-8 font-display text-xl font-bold">Ending your account</h2>
       <p className="mt-2 text-inkSoft">
-        You can stop using findmyVybe at any time. "Delete my account" on your Profile screen deactivates
+        You can stop using findmyVybe at any time. &quot;Delete my account&quot; on your Profile screen deactivates
         your account and blocks sign-in immediately; you can also request deletion by emailing{' '}
         <a href="mailto:support@findmyvybe.com" className="font-semibold text-magenta">
           support@findmyvybe.com
         </a>{' '}
-        -- see "Delete your data" in our{' '}
+        -- see &quot;Delete your data&quot; in our{' '}
         <Link href="/privacy" className="font-semibold text-magenta">
           Privacy Policy
         </Link>{' '}
-        for exactly what deleting does and doesn't do, including how to undo it. We can suspend or
+        for exactly what deleting does and doesn&apos;t do, including how to undo it. We can suspend or
         terminate your account for breaching these terms, including the community conduct rules above,
         being confirmed underage, or suspected fraud or abuse.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">The app itself</h2>
       <p className="mt-2 text-inkSoft">
-        findmyVybe is an early-stage MVP, provided "as is" -- we're actively building it, which means features,
-        matching quality, and availability can change, and things will occasionally break. We don't guarantee
-        you'll find a match, a relationship, or any particular outcome from using the app. Distance and
-        nearby-match results depend on your device's location accuracy (or, if you haven't shared it, your
-        city's general area) and aren't guaranteed to be precise. To the extent the law allows, we're not liable
+        findmyVybe is an early-stage MVP, provided &quot;as is&quot; -- we&apos;re actively building it, which means features,
+        matching quality, and availability can change, and things will occasionally break. We don&apos;t guarantee
+        you&apos;ll find a match, a relationship, or any particular outcome from using the app. Distance and
+        nearby-match results depend on your device&apos;s location accuracy (or, if you haven&apos;t shared it, your
+        city&apos;s general area) and aren&apos;t guaranteed to be precise. To the extent the law allows, we&apos;re not liable
         for indirect or consequential losses arising from your use of the app or your interactions with other
-        members -- this doesn't limit any liability that can't be excluded under Indian law.
+        members -- this doesn&apos;t limit any liability that can&apos;t be excluded under Indian law.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">Governing law</h2>
@@ -250,12 +250,12 @@ export default function TermsOfServicePage() {
         </a>
       </p>
       <p className="mt-2 text-inkSoft">
-        We'll acknowledge a complaint within 24 hours of receiving it and work to resolve it within 15 days.
+        We&apos;ll acknowledge a complaint within 24 hours of receiving it and work to resolve it within 15 days.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">Changes to these terms</h2>
       <p className="mt-2 text-inkSoft">
-        If these terms change meaningfully, we'll update the date at the top of this page and, where the change
+        If these terms change meaningfully, we&apos;ll update the date at the top of this page and, where the change
         is significant, let members know in the app. Continuing to use findmyVybe after a change takes effect
         means you accept the updated terms.
       </p>

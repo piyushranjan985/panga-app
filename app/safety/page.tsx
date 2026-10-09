@@ -29,26 +29,26 @@ export default function SafetyCenterPage() {
       <ul className="mt-2 list-disc space-y-2 pl-5 text-inkSoft">
         <li>Meet in a public place for a first date, and arrange your own transport there and back.</li>
         <li>
-          Tell a friend or family member where you're going and who with --{' '}
+          Tell a friend or family member where you&apos;re going and who with --{' '}
           <Link href="/help?entry=sf-vybe-vouch-what" className="font-semibold text-magenta">
             Vybe Vouch
           </Link>{' '}
           lets you send a private link to someone you trust for a second opinion on a match before you meet them.
         </li>
         <li>
-          findmyVybe doesn't have in-app video or voice calling yet -- if you want to see and hear someone before
+          findmyVybe doesn&apos;t have in-app video or voice calling yet -- if you want to see and hear someone before
           meeting, do that on a platform you both already trust.
         </li>
-        <li>Trust your instincts. If something feels wrong, it's fine to cancel or leave, no explanation needed.</li>
+        <li>Trust your instincts. If something feels wrong, it&apos;s fine to cancel or leave, no explanation needed.</li>
       </ul>
 
       <h2 className="mt-8 font-display text-xl font-bold">Romance &amp; rishta scams</h2>
       <p className="mt-2 text-inkSoft">
-        Whether someone says they're "just vibing" or ready for marriage, the same red flags apply: anyone who asks
-        you for money, gift cards, investment "tips," your OTPs, or your bank/ID details is scamming you -- no
-        exception, no matter how long you've been talking or how convincing the story is (a sudden emergency, a
-        stuck shipment, a "guaranteed" investment). Never send money or share financial or government-ID details
-        with someone you've only met on the app. If a profile feels too polished, avoids video calls, or rushes
+        Whether someone says they&apos;re &quot;just vibing&quot; or ready for marriage, the same red flags apply: anyone who asks
+        you for money, gift cards, investment &quot;tips,&quot; your OTPs, or your bank/ID details is scamming you -- no
+        exception, no matter how long you&apos;ve been talking or how convincing the story is (a sudden emergency, a
+        stuck shipment, a &quot;guaranteed&quot; investment). Never send money or share financial or government-ID details
+        with someone you&apos;ve only met on the app. If a profile feels too polished, avoids video calls, or rushes
         straight to marriage talk or money, report it.
       </p>
 
@@ -63,14 +63,14 @@ export default function SafetyCenterPage() {
         <Link href="/help?entry=sf-block" className="font-semibold text-magenta">
           Block
         </Link>{' '}
-        from the "..." menu in your conversation with them -- reporting is reviewed by the team, and blocking is
+        from the &quot;...&quot; menu in your conversation with them -- reporting is reviewed by the team, and blocking is
         immediate and ends the match on both sides.
       </p>
 
-      <h2 className="mt-8 font-display text-xl font-bold">If you're in immediate danger</h2>
+      <h2 className="mt-8 font-display text-xl font-bold">If you&apos;re in immediate danger</h2>
       <p className="mt-2 text-inkSoft">
-        Contact local emergency services first -- that always comes before anything in the app. Once you're safe,
-        report and block the person involved so the team has a record and they can't contact you again.
+        Contact local emergency services first -- that always comes before anything in the app. Once you&apos;re safe,
+        report and block the person involved so the team has a record and they can&apos;t contact you again.
       </p>
 
       <h2 className="mt-8 font-display text-xl font-bold">More questions</h2>

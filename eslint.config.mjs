@@ -12,7 +12,14 @@ const eslintConfig = [
   ...nextCoreWebVitals,
   ...nextTypescript,
   {
-    ignores: ['node_modules/**', '.next/**', 'public/**', 'scripts/**'],
+    // '**/.next/**' (not just '.next/**') so this also catches admin/.next --
+    // a plain '.next/**' only matches a top-level .next folder from this
+    // config file's own directory, so admin's build output was slipping
+    // through into `npm run lint` (eslint . from repo root) every time it
+    // had been built locally; android/**/build/** for the same reason --
+    // Android's build intermediates (generated JS bundled into the native
+    // app shell) aren't source either.
+    ignores: ['**/node_modules/**', '**/.next/**', 'public/**', 'scripts/**', 'android/**/build/**'],
   },
 ];
 
