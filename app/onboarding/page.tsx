@@ -725,6 +725,9 @@ function OnboardingForm() {
         <div className="flex flex-col gap-3">
           <h1 className="font-display text-2xl font-extrabold">Add your photos</h1>
           <p className="text-sm text-inkSoft">Your first photo is your first impression.</p>
+          <p className="text-xs text-inkSoft">
+            Use a clear solo photo that shows your face -- group shots, blurry pics, or photos with no visible face can get rejected and delay your profile going live.
+          </p>
           <div className="grid grid-cols-3 gap-2">
             {form.photoUrls.map((url, i) => (
               <div key={url + i} className="relative aspect-square overflow-hidden rounded-2xl border border-line">

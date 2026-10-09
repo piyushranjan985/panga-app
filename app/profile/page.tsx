@@ -647,7 +647,10 @@ export default function ProfilePage() {
 
         <section className="mt-8">
           <h2 className="mb-2 font-display text-lg font-bold">Photos</h2>
-          <p className="mb-2 text-xs text-inkSoft">Your first photo is your first impression.</p>
+          <p className="text-xs text-inkSoft">Your first photo is your first impression.</p>
+          <p className="mb-2 text-xs text-inkSoft">
+            Use a clear solo photo that shows your face -- group shots, blurry pics, or photos with no visible face can get rejected and delay your profile going live.
+          </p>
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
             {profile.photos.map((photo, i) => (
               <div key={photo.id} className="relative aspect-square overflow-hidden rounded-2xl border border-line">
