@@ -168,7 +168,7 @@ export default function AccountSecuritySection({
     <section className="mt-8 rounded-2xl border border-line bg-white p-4">
       <h2 className="font-display text-lg font-bold">Account & security</h2>
       <p className="mt-1 text-sm text-inkSoft">
-        How you sign in to findmyVybe -- add a passkey or trust this device so you're not stuck waiting on an SMS
+        How you sign in to findmyVybe -- add a passkey or trust this device so you&apos;re not stuck waiting on an SMS
         every time you come back.
       </p>
 
@@ -343,7 +343,7 @@ export default function AccountSecuritySection({
         <div className="rounded-2xl border border-line p-3">
           <p className="text-sm font-bold">Device sessions</p>
           <p className="mt-1 text-sm text-inkSoft">
-            Signed in on more than one device? That's normal. If you lost a device or signed in somewhere you don't
+            Signed in on more than one device? That&apos;s normal. If you lost a device or signed in somewhere you don&apos;t
             trust, this signs out every device except this one.
           </p>
           {signOutOtherError && <p className="mt-2 text-sm text-magenta">{signOutOtherError}</p>}

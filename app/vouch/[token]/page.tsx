@@ -143,7 +143,7 @@ export default function VybeVouchPage() {
       </div>
 
       <div className="rounded-card border border-line bg-white p-5">
-        <p className="text-sm font-semibold">What's your read?</p>
+        <p className="text-sm font-semibold">What&apos;s your read?</p>
         <div className="mt-3 flex flex-col gap-1.5">
           {REACTIONS.map((r) => (
             <button

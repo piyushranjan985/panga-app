@@ -498,7 +498,7 @@ export default function DiscoverPage() {
               <div>
                 <p className="font-bold">📍 Just Vibing shows people near you first</p>
                 <p className="text-sm text-inkSoft">
-                  Share your location for closer, better matches — without it, we use your city's general area.
+                  Share your location for closer, better matches — without it, we use your city&apos;s general area.
                 </p>
               </div>
               <button

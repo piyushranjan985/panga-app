@@ -27,7 +27,7 @@ export default function AboutPage() {
 
       <p className="mt-6 text-inkSoft">
         findmyVybe is a vibe-based dating &amp; matrimony-lite platform built for Indian Gen Z -- a single app for
-        whatever you're actually looking for, instead of forcing casual dating and family-approved matchmaking into
+        whatever you&apos;re actually looking for, instead of forcing casual dating and family-approved matchmaking into
         two separate apps with two separate sets of lies.
       </p>
 
@@ -49,7 +49,7 @@ export default function AboutPage() {
 
       <h2 className="mt-8 font-display text-xl font-bold">A trust layer that respects your pace</h2>
       <p className="mt-2 text-inkSoft">
-        Every profile photo goes through moderation before it's visible to anyone else. Verified members get a badge.
+        Every profile photo goes through moderation before it&apos;s visible to anyone else. Verified members get a badge.
         You can block or report in one tap, pause your profile from Discover without deleting your account, and send
         a private <span className="font-semibold">Vybe Vouch</span> link to a friend for a second opinion on a match
         before you meet. See the{' '}
