@@ -22,6 +22,23 @@ on:
 
 env:
   DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci_placeholder"
+  # Node 22, not 20: pinned here deliberately. Diagnosed 2026-10-09
+  # after both jobs failed in CI with node-version: '20', while
+  # everything was green locally under Node 22 -- two independent,
+  # fully reproduced causes, neither of them our app code:
+  #   1. Admin's "prisma generate" step: prisma@7.10.0's CLI
+  #      transitively requires @prisma/dev, which require()s the
+  #      ESM-only `zeptomatch` package -- only works on a Node version
+  #      with require(esm) support on by default (true for Node 22,
+  #      not for Node 20.18.1, which reproduces ERR_REQUIRE_ESM).
+  #   2. Main app's "Test" step: `tsx --test tests/**/*.test.ts` needs
+  #      Node's own test runner to resolve that `**` glob itself (npm's
+  #      script shell is dash here, which doesn't expand `**`) -- that
+  #      resolution silently fails ("Could not find
+  #      '.../tests/**/*.test.ts'") on Node 20.18.1, works on 22.23.2.
+  # package.json's engines field only requires ">=20"; CI pins higher
+  # than that floor on purpose.
+  NODE_VERSION: '22'
 
 jobs:
   main-app:
@@ -32,7 +49,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
       # postinstall runs `prisma generate` automatically.
@@ -64,7 +81,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: admin/package-lock.json
 
