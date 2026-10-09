@@ -19,7 +19,17 @@ const eslintConfig = [
     // had been built locally; android/**/build/** for the same reason --
     // Android's build intermediates (generated JS bundled into the native
     // app shell) aren't source either.
-    ignores: ['**/node_modules/**', '**/.next/**', 'public/**', 'scripts/**', 'android/**/build/**'],
+    // admin/ is excluded here, not just admin/.next -- it's a separate
+    // Next.js app with its own eslint.config.mjs, own node_modules, and
+    // its own CI job (ci.yml's admin-app job) that already lints it
+    // correctly. Sweeping it in from here too was actively misleading:
+    // the SAME rule (@next/next/no-html-link-for-pages) reported real,
+    // needed eslint-disable comments there as "unused" under this
+    // config's plugin resolution, while admin's own `npm run lint`
+    // correctly flags them as still load-bearing. Found this the hard
+    // way while clearing the lint backlog -- almost removed 4 real
+    // suppressions before admin's own lint caught it.
+    ignores: ['**/node_modules/**', '**/.next/**', 'public/**', 'scripts/**', 'android/**/build/**', 'admin/**'],
   },
 ];
 
