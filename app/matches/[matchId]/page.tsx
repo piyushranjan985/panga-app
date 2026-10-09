@@ -269,6 +269,7 @@ export default function ChatPage() {
     const pollMs = realtimeConnected ? 30000 : 4000;
     const interval = setInterval(load, pollMs);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.matchId, realtimeConnected, isIdle]);
 
   useEffect(() => {
@@ -361,7 +362,6 @@ export default function ChatPage() {
       channel.unsubscribe();
       client.close();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.matchId, isIdle]);
 
   useEffect(() => {
