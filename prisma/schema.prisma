@@ -828,6 +828,15 @@ model Message {
   likes MessageLike[]
 
   @@index([matchId, createdAt])
+  // Backs the per-sender rolling-window COUNT query
+  // lib/messageRateLimit.ts's caller runs on every message send (see
+  // app/api/matches/[matchId]/messages/route.ts) -- without this, that
+  // check itself would be an unindexed scan over senderId, the exact
+  // kind of new-cost-from-the-fix this whole review is trying to avoid
+  // introducing. Same reasoning as Swipe's
+  // (fromUserId, action, createdAt) index from the discovery/swipe
+  // hardening migration.
+  @@index([senderId, createdAt])
 }
 
 // A lightweight "like" (heart) on a single message -- deliberately just a

@@ -5,6 +5,7 @@ import type { Prisma } from '@prisma/client';
 import { getSession } from '@/lib/session';
 import { assertParticipant, otherUserId } from '@/lib/matchAuthz';
 import { checkMessagingAllowed } from '@/lib/accountEnforcement';
+import { getMessageHourlyLimit, evaluateMessageCount } from '@/lib/messageRateLimit';
 import { isChatOpenRecently, isPushCategoryEnabled, sendPushToUser } from '@/lib/notifications/push';
 import { publishNewMessage } from '@/lib/realtime/ably';
 
@@ -93,6 +94,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ matchId
 
   const match = await assertParticipant(matchId, session.userId);
   if (!match) return NextResponse.json({ error: 'not found' }, { status: 404 });
+
+  // Cost/abuse safety valve -- see lib/messageRateLimit.ts's file comment.
+  // Backed by Message's (senderId, createdAt) index, same rolling-window
+  // shape as the Swipe daily limit.
+  const hourlyLimit = getMessageHourlyLimit();
+  const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const countLastHour = await db.message.count({ where: { senderId: session.userId, createdAt: { gte: hourAgo } } });
+  if (!evaluateMessageCount(hourlyLimit, countLastHour).ok) {
+    return NextResponse.json({ error: "You're sending messages faster than we can keep up -- give it a moment." }, { status: 429 });
+  }
 
   const json = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(json);
