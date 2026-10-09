@@ -39,7 +39,13 @@ function envIntOrNull(name: string): number | null {
 function envBool(name: string, fallback: boolean): boolean {
   const raw = process.env[name];
   if (raw === undefined) return fallback;
-  return raw === 'true';
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  // Any other value (a typo like "flase", "1", "yes") falls back to the
+  // default rather than silently resolving to false -- for a kill switch
+  // like OTP_ENABLED, a malformed env value should never accidentally
+  // disable the feature it's meant to only deliberately disable.
+  return fallback;
 }
 
 export interface OtpRateLimitConfig {
