@@ -25,6 +25,10 @@ function orderedPair(a: string, b: string): [string, string] {
 
 const CATEGORIES: MysteryCategory[] = ['MYSTERY_MATCH', 'VYBE_FLIP', 'NO_LABELS'];
 
+// See the pool-capping comment inside the pairing loop below for why
+// this exists and how it was chosen.
+const MYSTERY_POOL_LIMIT_PER_CATEGORY = 1500;
+
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
@@ -67,30 +71,12 @@ export async function GET(req: Request) {
       ),
     );
 
-    // --- Step 2: exclusions that apply everywhere, regardless of category --
-    // Unchanged -- prior Mystery Match history (any category, ever),
-    // existing/past Match, Swipe in either direction, Block in either
-    // direction. Same "never show this pair to each other again" promise
-    // as app/api/discover/route.ts's exclusion set.
-    const [history, matches, swipes, blocks] = await Promise.all([
-      db.mysteryMatchHistory.findMany({ select: { userAId: true, userBId: true } }),
-      db.match.findMany({ select: { userAId: true, userBId: true } }),
-      db.swipe.findMany({ select: { fromUserId: true, toUserId: true } }),
-      db.block.findMany({ select: { blockerId: true, blockedId: true } }),
-    ]);
-    const excludePairs = new Set<string>();
-    const addPair = (a: string, b: string) => {
-      const [x, y] = orderedPair(a, b);
-      excludePairs.add(`${x}:${y}`);
-    };
-    for (const h of history) addPair(h.userAId, h.userBId);
-    for (const m of matches) addPair(m.userAId, m.userBId);
-    for (const s of swipes) addPair(s.fromUserId, s.toUserId);
-    for (const b of blocks) addPair(b.blockerId, b.blockedId);
-
-    // --- Step 3: build each category's pool and run the pairing ----------
-    // Unchanged -- same account-health filters app/api/discover/route.ts's
-    // candidate pool uses.
+    // --- Step 2: build each category's pool and run the pairing ----------
+    // Loaded BEFORE the exclusion queries below (reordered from how this
+    // used to read) -- the exclusion queries need today's eligible pool
+    // first, to scope themselves to it. Filters unchanged -- same
+    // account-health filters app/api/discover/route.ts's candidate pool
+    // uses.
     const profiles = await db.profile.findMany({
       where: {
         quietMode: false,
@@ -120,6 +106,76 @@ export async function GET(req: Request) {
       tribeIds: p.tribes.map((t) => t.id),
       lastActiveAt: p.user.lastActiveAt,
     });
+
+    // Grouped by city up front -- isEligiblePair() in lib/mysteryMatch.ts
+    // has always required a.city === b.city, but until this change the
+    // pairing loop scored EVERY cross-city combination too, just to throw
+    // the result away. Pairing per city, over that city's own slice of
+    // `profiles`, means the O(n^2) scoring pass (see matchMysteryPool)
+    // only ever runs over candidates who could actually be paired, not
+    // the whole platform.
+    const profilesByCity = new Map<string, typeof profiles>();
+    for (const p of profiles) {
+      const list = profilesByCity.get(p.city);
+      if (list) list.push(p);
+      else profilesByCity.set(p.city, [p]);
+    }
+
+    // --- Step 3: exclusions that apply everywhere, regardless of category --
+    // Prior Mystery Match history (any category, ever), existing/past
+    // Match, Swipe in either direction, Block in either direction. Same
+    // "never show this pair to each other again" promise as
+    // app/api/discover/route.ts's exclusion set.
+    //
+    // SCOPED to today's eligible pool (poolUserIds), not loaded unbounded
+    // platform-wide -- these four queries used to be `findMany()` with no
+    // `where` at all, meaning every Swipe/Match/Block/MysteryMatchHistory
+    // row this app has EVER written was loaded, in full, into one
+    // function's memory, every single day. Fine at a few hundred rows;
+    // guaranteed to blow this function's 60s maxDuration (and likely its
+    // memory) once Swipe alone -- by far the highest-volume of the four,
+    // up to SWIPE_DAILY_LIMIT rows per user per day -- reaches real
+    // six-figure-user volume, even with the 180-day purge in
+    // docs/DATA_RETENTION.md keeping it from growing forever.
+    //
+    // The scoping is lossless: a pair can only ever be chosen today if
+    // BOTH sides are in today's eligible pool (every pairing candidate
+    // comes from `profiles` above), so a Swipe/Match/Block/History row
+    // where either side ISN'T in that pool can never matter to today's
+    // run -- excluding it from the query loses nothing. If this pool
+    // itself ever grows into the tens of thousands, a plain `IN (...)`
+    // list is the next thing to revisit (move to a joined temp table),
+    // but it's already a dramatic improvement over an unbounded
+    // full-table scan.
+    const poolUserIds = profiles.map((p) => p.userId);
+    const poolIdFilter = { in: poolUserIds };
+    const [history, matches, swipes, blocks] = await Promise.all([
+      db.mysteryMatchHistory.findMany({
+        where: { userAId: poolIdFilter, userBId: poolIdFilter },
+        select: { userAId: true, userBId: true },
+      }),
+      db.match.findMany({
+        where: { userAId: poolIdFilter, userBId: poolIdFilter },
+        select: { userAId: true, userBId: true },
+      }),
+      db.swipe.findMany({
+        where: { fromUserId: poolIdFilter, toUserId: poolIdFilter },
+        select: { fromUserId: true, toUserId: true },
+      }),
+      db.block.findMany({
+        where: { blockerId: poolIdFilter, blockedId: poolIdFilter },
+        select: { blockerId: true, blockedId: true },
+      }),
+    ]);
+    const excludePairs = new Set<string>();
+    const addPair = (a: string, b: string) => {
+      const [x, y] = orderedPair(a, b);
+      excludePairs.add(`${x}:${y}`);
+    };
+    for (const h of history) addPair(h.userAId, h.userBId);
+    for (const m of matches) addPair(m.userAId, m.userBId);
+    for (const s of swipes) addPair(s.fromUserId, s.toUserId);
+    for (const b of blocks) addPair(b.blockerId, b.blockedId);
 
     let totalPairs = 0;
 
@@ -151,35 +207,68 @@ export async function GET(req: Request) {
       scheduledFor: Date;
     }[] = [];
 
-    for (const category of CATEGORIES) {
-      const pool = profiles.filter((p) => p.mysteryCategory === category).map(toCandidate);
-      if (pool.length < 2) continue;
+    // One pairing pass per city, per category -- see the profilesByCity
+    // comment above for why. A city with very few (or zero) opted-in
+    // users today just produces a small or empty pool, same as before;
+    // this only changes how much gets scored per O(n^2) pass, and how
+    // tightly the exclusion-set query above can be scoped.
+    for (const [city, cityProfiles] of profilesByCity) {
+      for (const category of CATEGORIES) {
+        let pool = cityProfiles.filter((p) => p.mysteryCategory === category).map(toCandidate);
+        if (pool.length < 2) continue;
 
-      const pairs = matchMysteryPool(category, pool, excludePairs, now);
-      totalPairs += pairs.length;
+        // Safety valve, not a tuning knob: matchMysteryPool's pairing pass
+        // is O(n^2) in pool size (see lib/mysteryMatch.ts's file comment
+        // -- a once-a-day batch job, not a per-request hot path, so a
+        // greedy O(n^2) solve was a deliberate "good enough" choice, just
+        // never bounded). 1,500^2 is ~2.25M scored pairs, which runs in
+        // well under a second in plain JS -- comfortably inside this
+        // function's 60s budget even if every city/category pool hit the
+        // cap in the same run. A single pool crossing this means some of
+        // today's eligible users in that city/category don't get
+        // considered against each other today, not that pairing stops --
+        // a random sample keeps it fair rather than always dropping the
+        // same tail of users (e.g. always the least-recently-active).
+        // Revisit this (bucket by gender/intent first, or a real matching
+        // algorithm) only once a real city is actually hitting it -- the
+        // log line below is how you'd know.
+        if (pool.length > MYSTERY_POOL_LIMIT_PER_CATEGORY) {
+          console.warn(
+            `[mystery-match] ${city}/${category} pool of ${pool.length} exceeds the ${MYSTERY_POOL_LIMIT_PER_CATEGORY} cap -- sampling down. Time to revisit matchMysteryPool's O(n^2) pass if this keeps happening.`,
+          );
+          for (let i = pool.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [pool[i], pool[j]] = [pool[j]!, pool[i]!];
+          }
+          pool = pool.slice(0, MYSTERY_POOL_LIMIT_PER_CATEGORY);
+        }
 
-      for (const { userIdA, userIdB } of pairs) {
-        const [userAId, userBId] = orderedPair(userIdA, userIdB);
+        const pairs = matchMysteryPool(category, pool, excludePairs, now);
+        totalPairs += pairs.length;
 
-        // Keep every future day's pool honest about this pair immediately
-        // -- recorded even if a later push attempt fails, so a
-        // notification hiccup can never cause the same two people to be
-        // re-paired tomorrow.
-        const match = await db.match.upsert({
-          where: { userAId_userBId: { userAId, userBId } },
-          update: {},
-          create: { userAId, userBId, isMysteryMatch: true, mysteryCategory: category },
-        });
-        await db.mysteryMatchHistory.upsert({
-          where: { userAId_userBId: { userAId, userBId } },
-          update: {},
-          create: { userAId, userBId, category, matchId: match.id },
-        });
+        for (const { userIdA, userIdB } of pairs) {
+          const [userAId, userBId] = orderedPair(userIdA, userIdB);
 
-        notificationRows.push(
-          { runId, matchId: match.id, userId: userAId, otherUserId: userBId, category, scheduledFor: jitterWithinWindow(windowStart, windowEnd) },
-          { runId, matchId: match.id, userId: userBId, otherUserId: userAId, category, scheduledFor: jitterWithinWindow(windowStart, windowEnd) },
-        );
+          // Keep every future day's pool honest about this pair
+          // immediately -- recorded even if a later push attempt fails,
+          // so a notification hiccup can never cause the same two people
+          // to be re-paired tomorrow.
+          const match = await db.match.upsert({
+            where: { userAId_userBId: { userAId, userBId } },
+            update: {},
+            create: { userAId, userBId, isMysteryMatch: true, mysteryCategory: category },
+          });
+          await db.mysteryMatchHistory.upsert({
+            where: { userAId_userBId: { userAId, userBId } },
+            update: {},
+            create: { userAId, userBId, category, matchId: match.id },
+          });
+
+          notificationRows.push(
+            { runId, matchId: match.id, userId: userAId, otherUserId: userBId, category, scheduledFor: jitterWithinWindow(windowStart, windowEnd) },
+            { runId, matchId: match.id, userId: userBId, otherUserId: userAId, category, scheduledFor: jitterWithinWindow(windowStart, windowEnd) },
+          );
+        }
       }
     }
 
