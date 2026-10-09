@@ -1,0 +1,86 @@
+name: CI
+
+# Blocking checks for both Next.js apps in this repo (main app + admin
+# console). Both apps share one Postgres schema but have independent
+# package.json/lockfiles, so they're verified as separate jobs that can
+# run in parallel.
+#
+# DATABASE_URL below is a placeholder, never a real credential: both apps'
+# "prisma generate" (Prisma 7's prisma.config.ts, see prisma.config.ts /
+# admin/prisma.config.ts) requires the env var to resolve to *some* string
+# at config-load time, but generate never actually connects -- it just
+# reads prisma/schema.prisma and emits the typed client. Neither test
+# suite opens a real database connection (verified: no test file calls
+# db.* / prisma.* -- see tests/ and admin/tests/), so no live database is
+# needed here at all.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci_placeholder"
+
+jobs:
+  main-app:
+    name: Main app (typecheck, test, lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # postinstall runs `prisma generate` automatically.
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # Informational only for now: this app has a large pre-existing lint
+      # backlog (mostly react/no-unescaped-entities) that predates ESLint
+      # even being wired up here, and that backlog is being worked down
+      # separately rather than blocking every PR on it. Flip this to
+      # blocking once that backlog is cleared.
+      - name: Lint (non-blocking -- see comment above)
+        run: npm run lint
+        continue-on-error: true
+
+  admin-app:
+    name: Admin app (typecheck, test, lint)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: admin/package-lock.json
+
+      # No postinstall hook here -- generate explicitly against the root
+      # app's schema (admin/prisma.config.ts points one directory up).
+      - run: npm ci
+      - run: npx prisma generate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # Blocking: the admin app's lint backlog was cleared out this
+      # engagement (0 errors / 0 warnings), so a new finding here is a
+      # real regression, not noise.
+      - name: Lint
+        run: npm run lint
