@@ -38,6 +38,10 @@ export default async function IncidentsPage() {
         description="Breach assessment, containment, and Data Protection Board notification tracking, per the DPDP Rules 2025 breach-notification requirements."
         actions={
           hasPermission(admin.role, 'reporting.export') && (
+            /* eslint-disable-next-line @next/next/no-html-link-for-pages -- this is a
+               real file download hitting an API route, not client-side navigation
+               between pages; <Link> would try to soft-navigate to a CSV response
+               instead of downloading it. */
             <a href="/api/privacy/incidents/export" className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas">
               Export CSV
             </a>

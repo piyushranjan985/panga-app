@@ -74,7 +74,7 @@ export default async function ConfigurationPage() {
           </div>
           <div className="rounded-card border border-border bg-surface p-4 text-sm">
             <Badge tone={maintenanceFlag?.enabled ? 'critical' : 'success'}>{maintenanceFlag?.enabled ? 'ON' : 'OFF'}</Badge>
-            <p className="mt-2 text-xs text-inkFaint">Not yet wired into the consumer app's runtime -- this records intent and goes through approval, the same as any other feature flag.</p>
+            <p className="mt-2 text-xs text-inkFaint">Not yet wired into the consumer app&apos;s runtime -- this records intent and goes through approval, the same as any other feature flag.</p>
           </div>
         </section>
 

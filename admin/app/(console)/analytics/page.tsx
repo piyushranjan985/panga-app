@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { requirePageAccess } from '@/lib/pageGuard';
 import { db } from '@/lib/db';
 import PageHeader from '@/components/PageHeader';
-import StatTile from '@/components/StatTile';
 
 export default async function AnalyticsPage() {
   const admin = await requirePageAccess('analytics.view');

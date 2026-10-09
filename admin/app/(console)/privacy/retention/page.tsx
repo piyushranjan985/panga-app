@@ -20,6 +20,10 @@ export default async function RetentionPage() {
         description="How long each data category is kept, and whether it's slated for automatic deletion once that period ends."
         actions={
           hasPermission(admin.role, 'reporting.export') && (
+            /* eslint-disable-next-line @next/next/no-html-link-for-pages -- this is a
+               real file download hitting an API route, not client-side navigation
+               between pages; <Link> would try to soft-navigate to a CSV response
+               instead of downloading it. */
             <a href="/api/privacy/retention/export" className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas">
               Export CSV
             </a>

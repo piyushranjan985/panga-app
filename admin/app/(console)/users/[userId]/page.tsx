@@ -5,7 +5,6 @@ import { db } from '@/lib/db';
 import { hasPermission } from '@/lib/rbac';
 import PageHeader from '@/components/PageHeader';
 import Badge from '@/components/Badge';
-import EmptyState from '@/components/EmptyState';
 import { ageFromDob } from '@/lib/mask';
 import UserPiiPanel from '@/components/UserPiiPanel';
 import UserActionsPanel from '@/components/UserActionsPanel';

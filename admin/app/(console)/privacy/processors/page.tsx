@@ -19,6 +19,10 @@ export default async function ProcessorsPage() {
         description="Vendor register -- who else touches user data on findmyVybe's behalf, and why."
         actions={
           hasPermission(admin.role, 'reporting.export') && (
+            /* eslint-disable-next-line @next/next/no-html-link-for-pages -- this is a
+               real file download hitting an API route, not client-side navigation
+               between pages; <Link> would try to soft-navigate to a CSV response
+               instead of downloading it. */
             <a href="/api/privacy/processors/export" className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas">
               Export CSV
             </a>

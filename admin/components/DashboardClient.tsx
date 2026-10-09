@@ -18,14 +18,28 @@ export default function DashboardClient({ role }: { role: AdminRole }) {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [loading, setLoading] = useState(true);
 
+  // setLoading(true) lives INSIDE load() (not in the effect body below)
+  // on purpose -- react-hooks/set-state-in-effect flags calling setState
+  // synchronously at the top of an effect, since that's usually a sign
+  // the effect is doing work React should have done during render. Here
+  // the effect's only job is "call load() when `load` changes" (range
+  // changing produces a new `load` via useCallback); the loading-state
+  // transition itself belongs to the async operation, so it moves into
+  // the callback that owns it. Same end behavior, no more effect-body
+  // setState.
   const load = useCallback(async () => {
+    setLoading(true);
     const res = await fetch(`/api/dashboard/metrics?range=${range}`);
     if (res.ok) setData(await res.json());
     setLoading(false);
   }, [range]);
 
   useEffect(() => {
-    setLoading(true);
+    // load()'s own first statement is setLoading(true), synchronously,
+    // before its first await -- the state transition lives entirely
+    // inside the callback that owns it (the React-recommended shape),
+    // but the linter's static check still flags the call site itself.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 

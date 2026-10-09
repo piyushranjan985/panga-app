@@ -16,6 +16,12 @@ import EmptyState from '@/components/EmptyState';
 export default async function SystemHealthPage() {
   await requirePageAccess('systemHealth.view');
 
+  // react-hooks/purity flags Date.now() as "impure" -- a real concern for
+  // a CLIENT component the React Compiler might memoize/re-render without
+  // re-running. This is a Server Component: it runs exactly once per
+  // request, and measuring real wall-clock DB latency is the entire point
+  // of this page, not a side effect to eliminate.
+  // eslint-disable-next-line react-hooks/purity
   const dbStart = Date.now();
   let dbOk = true;
   let dbError: string | null = null;
@@ -25,6 +31,7 @@ export default async function SystemHealthPage() {
     dbOk = false;
     dbError = err instanceof Error ? err.message : 'Unknown error';
   }
+  // eslint-disable-next-line react-hooks/purity -- see the comment above dbStart.
   const dbLatencyMs = Date.now() - dbStart;
 
   const [userCount, activeAdminSessions, openSystemAlerts, recentFailedLogins] = await Promise.all([
@@ -73,7 +80,7 @@ export default async function SystemHealthPage() {
         </section>
 
         <p className="max-w-2xl text-xs text-inkFaint">
-          This app runs on Vercel's serverless platform, where a single process&apos;s uptime isn&apos;t a meaningful
+          This app runs on Vercel&apos;s serverless platform, where a single process&apos;s uptime isn&apos;t a meaningful
           health signal (functions start and stop per request) -- deployment status and infrastructure-level
           metrics live in the Vercel dashboard, not here. This page covers what the application itself can verify:
           its own database connection and the alerts operators have logged against it.

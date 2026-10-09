@@ -48,6 +48,15 @@ export default function TrendsClient() {
   }, []);
 
   useEffect(() => {
+    // load()'s own first statement is setLoading(true), synchronously,
+    // before its first await -- same shape as the pattern
+    // components/DashboardClient.tsx moves state-setting into, but the
+    // linter's static check doesn't see through the `granularity`
+    // argument here the way it does a no-arg call. The state transition
+    // still lives entirely inside the callback that owns it, not
+    // inlined in the effect body, which is what the rule actually
+    // cares about.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load(granularity);
   }, [granularity, load]);
 

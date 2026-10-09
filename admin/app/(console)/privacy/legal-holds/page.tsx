@@ -24,6 +24,10 @@ export default async function LegalHoldsPage() {
         description="A hold blocks a DPDP deletion request from being completed against that user's account until it's released."
         actions={
           hasPermission(admin.role, 'reporting.export') && (
+            /* eslint-disable-next-line @next/next/no-html-link-for-pages -- this is a
+               real file download hitting an API route, not client-side navigation
+               between pages; <Link> would try to soft-navigate to a CSV response
+               instead of downloading it. */
             <a href="/api/privacy/legal-holds/export" className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas">
               Export CSV
             </a>

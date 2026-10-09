@@ -6,6 +6,14 @@ export default function ThemeToggle() {
   const [dark, setDark] = useState<boolean | null>(null);
 
   useEffect(() => {
+    // Reads the DOM's current class (set by an inline pre-hydration
+    // script to avoid a flash of the wrong theme), not React-owned state
+    // -- a one-time sync FROM an external system on mount, which is
+    // exactly what useEffect is for. react-hooks/set-state-in-effect's
+    // concern is setState being used to replace work React should have
+    // done during render; there's no render-time equivalent for "what
+    // did the browser already do to the DOM before React mounted."
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDark(document.documentElement.classList.contains('dark'));
   }, []);
 
