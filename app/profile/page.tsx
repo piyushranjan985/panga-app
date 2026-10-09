@@ -7,6 +7,8 @@ import Navbar from '@/components/Navbar';
 import InactivityLogout from '@/components/InactivityLogout';
 import AccountSecuritySection, { type AccountSecurityData } from '@/components/AccountSecuritySection';
 import IntentBadge from '@/components/IntentBadge';
+import { assertValidImage } from '@/lib/imageValidation';
+import { safeJson } from '@/lib/clientJson';
 import { getCurrentPosition, requestPushPermission } from '@/lib/native';
 import {
   DATE_VIBES,
@@ -497,12 +499,23 @@ export default function ProfilePage() {
     if (!file) return;
     setPhotoError(null);
     setPhotoNotice(null);
+    try {
+      // Check client-side, before ever sending the file: Vercel's
+      // platform itself hard-rejects an oversized request body (a 413,
+      // plain text not JSON) before our route handler gets a chance to
+      // return its own friendly "Image must be under 4MB" error -- see
+      // lib/imageValidation.ts's doc comment.
+      assertValidImage(file);
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : 'Upload failed');
+      return;
+    }
     setUploadingPhoto(true);
     try {
       const body = new FormData();
       body.append('file', file);
       const res = await fetch('/api/profile/photos', { method: 'POST', body });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (!res.ok) throw new Error(data.error ?? 'Upload failed');
       setProfile((p) => (p ? { ...p, photos: [...p.photos, data.photo] } : p));
       // The "Under review" badge on the grid below already shows this

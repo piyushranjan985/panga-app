@@ -15,6 +15,8 @@ import {
 } from '@/lib/constants';
 import IntentBadge from '@/components/IntentBadge';
 import EmailVerifyField from '@/components/EmailVerifyField';
+import { assertValidImage } from '@/lib/imageValidation';
+import { safeJson } from '@/lib/clientJson';
 
 type Interest = { id: string; label: string; emoji: string; intents: string[] };
 type Prompt = { id: string; text: string; emoji: string; optionA: string; optionB: string; intents: string[] };
@@ -434,12 +436,23 @@ function OnboardingForm() {
     if (!file) return;
     setPhotoError(null);
     setPhotoNotice(null);
+    try {
+      // Check client-side, before ever sending the file: Vercel's
+      // platform itself hard-rejects an oversized request body (a 413,
+      // plain text not JSON) before our route handler gets a chance to
+      // return its own friendly "Image must be under 4MB" error -- see
+      // lib/imageValidation.ts's doc comment.
+      assertValidImage(file);
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : 'Upload failed');
+      return;
+    }
     setUploadingPhoto(true);
     try {
       const body = new FormData();
       body.append('file', file);
       const res = await fetch('/api/upload', { method: 'POST', body });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (!res.ok) throw new Error(data.error ?? 'Upload failed');
       setForm((f) => ({ ...f, photoUrls: [...f.photoUrls, data.url].slice(0, 5) }));
       // MANUAL_REVIEW isn't an error -- the photo was accepted -- but the

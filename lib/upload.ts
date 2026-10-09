@@ -1,5 +1,6 @@
 import { put, del } from '@vercel/blob';
 import { isHeic } from '@/lib/safety/imageModeration';
+import { MAX_UPLOAD_BYTES, assertValidImage } from '@/lib/imageValidation';
 
 /**
  * Photo storage: Vercel Blob, since that's zero-extra-infra on Vercel
@@ -15,39 +16,15 @@ import { isHeic } from '@/lib/safety/imageModeration';
  * (browser uploads directly to Blob storage, bypassing this limit) — same
  * "simple now, documented upgrade path" trade-off as db.ts and
  * app/api/discover/route.ts make elsewhere in this codebase.
+ *
+ * MAX_UPLOAD_BYTES and assertValidImage now live in lib/imageValidation.ts
+ * (pure, no @vercel/blob import) so the client-side upload forms can run
+ * the same check before ever calling fetch, instead of only finding out
+ * a file's too big after the platform itself has already rejected the
+ * oversized request body with a non-JSON error. Re-exported here so the
+ * existing route-handler imports (`@/lib/upload`) don't need to change.
  */
-export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024; // 4MB
-
-// The real content gate is decode-time, inside
-// lib/safety/imageModeration.ts (sharp + heic-convert, which between them
-// handle every common phone/browser photo format) -- an undecodable file
-// gets REJECTED there with a clear reason, not silently waved through.
-// This upfront check is just a fast, friendly first filter, not the sole
-// boundary, which is why it's permissive rather than a strict allowlist:
-// it also accepts an empty/generic MIME type paired with a recognized
-// extension, since some mobile browsers report HEIC photos that way.
-const ACCEPTED_IMAGE_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/heic',
-  'image/heif',
-  'image/gif',
-  'image/avif',
-]);
-const ACCEPTED_IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'gif', 'avif']);
-
-export function assertValidImage(file: File) {
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-  const genericOrEmptyType = file.type === '' || file.type === 'application/octet-stream';
-  const acceptable = ACCEPTED_IMAGE_TYPES.has(file.type) || (genericOrEmptyType && ACCEPTED_IMAGE_EXTENSIONS.has(ext));
-  if (!acceptable) {
-    throw new Error('Please upload a photo (JPG, PNG, HEIC, or WebP).');
-  }
-  if (file.size > MAX_UPLOAD_BYTES) {
-    throw new Error('Image must be under 4MB');
-  }
-}
+export { MAX_UPLOAD_BYTES, assertValidImage };
 
 export interface NormalizedImage {
   buffer: Buffer;
