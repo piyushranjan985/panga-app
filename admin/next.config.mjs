@@ -45,7 +45,7 @@ const nextConfig = {
           "script-src 'self' 'unsafe-inline'",
           "style-src 'self' 'unsafe-inline'",
           "font-src 'self'",
-          "img-src 'self' data: https://*.public.blob.vercel-storage.com",
+          "img-src 'self' data: https://media.findmyvybe.com",
           "connect-src 'self'",
           "frame-ancestors 'none'",
           "base-uri 'self'",

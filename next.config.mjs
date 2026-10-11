@@ -119,8 +119,10 @@ const nextConfig = {
     // without being able to click through every page first) -- it still
     // blocks the two things that matter most without it (loading a
     // script from an attacker-controlled THIRD-PARTY origin, and framing
-    // this site inside someone else's page). img-src allows Vercel
-    // Blob's public photo-storage domain (lib/upload.ts) and Google
+    // this site inside someone else's page). img-src allows this
+    // project's own R2 custom domain, media.findmyvybe.com
+    // (lib/upload.ts -- migrated off Vercel Blob's public.blob.vercel-
+    // storage.com, see docs/BLOB_STORAGE_COST_COMPARISON.md) and Google
     // Fonts' stylesheet/font origins (app/layout.tsx) -- everything else
     // defaults to this origin only. Tighten further (nonce-based
     // script-src, drop 'unsafe-inline') once this has been clicked
@@ -142,7 +144,7 @@ const nextConfig = {
           "script-src 'self' 'unsafe-inline'",
           "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
           "font-src 'self' https://fonts.gstatic.com",
-          "img-src 'self' data: https://*.public.blob.vercel-storage.com",
+          "img-src 'self' data: https://media.findmyvybe.com",
           "connect-src 'self'",
           "frame-ancestors 'none'",
           "base-uri 'self'",

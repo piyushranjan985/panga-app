@@ -25,13 +25,11 @@ Status legend: **Live** (configured and in active use), **Code built, credential
 
 ## File storage
 
-- **Vercel Blob** — **Live**. Every profile photo.
-
-**Hobby-plan free tier** (per Vercel's own pricing docs, checked October 2026): 1 GB storage/month, first 10,000 Simple Operations/month (cache-miss reads + `head()`), first 2,000 Advanced Operations/month (`put()`/`copy()`/`list()`, store creation — one `put()` per photo upload), first 10 GB Blob Data Transfer/month (every download/view, hit or miss), max 5 TB per file (512 MB cache threshold above which every access is a miss). None of this is billed on Hobby if exceeded — Blob access simply stops working for 30 days. Profiles here cap at 5 photos, up to 4 MB each (`MAX_UPLOAD_BYTES`), no client-side resize/compression currently applied, so real photos likely average 0.5–2 MB depending on the phone.
-  - **Storage** is the generous one: at ~1 MB/photo average, 1 GB covers ~1,000 photos (~200 full profiles) before storage itself is the limiter.
-  - **Advanced Operations (2,000/month)** cover ~2,000 uploads/month — roughly 400 new/edited full profiles a month, free.
-  - **Data Transfer (10 GB/month)** is the real constraint for a swipe-based app: every photo *view* (not just upload) counts, hit or miss. At ~1 MB/photo, 10 GB is only ~10,000 photo views/month — a trivial number once real swiping starts, likely exhausted in days, not months, after any real launch traffic.
-  - If this project is still on Vercel's Hobby plan, the practical risk isn't cost, it's a **hard 30-day lockout** once any one of these limits is hit — recommend moving the project to Pro (usage-based billing, no hard cutoff, optional Spend Management caps) before real launch traffic, not after.
+- **Cloudflare R2** — **Live**. Every profile photo. Migrated off Vercel Blob in October 2026 — see `docs/BLOB_STORAGE_COST_COMPARISON.md` for the full cost/performance comparison and rationale. S3-compatible API (`@aws-sdk/client-s3`), bucket `findmyvybe-profile-pics`, served publicly via the custom domain `media.findmyvybe.com` (attached to the `findmyvybe.com` Cloudflare zone). Zero egress fee — the main reason for the move, since this is a read-heavy (swipe-based) app where photo *views*, not uploads, dominate traffic.
+  - Credentials (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL`) are R2-specific and must be set manually in every environment (local `.env` and Vercel's Production/Preview env vars) — unlike Vercel Blob's `BLOB_READ_WRITE_TOKEN`, which Vercel auto-injected.
+  - The existing photo-validation logic (`isTrustedPhotoBlobUrl()` in `lib/upload.ts`, size caps via `MAX_UPLOAD_BYTES`, streamed moderation reads with a Content-Length cap in `lib/safety/moderateAndUpload.ts`) is unchanged in spirit — `isTrustedPhotoBlobUrl()` now checks for an exact hostname match on `media.findmyvybe.com` instead of the old Vercel Blob wildcard pattern.
+  - All 18 real production photos were migrated from `*.public.blob.vercel-storage.com` to `media.findmyvybe.com`, verified via a one-off DB check (0 remaining on the old domain). The `@vercel/blob` package is still present in `package.json` as a safety margin during cutover — remove it once the migration is confirmed stable in production.
+  - CSP `img-src` in both `next.config.mjs` and `admin/next.config.mjs` updated to allow `https://media.findmyvybe.com` (replacing the old `*.public.blob.vercel-storage.com` wildcard).
 
 ## Identity & authentication
 
