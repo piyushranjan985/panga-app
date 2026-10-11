@@ -75,6 +75,20 @@ At this storage scale, Vercel Blob Pro runs roughly **4.5x** AWS S3+CloudFront, 
 
 **Vercel Blob is not wrong to keep right now** — it's zero migration effort, works today, and at current (near-zero) traffic the dollar difference is trivial. The decision point is *timing*: migrate before real swipe traffic arrives (cheap to do with no live users depending on the URLs yet) rather than after (same migration, but now against live traffic and existing photo URLs that need redirecting/copying without breaking anyone's profile).
 
+## Decision: Cloudflare R2, migrate now (not after incorporation)
+
+**Provider: Cloudflare R2.** Backblaze B2 is cheaper on raw storage, but it needs Cloudflare fronting anyway to get free egress -- so it ends up as two vendors (object store + CDN) to operate for a smaller win than R2 alone gives on this app's bandwidth-dominated workload. R2 is one vendor, S3-compatible (portable to AWS S3 later without a rewrite, just a different compatible SDK), with CDN built in natively, zero egress permanently, and a strong edge presence in India.
+
+**Timing: do the technical migration now, before the Pvt Ltd exists -- don't wait.** Checked this against Cloudflare's own billing docs rather than assuming: a Cloudflare account's billing profile (company/legal name, tax ID/GST, address, payment method) can all be edited in place at any time, with no re-creation of buckets, domains, or API tokens, and no downtime -- it's an invoice/payment detail change, not a project-ownership transfer like Vercel's or Neon's. So there's no reason tied to the company's legal status to wait:
+
+- Migrating now happens against zero live users and zero live photo URLs -- the lowest-risk time to do it. Migrating later means doing the exact same work against real traffic and profiles that already point at Vercel Blob URLs.
+- Every month this waits is a month paying Vercel Blob's bandwidth-driven premium (see the tables above) for no benefit -- the cost gap exists regardless of which entity's name is on the invoice.
+- Once the Pvt Ltd exists, switching the Cloudflare account's billing profile to the company (name, GST, company card) is a five-minute dashboard change on the same account -- not a second migration.
+
+**One suggestion for how to set it up now:** create the Cloudflare account using one of the findmyvybe.com mailboxes already set up in Zoho (`hello@findmyvybe.com`, or a new dedicated one) rather than a personal Gmail address -- same principle as the Vercel/Neon ownership conversation: it sidesteps yet another personal-to-company handoff later, for zero extra effort now.
+
+What you'd need to do versus what I can do: you'd need to sign up for Cloudflare, create the R2 bucket, attach a custom domain to it (e.g. `media.findmyvybe.com`), and generate an API token scoped to that bucket -- none of that is something I can do on your behalf since it requires an account only you can create. Once that exists, I can build the rest: the SDK swap, the data migration script, the `isTrustedPhotoBlobUrl()`/CSP updates, and the cutover.
+
 ## If a migration is wanted
 
 Scope, at a glance — none of it touches the validation logic described above, only where photos are stored and served from:
