@@ -48,6 +48,20 @@ Picking a deliberately round, illustrative scale (plug in your own real numbers 
 
 The gap isn't close, and it only widens with scale, because Vercel Blob (and raw S3 without CloudFront's free tier) charge per GB served while R2 and Cloudflare-fronted B2 charge **nothing** for serving — the exact resource this app consumes the most of. Past CloudFront's 1TB/month free allowance, S3+CloudFront's overage ($0.085/GB) also starts costing real money, while R2 stays at $0 indefinitely.
 
+### Same monthly activity, storage grown to 500GB
+
+Holding the same monthly activity (500,000 uploads, 5 million views, 1TB/1,024GB bandwidth served) but with the stored library grown to **500GB** (roughly 500,000 photos, ~100,000 full profiles at 5 photos each — a later-stage milestone, not a near-term one) isolates how much storage itself adds on top of the bandwidth-driven baseline above:
+
+| Provider | Storage (500GB) | Writes (500K) | Reads (5M, ~30% cache-miss) | Bandwidth (1TB) | **Total/month** |
+|---|---|---|---|---|---|
+| Vercel Blob (Pro) | $11.50 | $2.50 | $0.60 | $51.20 | **≈ $65.80/month** |
+| AWS S3 + CloudFront | $11.50 | $2.50 | $0.60 | $0.00 (within the 1TB free tier) | **≈ $14.60/month** |
+| Cloudflare R2 | $7.50 | $2.25 | $1.80 | $0.00 | **≈ $11.55/month** |
+| Backblaze B2 (fronted by Cloudflare) | $3.48 | $0.00 | $0.00 | $0.00 | **≈ $3.48/month** |
+| Cloudinary | 500 + 1,024 = 1,524 credits needed (storage + bandwidth share the same pool) — exceeds every plan except Pro PAYG ($1,099/mo for 2,750 credits) | — | — | — | **≈ $1,099/month** |
+
+At this storage scale, Vercel Blob Pro runs roughly **4.5x** AWS S3+CloudFront, **5.7x** Cloudflare R2, and **~19x** Backblaze B2 for the identical workload — storage itself barely moves the needle (R2's and B2's low per-GB storage rate is a small piece of their advantage); bandwidth is still doing almost all of the work. These figures reuse the same illustrative monthly-activity assumptions as the 50GB example above, not a real traffic forecast — swap in your own projected uploads/views/bandwidth for a number you can actually plan around.
+
 ## Performance
 
 - **Vercel Blob**: already integrated, zero config, served through Vercel's own edge/CDN caching (Fast Origin Transfer). Perfectly fine performance; the only question is cost at scale, not speed.
