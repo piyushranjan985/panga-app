@@ -2,7 +2,7 @@
 
 A complete inventory of everything the solution touches: every hosted platform, third-party API/service, and account this app depends on or could depend on, plus what's self-hosted (no external account at all). Built for two purposes: onboarding anyone new to the stack, and the account-ownership-transfer project (moving everything from personal accounts to Crosspaths Technologies Pvt Ltd) — this is the master checklist for that.
 
-Status legend: **Live** (configured and in active use), **Optional/not set up** (code supports it, env vars blank, feature degrades gracefully instead), **Not yet live** (requires an external approval process, not just an env var).
+Status legend: **Live** (configured and in active use), **Code built, credentials unconfirmed** (the integration is fully written, merged, and verified to degrade gracefully if its env var is blank — but I can't see whether the real API key/secret is actually set in Vercel's dashboard, only that it's absent from the local `.env` file; see note under each), **Optional/not set up** (code supports it, confirmed not configured anywhere I can see, feature degrades gracefully instead), **Not yet live** (requires an external approval process, not just an env var).
 
 ---
 
@@ -20,12 +20,18 @@ Status legend: **Live** (configured and in active use), **Optional/not set up** 
 
 ## Caching & queuing
 
-- **Upstash Redis** (via Vercel Marketplace integration) — **Optional/not set up**. Powers the Discover-feed cache; without it the app just re-queries Postgres every time.
-- **Upstash QStash** — **Optional/not set up**. Spreads Mystery Match push delivery over an hour instead of firing all at once, and wakes the async photo-moderation worker. Without it, Mystery Match sends immediately/inline and photo moderation falls back to synchronous.
+- **Upstash Redis** (via Vercel Marketplace integration) — **Code built, credentials unconfirmed**. Powers the Discover-feed cache (`092d635`); without `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` the app just re-queries Postgres every time, which is still correct, just slower. Confirmed absent from the local `.env` (31 lines, neither var present) — but that file is for local dev; if these were added directly in the Vercel dashboard (Project → Settings → Environment Variables) for Production, the feed is already caching in prod and this file simply never got the local copy. Check the dashboard for those two exact var names to know for sure.
+- **Upstash QStash** — **Code built, credentials unconfirmed**. Spreads Mystery Match push delivery over ~an hour instead of firing all at once, and wakes the async photo-moderation worker (`lib/queue/qstash.ts`). Without `QSTASH_TOKEN`, `queueConfigured` is `false` and the code falls back to immediate/inline delivery — confirmed in `app/api/cron/mystery-match/route.ts`. Same caveat as Redis: absent from local `.env`, unconfirmed in Vercel's actual Production environment variables — check the dashboard for `QSTASH_TOKEN` specifically.
 
 ## File storage
 
 - **Vercel Blob** — **Live**. Every profile photo.
+
+**Hobby-plan free tier** (per Vercel's own pricing docs, checked October 2026): 1 GB storage/month, first 10,000 Simple Operations/month (cache-miss reads + `head()`), first 2,000 Advanced Operations/month (`put()`/`copy()`/`list()`, store creation — one `put()` per photo upload), first 10 GB Blob Data Transfer/month (every download/view, hit or miss), max 5 TB per file (512 MB cache threshold above which every access is a miss). None of this is billed on Hobby if exceeded — Blob access simply stops working for 30 days. Profiles here cap at 5 photos, up to 4 MB each (`MAX_UPLOAD_BYTES`), no client-side resize/compression currently applied, so real photos likely average 0.5–2 MB depending on the phone.
+  - **Storage** is the generous one: at ~1 MB/photo average, 1 GB covers ~1,000 photos (~200 full profiles) before storage itself is the limiter.
+  - **Advanced Operations (2,000/month)** cover ~2,000 uploads/month — roughly 400 new/edited full profiles a month, free.
+  - **Data Transfer (10 GB/month)** is the real constraint for a swipe-based app: every photo *view* (not just upload) counts, hit or miss. At ~1 MB/photo, 10 GB is only ~10,000 photo views/month — a trivial number once real swiping starts, likely exhausted in days, not months, after any real launch traffic.
+  - If this project is still on Vercel's Hobby plan, the practical risk isn't cost, it's a **hard 30-day lockout** once any one of these limits is hit — recommend moving the project to Pro (usage-based billing, no hard cutoff, optional Spend Management caps) before real launch traffic, not after.
 
 ## Identity & authentication
 
@@ -47,7 +53,7 @@ Status legend: **Live** (configured and in active use), **Optional/not set up** 
 
 ## Realtime
 
-- **Ably** — **Optional/not set up**. Realtime chat message delivery; without it, chat polls every 4 seconds instead of receiving pushes instantly.
+- **Ably** — **Code built, credentials unconfirmed**. Realtime chat message delivery (`77f464a` — this was genuinely built together, not skipped); without `ABLY_API_KEY`, `realtimeConfigured` is `false` and chat correctly falls back to its original 4-second poll (`lib/realtime/ably.ts`). Absent from local `.env` — but local dev routinely runs without it. Check the Vercel dashboard for `ABLY_API_KEY` under Production to see whether it's actually live there.
 
 ## AI
 
