@@ -2,6 +2,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import type { AdminRole } from '@prisma/client';
 import { db } from '@/lib/db';
+import { isRealProductionDeployment } from '@/lib/env';
 
 // DB-backed sessions (unlike the consumer app's stateless JWT cookie) --
 // the JWT here only carries a sessionId; the AdminSession row is the
@@ -9,6 +10,22 @@ import { db } from '@/lib/db';
 // logout" and "active sessions" real rather than aspirational: revoking a
 // session means setting revokedAt, which this checks on every request.
 const COOKIE_NAME = process.env.ADMIN_SESSION_COOKIE_NAME || 'panga_admin_session';
+// Fail closed in production rather than silently signing/accepting every
+// admin session with a secret that's public in this repo's source --
+// without this, an unset ADMIN_SESSION_JWT_SECRET on a real deployment
+// would let anyone forge a JWT carrying a sessionId. The JWT alone isn't
+// enough for a forged one to work (getCurrentAdmin() below still looks
+// the sessionId up and checks revokedAt against the real AdminSession
+// row), but a forged JWT pointing at a real, still-valid sessionId would
+// still be accepted -- not worth leaving to chance on a portal with PII
+// and user-ban powers. Same guard as the consumer app's
+// lib/sessionToken.ts; mirrored here and in admin/lib/pendingMfa.ts.
+if (!process.env.ADMIN_SESSION_JWT_SECRET && isRealProductionDeployment()) {
+  throw new Error(
+    'ADMIN_SESSION_JWT_SECRET is not set in production -- refusing to start with the public dev-only fallback secret. Set ADMIN_SESSION_JWT_SECRET in Vercel (Production) to a real random value, e.g. `openssl rand -base64 32`.',
+  );
+}
+
 const SECRET = new TextEncoder().encode(
   process.env.ADMIN_SESSION_JWT_SECRET || 'dev-only-change-me-please-generate-a-real-secret',
 );

@@ -5,6 +5,7 @@ import { getSession } from '@/lib/session';
 import { enqueuePhotoModeration } from '@/lib/safety/moderationQueue';
 import { isRealIdentityCheck } from '@/lib/safety/identityVerification';
 import { DATE_VIBES, TONIGHT_OPTIONS, VALUES_OPTIONS, LIVING_PREFERENCES, FUTURE_VIBE_QUESTIONS, CHILDREN_OPTIONS } from '@/lib/constants';
+import { isTrustedPhotoBlobUrl } from '@/lib/upload';
 
 // Onboarding photos used to be moderated here, synchronously, before this
 // handler could even finish (see docs/IDENTITY_VERIFICATION_AND_SAFETY.md
@@ -81,7 +82,17 @@ const upsertSchema = z.object({
   // to), collected in onboarding form state, and turned into real Photo
   // rows here once the rest of the profile is saved. Adding/removing a
   // photo after onboarding goes through app/api/profile/photos instead.
-  photoUrls: z.array(z.string().min(1)).min(1, 'Add at least 1 photo').max(5),
+  // isTrustedPhotoBlobUrl rejects anything that isn't this project's own
+  // Vercel Blob store (i.e. a URL app/api/upload/route.ts could actually
+  // have returned) -- without it, a client could submit any URL here
+  // (an internal service, a cloud metadata endpoint, an oversized file)
+  // and the server would fetch it during moderation
+  // (lib/safety/moderateAndUpload.ts's moderateImageUrl) with no check
+  // at all. See lib/upload.ts's doc comment on that function.
+  photoUrls: z
+    .array(z.string().min(1).refine(isTrustedPhotoBlobUrl, 'Invalid photo URL'))
+    .min(1, 'Add at least 1 photo')
+    .max(5),
 
   // --- Just Vibing only ("What's your kind of date?" / "Tonight?") ---
   dateVibeTags: z.array(dateVibeEnum).max(3).default([]),

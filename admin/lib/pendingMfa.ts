@@ -1,11 +1,21 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
+import { isRealProductionDeployment } from '@/lib/env';
 
 // Short-lived, single-purpose cookie that bridges "password verified" to
 // "MFA verified" without creating a real AdminSession until both steps
 // pass. Separate secret-use from the main session token so this narrow
 // 5-minute credential can never be replayed as a full session cookie.
 const COOKIE_NAME = 'panga_admin_pending_mfa';
+// See admin/lib/session.ts's identical guard for why this fails closed
+// in production instead of silently signing the pending-MFA bridge
+// cookie with a secret that's public in this repo's source.
+if (!process.env.ADMIN_SESSION_JWT_SECRET && isRealProductionDeployment()) {
+  throw new Error(
+    'ADMIN_SESSION_JWT_SECRET is not set in production -- refusing to start with the public dev-only fallback secret. Set ADMIN_SESSION_JWT_SECRET in Vercel (Production) to a real random value, e.g. `openssl rand -base64 32`.',
+  );
+}
+
 const SECRET = new TextEncoder().encode(
   process.env.ADMIN_SESSION_JWT_SECRET || 'dev-only-change-me-please-generate-a-real-secret',
 );

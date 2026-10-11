@@ -74,6 +74,30 @@ export async function uploadImageBuffer(image: NormalizedImage, pathPrefix: stri
   return blob.url;
 }
 
+/**
+ * Whether `url` points at THIS project's own Vercel Blob store, i.e. is
+ * safe to fetch server-side (lib/safety/moderateAndUpload.ts's
+ * moderateImageUrl) rather than a client-supplied URL that could point
+ * anywhere -- a private IP, an internal service, a huge file meant to
+ * exhaust memory. uploadImageBuffer() above is the only place that ever
+ * creates a real photo URL, and every one it returns matches this
+ * pattern (Vercel Blob's own public-URL convention, also already relied
+ * on by next.config.mjs's CSP img-src). app/api/profile/route.ts's
+ * onboarding PUT is the one place a photo URL arrives as a plain string
+ * in a request body instead of a real file upload, so it's the one place
+ * that needs this check before the URL is ever trusted or fetched --
+ * see that route's photoUrls schema.
+ */
+export function isTrustedPhotoBlobUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === 'https:' && /^[a-z0-9-]+\.public\.blob\.vercel-storage\.com$/i.test(parsed.hostname);
+}
+
 export async function deleteImage(url: string) {
   try {
     await del(url);

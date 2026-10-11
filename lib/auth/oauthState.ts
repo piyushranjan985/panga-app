@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify } from 'jose';
+import { isRealProductionDeployment } from '@/lib/env';
 
 /**
  * Shared OAuth2 `state` param signer for the real social-login providers
@@ -13,6 +14,15 @@ import { SignJWT, jwtVerify } from 'jose';
  * distinguished from a real session cookie, and from
  * identityVerification.ts's own state tokens, by its `aud` claim.
  */
+// See lib/sessionToken.ts's identical guard for why this fails closed in
+// production instead of silently signing OAuth state tokens with a
+// secret that's public in this repo's source.
+if (!process.env.SESSION_JWT_SECRET && isRealProductionDeployment()) {
+  throw new Error(
+    'SESSION_JWT_SECRET is not set in production -- refusing to start with the public dev-only fallback secret. Set SESSION_JWT_SECRET in Vercel (Production) to a real random value, e.g. `openssl rand -base64 32`.',
+  );
+}
+
 const STATE_SECRET = new TextEncoder().encode(
   process.env.SESSION_JWT_SECRET || 'dev-only-change-me-please-generate-a-real-secret',
 );

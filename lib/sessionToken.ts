@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify } from 'jose';
+import { isRealProductionDeployment } from '@/lib/env';
 
 /**
  * The pure, edge-safe half of session handling: the JWT itself and the
@@ -11,6 +12,25 @@ import { SignJWT, jwtVerify } from 'jose';
  */
 
 export const COOKIE_NAME = process.env.SESSION_COOKIE_NAME || 'findmyvybe_session';
+
+// Fail closed in production rather than silently signing/accepting every
+// session with a secret that's public in this repo's source -- without
+// this, an unset SESSION_JWT_SECRET on a real deployment would let
+// anyone forge a session JWT for any userId (the entire payload --
+// see getSession() below). Same isRealProductionDeployment() guard
+// lib/otp.ts already uses for its own "a real env var was never set
+// before shipping" checks; mirrored here and in the two other files
+// that reuse SESSION_JWT_SECRET (lib/auth/oauthState.ts,
+// lib/safety/identityVerification.ts) and in admin's equivalent pair
+// (admin/lib/session.ts, admin/lib/pendingMfa.ts), each against its own
+// secret. Edge-safe: isRealProductionDeployment() only reads
+// process.env.VERCEL_ENV, no Node-only API, so this still works from
+// proxy.ts's Edge middleware.
+if (!process.env.SESSION_JWT_SECRET && isRealProductionDeployment()) {
+  throw new Error(
+    'SESSION_JWT_SECRET is not set in production -- refusing to start with the public dev-only fallback secret, which would let anyone forge a session for any user. Set SESSION_JWT_SECRET in Vercel (Production) to a real random value, e.g. `openssl rand -base64 32`.',
+  );
+}
 
 export const SECRET = new TextEncoder().encode(
   process.env.SESSION_JWT_SECRET || 'dev-only-change-me-please-generate-a-real-secret',

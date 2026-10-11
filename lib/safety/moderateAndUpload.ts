@@ -1,4 +1,6 @@
 import { db } from '@/lib/db';
+import { isTrustedPhotoBlobUrl } from '@/lib/upload';
+import { MAX_UPLOAD_BYTES } from '@/lib/imageValidation';
 import { evaluatePhoto, type PhotoModerationDecision } from './policyEngine';
 import { getImageModerationProvider, isUnsafeProductionMock, UndecodableImageError } from './imageModeration';
 import { moderationSlaDueAt } from '@/lib/moderationSla';
@@ -308,10 +310,43 @@ export async function recordPhotoModeration(params: {
  * actually returned.
  */
 export async function moderateImageUrl(url: string): Promise<ModerationOutcome> {
+  // Defense in depth: app/api/profile/route.ts's Zod schema already
+  // rejects anything but this project's own Blob store before a photoUrl
+  // ever reaches a Photo row, but re-checking here means this function
+  // is also safe to call from anywhere else later without relying on
+  // every future caller to have validated its input first.
+  if (!isTrustedPhotoBlobUrl(url)) {
+    throw new Error('Refusing to fetch an untrusted photo URL for moderation');
+  }
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`Could not fetch photo for moderation (${res.status})`);
   }
-  const buffer = Buffer.from(await res.arrayBuffer());
+  // Bounded read, not res.arrayBuffer() -- a Content-Length header can be
+  // absent or lied about, so the real limit is enforced while streaming,
+  // not by trusting the header. Same MAX_UPLOAD_BYTES ceiling the direct
+  // upload path enforces (lib/imageValidation.ts's assertValidImage),
+  // kept in sync rather than inventing a second number here.
+  const contentLength = Number(res.headers.get('content-length') || '0');
+  if (contentLength > MAX_UPLOAD_BYTES) {
+    throw new Error('Photo exceeds the maximum upload size');
+  }
+  const reader = res.body?.getReader();
+  if (!reader) {
+    throw new Error('Could not read photo response body');
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_UPLOAD_BYTES) {
+      await reader.cancel().catch(() => {});
+      throw new Error('Photo exceeds the maximum upload size');
+    }
+    chunks.push(value);
+  }
+  const buffer = Buffer.concat(chunks.map((c) => Buffer.from(c)));
   return moderateImageBuffer(buffer);
 }

@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { hashDocumentReference, checkDuplicateIdentity } from './duplicateIdentity';
 import { isPushCategoryEnabled, sendPushToUser } from '@/lib/notifications/push';
 import { moderationSlaDueAt } from '@/lib/moderationSla';
+import { isRealProductionDeployment } from '@/lib/env';
 
 /**
  * DigiLocker (India's government-run digital document locker, run under
@@ -99,6 +100,15 @@ export function isRealIdentityCheck(): boolean {
 // Reuses SESSION_JWT_SECRET (already a required env var) rather than
 // adding a new secret -- distinguished by its own `aud` claim so it can
 // never be confused with a real session cookie.
+
+// See lib/sessionToken.ts's identical guard for why this fails closed in
+// production instead of silently signing DigiLocker OAuth state tokens
+// with a secret that's public in this repo's source.
+if (!process.env.SESSION_JWT_SECRET && isRealProductionDeployment()) {
+  throw new Error(
+    'SESSION_JWT_SECRET is not set in production -- refusing to start with the public dev-only fallback secret. Set SESSION_JWT_SECRET in Vercel (Production) to a real random value, e.g. `openssl rand -base64 32`.',
+  );
+}
 
 const STATE_SECRET = new TextEncoder().encode(
   process.env.SESSION_JWT_SECRET || 'dev-only-change-me-please-generate-a-real-secret',
