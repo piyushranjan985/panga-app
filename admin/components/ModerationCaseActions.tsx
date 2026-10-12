@@ -13,9 +13,16 @@ interface Props {
   currentAssigneeId: string | null;
   admins: { id: string; name: string }[];
   hasAppeal: boolean;
+  // True when this case is about a photo still at its first decision
+  // (MANUAL_REVIEW) -- resolving/dismissing in that state also decides
+  // the photo itself (see .../cases/[caseId]/resolve/route.ts), so the
+  // button labels below spell out that side effect instead of the
+  // generic case-only wording, which is what made it easy to misread
+  // "Resolve" as "approved" when it actually means the opposite.
+  photoAwaitingDecision: boolean;
 }
 
-export default function ModerationCaseActions({ caseId, role, status, currentAssigneeId, admins, hasAppeal }: Props) {
+export default function ModerationCaseActions({ caseId, role, status, currentAssigneeId, admins, hasAppeal, photoAwaitingDecision }: Props) {
   const router = useRouter();
   const [assignee, setAssignee] = useState(currentAssigneeId ?? '');
   const [assigning, setAssigning] = useState(false);
@@ -67,16 +74,25 @@ export default function ModerationCaseActions({ caseId, role, status, currentAss
               extraBody={{ status: 'ESCALATED' }}
             />
             <ConfirmActionButton
-              label="Resolve (action taken)"
-              confirmTitle="Resolve this case"
-              confirmDescription="Describe what enforcement action was taken (or link the User Actions used). If this case is about a photo still awaiting its first decision, this also rejects that photo and notifies the user -- it stays invisible in Discover."
+              label={photoAwaitingDecision ? 'Reject photo (violation confirmed)' : 'Resolve (violation confirmed)'}
+              confirmTitle={photoAwaitingDecision ? 'Reject this photo' : 'Resolve this case'}
+              confirmDescription={
+                photoAwaitingDecision
+                  ? "This rejects the flagged photo -- it stays invisible in Discover and the owner is notified. Describe what enforcement action was taken (or link the User Actions used)."
+                  : 'Describe what enforcement action was taken (or link the User Actions used).'
+              }
               endpoint={`/api/moderation/cases/${caseId}/resolve`}
               extraBody={{ outcome: 'RESOLVED' }}
+              tone="critical"
             />
             <ConfirmActionButton
-              label="Dismiss (no violation)"
-              confirmTitle="Dismiss this case"
-              confirmDescription="If this case is about a photo still awaiting its first decision, this approves that photo and notifies the user -- it becomes visible in Discover right away, no logout needed on their end."
+              label={photoAwaitingDecision ? 'Approve photo (no violation)' : 'Dismiss (no violation)'}
+              confirmTitle={photoAwaitingDecision ? 'Approve this photo' : 'Dismiss this case'}
+              confirmDescription={
+                photoAwaitingDecision
+                  ? 'This approves the flagged photo -- it becomes visible in Discover right away and the owner is notified, no logout needed on their end.'
+                  : 'No violation found; this closes the case with no enforcement action.'
+              }
               endpoint={`/api/moderation/cases/${caseId}/resolve`}
               extraBody={{ outcome: 'DISMISSED' }}
             />

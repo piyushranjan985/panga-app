@@ -6,6 +6,7 @@ import { hasPermission } from '@/lib/rbac';
 import PageHeader from '@/components/PageHeader';
 import Badge from '@/components/Badge';
 import ModerationCaseActions from '@/components/ModerationCaseActions';
+import PhotoDecisionOverride from '@/components/PhotoDecisionOverride';
 import ModerationNoteForm from '@/components/ModerationNoteForm';
 import ModerationCaseMessages from '@/components/ModerationCaseMessages';
 import { asPhotoEvidence, asIdentityEvidence, humanizePhotoReason, humanizeIdentityFailure } from '@/lib/moderationEvidence';
@@ -29,7 +30,7 @@ export default async function ModerationCaseDetailPage({ params }: { params: Pro
   const photoEvidence = asPhotoEvidence(c.evidence);
   const identityEvidence = photoEvidence ? null : asIdentityEvidence(c.evidence);
   const flaggedPhoto = photoEvidence
-    ? await db.photo.findUnique({ where: { id: photoEvidence.photoId }, select: { url: true, moderationStatus: true } })
+    ? await db.photo.findUnique({ where: { id: photoEvidence.photoId }, select: { url: true, moderationStatus: true, removedAt: true } })
     : null;
 
   const admins = await db.adminUser.findMany({
@@ -40,6 +41,7 @@ export default async function ModerationCaseDetailPage({ params }: { params: Pro
 
   const canViewRisk = hasPermission(admin.role, 'moderation.viewRiskScore');
   const canViewMessages = hasPermission(admin.role, 'moderation.viewMessages');
+  const canResolve = hasPermission(admin.role, 'moderation.resolve');
 
   return (
     <div>
@@ -182,6 +184,13 @@ export default async function ModerationCaseDetailPage({ params }: { params: Pro
         </div>
 
         <div className="space-y-6">
+          {canResolve && flaggedPhoto && (
+            <PhotoDecisionOverride
+              photoId={photoEvidence!.photoId}
+              currentStatus={flaggedPhoto.moderationStatus}
+              isRemoved={flaggedPhoto.removedAt != null}
+            />
+          )}
           <ModerationCaseActions
             caseId={c.id}
             role={admin.role}
@@ -189,6 +198,7 @@ export default async function ModerationCaseDetailPage({ params }: { params: Pro
             currentAssigneeId={c.assignee?.id ?? null}
             admins={admins}
             hasAppeal={c.appeals.some((a) => a.status === 'PENDING')}
+            photoAwaitingDecision={flaggedPhoto?.moderationStatus === 'MANUAL_REVIEW'}
           />
         </div>
       </div>
