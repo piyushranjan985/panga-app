@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import {
@@ -25,7 +25,14 @@ import {
  *    logic the real callback uses (duplicate check, DOB check, audit
  *    row, ModerationCase on anything short of VERIFIED). This is how the
  *    whole verification state machine is testable today, before any real
- *    DigiLocker credentials exist.
+ *    DigiLocker credentials exist. The deferred resolve runs inside
+ *    next/server's after() rather than a bare setTimeout -- a Vercel
+ *    serverless function isn't guaranteed to keep running once its
+ *    response has been sent, so an un-awaited timer can get silently
+ *    killed mid-flight in production (works every time in local dev,
+ *    where the process never gets frozen) and leave the profile stuck
+ *    at PENDING forever. after() is what tells the runtime to keep this
+ *    invocation alive until the callback actually finishes.
  *
  * A mock request may pass
  * ?scenario=match|dob_mismatch|duplicate|underage|name_mismatch to
@@ -93,15 +100,17 @@ export async function POST(req: NextRequest) {
 
   // Simulates an async KYC round trip. A real integration returns
   // immediately (see the digilocker branch above) and resolves from the
-  // callback redirect instead of a timer.
-  setTimeout(async () => {
+  // callback redirect instead of a timer. See this function's doc
+  // comment for why this is after(), not a bare setTimeout.
+  after(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 4000));
     try {
       const document = await mockFetchIdentityDocument(session.userId, scenario);
       await finalizeIdentityVerification({ userId: session.userId, provider: 'mock', document });
     } catch (err) {
       console.error('[verification/start] mock finalize failed', err);
     }
-  }, 4000);
+  });
 
   return NextResponse.json({ ok: true, status: 'PENDING' });
 }
