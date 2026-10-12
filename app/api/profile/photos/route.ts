@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
-import { assertValidImage, normalizeImageForStorage, uploadImageBuffer, deleteImage } from '@/lib/upload';
-import { moderateImageBuffer, recordPhotoModeration } from '@/lib/safety/moderateAndUpload';
+import { assertValidImage, normalizeImageForStorage, uploadImageBuffer } from '@/lib/upload';
+import { resolvePendingPhotoModeration } from '@/lib/safety/moderateAndUpload';
 import { enqueuePhotoModeration } from '@/lib/safety/moderationQueue';
 
 // Kept at 5 -- Bumble/Hinge standardize on 6 and Tinder allows 9 (see
@@ -28,11 +28,14 @@ const MAX_PHOTOS = 5;
  * already was, and a REJECTED photo gets its blob deleted and the row
  * soft-removed the moment the async check resolves.
  *
- * If QStash isn't configured (enqueuePhotoModeration returns false --
- * e.g. local dev without QSTASH_TOKEN), this falls back to the old
- * inline, synchronous check right here so nothing ships un-moderated;
- * that's the only case where this request's duration still depends on
- * the analysis.
+ * If QStash isn't configured, or scheduling the wake call fails for any
+ * other reason (enqueuePhotoModeration returns false either way -- see
+ * lib/safety/moderationQueue.ts's doc comment), this falls back to
+ * resolving the photo right here via resolvePendingPhotoModeration --
+ * the same logic the async worker itself runs, including the push/email
+ * notification -- wrapped in after() so the fallback still can't lengthen
+ * this response, and reliably runs to completion rather than a bare
+ * setTimeout that Vercel can freeze the moment the response is sent.
  */
 export async function POST(req: Request) {
   const session = await getSession();
@@ -62,15 +65,13 @@ export async function POST(req: Request) {
 
     const queued = await enqueuePhotoModeration(photo.id);
     if (!queued) {
-      // QStash isn't configured (e.g. local dev) -- fall back to the old
-      // inline, synchronous check so this photo still actually gets
-      // moderated. Mirrors app/api/cron/moderate-photo/route.ts's own
-      // REJECTED handling: scrub the blob, same as that worker does.
-      const outcome = await moderateImageBuffer(buffer);
-      await recordPhotoModeration({ photoId: photo.id, subjectUserId: session.userId, outcome });
-      if (outcome.decision === 'REJECTED') {
-        await deleteImage(url);
-      }
+      after(async () => {
+        try {
+          await resolvePendingPhotoModeration(photo.id);
+        } catch (err) {
+          console.error('[profile/photos] inline photo moderation fallback failed', { photoId: photo.id, err });
+        }
+      });
     }
 
     return NextResponse.json({

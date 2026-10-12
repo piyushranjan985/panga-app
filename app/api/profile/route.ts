@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { getSession } from '@/lib/session';
 import { enqueuePhotoModeration } from '@/lib/safety/moderationQueue';
+import { resolvePendingPhotoModeration } from '@/lib/safety/moderateAndUpload';
 import { isRealIdentityCheck } from '@/lib/safety/identityVerification';
 import { DATE_VIBES, TONIGHT_OPTIONS, VALUES_OPTIONS, LIVING_PREFERENCES, FUTURE_VIBE_QUESTIONS, CHILDREN_OPTIONS } from '@/lib/constants';
 import { isTrustedPhotoBlobUrl } from '@/lib/upload';
@@ -11,9 +12,10 @@ import { isTrustedPhotoBlobUrl } from '@/lib/upload';
 // handler could even finish (see docs/IDENTITY_VERIFICATION_AND_SAFETY.md
 // S11) -- that's gone now; photos are stored as PENDING and handed off to
 // app/api/cron/moderate-photo to analyze asynchronously. maxDuration is
-// no longer load-bearing for moderation, but left at a generous value for
-// the rest of this handler's DB writes (profile + photos + interests/
-// tribes/answers all in one upsert).
+// no longer load-bearing for moderation (the after() fallback below runs
+// past this handler's own response, not inside it), but left at a
+// generous value for the rest of this handler's DB writes (profile +
+// photos + interests/tribes/answers all in one upsert).
 export const maxDuration = 30;
 
 
@@ -294,16 +296,46 @@ export async function PUT(req: Request) {
   });
 
   if (isNewProfile) {
-    // No synchronous inline fallback here (unlike
-    // app/api/profile/photos/route.ts) -- onboarding already stores every
-    // photo as PENDING either way, so an unconfigured QStash just means
-    // these rows wait rather than lengthening this request; see
-    // lib/safety/moderationQueue.ts's doc comment on that trade-off.
-    await Promise.all(
-      profile.photos
-        .filter((photo) => newPhotos.some((p) => p.url === photo.url))
-        .map((photo) => enqueuePhotoModeration(photo.id)),
+    // Hand each new photo off to the async worker; enqueuePhotoModeration
+    // never throws -- it returns false and logs when QStash isn't
+    // configured, or scheduling the wake call itself fails (missing env
+    // vars, a delivery error, ...) -- see lib/safety/moderationQueue.ts's
+    // doc comment: it's an explicit contract that the function either
+    // hands off successfully or tells the caller to do it itself.
+    //
+    // This used to just drop that return value on the floor, on the
+    // assumption QStash would always be configured correctly in
+    // production. In practice that assumption didn't hold (confirmed
+    // twice against this app's actual production deploy), and the
+    // failure mode is bad: a photo silently stuck at PENDING forever,
+    // with no ModerationCase (those only ever get created once a
+    // MANUAL_REVIEW/REJECTED verdict exists) -- invisible to the
+    // uploader ("Verifying...", forever) and to admins (nothing to find
+    // in the moderation queue) alike.
+    //
+    // So anything that fails to enqueue gets resolved right here instead,
+    // via resolvePendingPhotoModeration (the same logic the cron worker
+    // itself runs) -- wrapped in after() so this request still returns
+    // immediately rather than paying nsfwjs+face-api's CPU cost per
+    // photo inline, and reliably runs to completion rather than a bare
+    // setTimeout that Vercel can freeze the moment the response is sent
+    // (see app/api/verification/route.ts for the same fix, same reason).
+    const newlyCreatedPhotos = profile.photos.filter((photo) => newPhotos.some((p) => p.url === photo.url));
+    const enqueueResults = await Promise.all(
+      newlyCreatedPhotos.map(async (photo) => ({ photo, queued: await enqueuePhotoModeration(photo.id) })),
     );
+    const unqueuedPhotoIds = enqueueResults.filter((r) => !r.queued).map((r) => r.photo.id);
+    if (unqueuedPhotoIds.length > 0) {
+      after(async () => {
+        for (const photoId of unqueuedPhotoIds) {
+          try {
+            await resolvePendingPhotoModeration(photoId);
+          } catch (err) {
+            console.error('[profile] inline photo moderation fallback failed', { photoId, err });
+          }
+        }
+      });
+    }
   }
 
   return NextResponse.json({

@@ -1,10 +1,12 @@
 import { db } from '@/lib/db';
-import { isTrustedPhotoBlobUrl } from '@/lib/upload';
+import { isTrustedPhotoBlobUrl, deleteImage } from '@/lib/upload';
 import { MAX_UPLOAD_BYTES } from '@/lib/imageValidation';
 import { evaluatePhoto, type PhotoModerationDecision } from './policyEngine';
 import { getImageModerationProvider, isUnsafeProductionMock, UndecodableImageError } from './imageModeration';
 import { moderationSlaDueAt } from '@/lib/moderationSla';
 import { raiseOpsAlert, resolveOpsAlert, shouldAlertNow } from '@/lib/ops/alerts';
+import { isPushCategoryEnabled, sendPushToUser } from '@/lib/notifications/push';
+import { isBrevoConfigured, sendTransactionalEmail } from '@/lib/notifications/email';
 
 export interface ModerationOutcome {
   decision: PhotoModerationDecision;
@@ -350,3 +352,101 @@ export async function moderateImageUrl(url: string): Promise<ModerationOutcome> 
   const buffer = Buffer.concat(chunks.map((c) => Buffer.from(c)));
   return moderateImageBuffer(buffer);
 }
+
+export interface ResolvePendingPhotoModerationResult {
+  skipped: boolean;
+  decision?: PhotoModerationDecision;
+}
+
+/**
+ * Resolves one still-PENDING photo's moderation decision and notifies its
+ * owner (push + email) -- the exact logic app/api/cron/moderate-photo/route.ts
+ * runs when QStash wakes it, factored out here so it can ALSO run as a
+ * same-request fallback (see lib/safety/moderationQueue.ts's doc comment:
+ * enqueuePhotoModeration() either hands a photo off successfully or tells
+ * the caller to do it itself -- app/api/profile/route.ts's onboarding PUT
+ * used to ignore that second half of the contract, which is how photos
+ * could get stuck at PENDING forever whenever QStash wasn't actually
+ * delivering in production, invisible to everyone including admins since
+ * a still-PENDING photo has no ModerationCase yet).
+ *
+ * Idempotent on purpose, same as the cron worker: a photo that's already
+ * been resolved by the time this runs again (a retry landing late, or a
+ * human admin getting to it first) is a clean no-op, never a double
+ * notification.
+ */
+export async function resolvePendingPhotoModeration(photoId: string): Promise<ResolvePendingPhotoModerationResult> {
+  const photo = await db.photo.findUnique({
+    where: { id: photoId },
+    include: { profile: { select: { userId: true, displayName: true, user: { select: { email: true, emailVerified: true } } } } },
+  });
+
+  if (!photo || photo.moderationStatus !== 'PENDING') {
+    return { skipped: true };
+  }
+
+  const { userId, displayName } = photo.profile;
+  const outcome = await moderateImageUrl(photo.url);
+
+  await recordPhotoModeration({ photoId: photo.id, subjectUserId: userId, outcome });
+
+  if (outcome.decision === 'REJECTED') {
+    // See recordPhotoModeration -- the DB row is already soft-removed
+    // (removedAt/removedReason); this is the other half, scrubbing the
+    // actual blob now that a human will never need to look at it.
+    await deleteImage(photo.url);
+  }
+
+  // Best-effort notification, both channels -- neither throws (push
+  // never throws by design; email failures are caught right here), and a
+  // failure in either must never leave the photo's own moderation result
+  // unrecorded -- that part already happened above.
+  const message =
+    outcome.decision === 'REJECTED'
+      ? photoRejectionMessage(outcome)
+      : outcome.decision === 'MANUAL_REVIEW'
+        ? manualReviewMessage(outcome)
+        : photoApprovedMessage();
+
+  try {
+    if (await isPushCategoryEnabled(userId, 'reminders')) {
+      await sendPushToUser(userId, 'push.photo_moderation', { outcome: message });
+    }
+  } catch (err) {
+    console.error('[photoModeration] push notification failed', { photoId, err });
+  }
+
+  const email = photo.profile.user.email;
+  if (email && photo.profile.user.emailVerified && isBrevoConfigured()) {
+    try {
+      await sendTransactionalEmail({
+        to: email,
+        subject:
+          outcome.decision === 'REJECTED'
+            ? "We couldn't approve your findmyVybe photo"
+            : outcome.decision === 'MANUAL_REVIEW'
+              ? 'Your findmyVybe photo is being reviewed'
+              : 'Your findmyVybe photo was approved',
+        text: `Hi ${displayName},\n\n${message}\n\n-- The findmyVybe team`,
+        html: `<p>Hi ${displayName},</p><p>${message}</p><p style="color:#666;font-size:0.9em">-- The findmyVybe team</p>`,
+      });
+      await resolveOpsAlert({ fingerprint: 'integration:photo-moderation-email', resolutionDetail: 'Photo moderation confirmation email succeeded again.' });
+    } catch (err) {
+      console.error('[photoModeration] confirmation email failed', { photoId, err });
+      if (shouldAlertNow('photo-moderation-email')) {
+        await raiseOpsAlert({
+          category: 'SYSTEM',
+          severity: 'WARNING',
+          title: 'Photo moderation result emails failing',
+          detail: `sendTransactionalEmail failed while notifying a user of their photo moderation outcome. Error: ${err instanceof Error ? err.message : String(err)}`,
+          sourceType: 'system',
+          sourceId: 'integration:photo-moderation-email',
+          fingerprint: 'integration:photo-moderation-email',
+        });
+      }
+    }
+  }
+
+  return { skipped: false, decision: outcome.decision };
+}
+
