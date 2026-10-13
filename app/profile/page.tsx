@@ -234,6 +234,7 @@ export default function ProfilePage() {
   const [verificationIsMock, setVerificationIsMock] = useState(true);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
+  const [settingPrimaryId, setSettingPrimaryId] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoNotice, setPhotoNotice] = useState<string | null>(null);
   // "Delete my account" danger zone -- two-step (reveal, then confirm)
@@ -544,6 +545,28 @@ export default function ProfilePage() {
     }
   }
 
+  // Swaps the chosen (APPROVED-only -- see the route) photo into position
+  // 0. The server returns the full photo list in its new order, which we
+  // just drop straight into state rather than re-deriving positions here.
+  async function makePrimary(photoId: string) {
+    setPhotoError(null);
+    setSettingPrimaryId(photoId);
+    try {
+      const res = await fetch(`/api/profile/photos/${photoId}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'make_primary' }),
+      });
+      const data = await safeJson(res);
+      if (!res.ok) throw new Error(data.error ?? 'Could not set as primary');
+      setProfile((p) => (p ? { ...p, photos: data.photos } : p));
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : 'Could not set as primary');
+    } finally {
+      setSettingPrimaryId(null);
+    }
+  }
+
   // Soft-deletes via app/api/me/delete -- see that route's doc comment for
   // exactly what this does and doesn't do (data is retained, not wiped;
   // sign-in is blocked everywhere; support can restore it). The route
@@ -686,6 +709,16 @@ export default function ProfilePage() {
                   <span className="absolute inset-x-1 bottom-1 rounded-full bg-magenta/90 px-2 py-0.5 text-center text-[10px] font-semibold text-white">
                     Rejected — not shown to others
                   </span>
+                )}
+                {photo.moderationStatus === 'APPROVED' && photo.id !== effectivePrimaryPhoto?.id && (
+                  <button
+                    type="button"
+                    onClick={() => makePrimary(photo.id)}
+                    disabled={settingPrimaryId === photo.id}
+                    className="absolute inset-x-1 bottom-1 rounded-full bg-black/60 px-2 py-0.5 text-center text-[10px] font-semibold text-white disabled:opacity-60"
+                  >
+                    {settingPrimaryId === photo.id ? 'Setting…' : 'Make primary'}
+                  </button>
                 )}
                 {profile.photos.length > 1 && (
                   <button
