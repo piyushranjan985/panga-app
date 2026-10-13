@@ -573,7 +573,18 @@ export default function ProfilePage() {
     );
   }
 
-  const primaryPhoto = profile.photos[0]?.url;
+  // Position 0 is normally "primary", but a REJECTED photo is never
+  // shown to anyone -- its blob is deleted the moment it's rejected (see
+  // lib/safety/moderateAndUpload.ts's resolvePendingPhotoModeration), so
+  // showing it here would just be a broken image. Every viewer-facing
+  // query elsewhere (Discover, matches, previews) already skips
+  // REJECTED/removed photos before taking the first one; this does the
+  // same for the one place on this page that wasn't: the header avatar
+  // and the "Primary" badge below both follow whichever photo this
+  // picks, so a rejected first photo falls through to the next one
+  // automatically, with no action needed from the person.
+  const effectivePrimaryPhoto = profile.photos.find((p) => p.moderationStatus !== 'REJECTED') ?? null;
+  const primaryPhoto = effectivePrimaryPhoto?.url;
   const vybeMax = profile.intent === 'RISHTA_READY' ? 3 : 2;
   const futureVibeAnswers = [
     futureVibeAnswer('home', profile.futureHome),
@@ -652,11 +663,11 @@ export default function ProfilePage() {
             Use a clear solo photo that shows your face -- group shots, blurry pics, or photos with no visible face can get rejected and delay your profile going live.
           </p>
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-            {profile.photos.map((photo, i) => (
+            {profile.photos.map((photo) => (
               <div key={photo.id} className="relative aspect-square overflow-hidden rounded-2xl border border-line">
                 {/* eslint-disable-next-line @next/next/no-img-element -- external/Blob URLs */}
                 <img src={photo.url} alt="" className="h-full w-full object-cover" />
-                {i === 0 && (
+                {photo.id === effectivePrimaryPhoto?.id && (
                   <span className="absolute left-1 top-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
                     Primary
                   </span>
