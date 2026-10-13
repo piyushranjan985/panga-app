@@ -184,7 +184,16 @@ export default async function ModerationCaseDetailPage({ params }: { params: Pro
         </div>
 
         <div className="space-y-6">
-          {canResolve && flaggedPhoto && (
+          {/* Shown only when the Resolve section below *won't* also move
+              the photo: while it's still MANUAL_REVIEW, Resolve/Dismiss
+              already decides it as a side effect of closing the case (see
+              that route's doc comment) -- rendering both here as separate
+              "Approve photo" buttons wasn't a second way to do the same
+              thing, it just looked like one. This is for every other
+              situation that function doesn't reach: a photo already
+              decided before this case was opened, or a case closed
+              earlier that needs correcting now. */}
+          {canResolve && flaggedPhoto && flaggedPhoto.moderationStatus !== 'MANUAL_REVIEW' && (
             <PhotoDecisionOverride
               photoId={photoEvidence!.photoId}
               currentStatus={flaggedPhoto.moderationStatus}
