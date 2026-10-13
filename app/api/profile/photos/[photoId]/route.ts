@@ -26,6 +26,38 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ phot
   await db.photo.delete({ where: { id: photoId } });
   await deleteImage(photo.url);
 
+  // A still-open moderation case about this exact photo (REJECTED or
+  // MANUAL_REVIEW -- see lib/safety/moderateAndUpload.ts's
+  // recordPhotoModeration, which opens one for anything short of an
+  // outright APPROVED) has nothing left to review once its photo is
+  // gone. Left alone, it just sits in admin's open queue forever,
+  // pointing at a deleted row -- auto-close it rather than leave that
+  // for an admin to notice and clear by hand. Best-effort: this must
+  // never fail (or block) the person's own delete, which already
+  // succeeded above.
+  //
+  // Deliberately DISMISSED, not deleted -- the case row itself stays for
+  // history (isRepeatOffender's count, a few lines up in that same file,
+  // counts every case regardless of status, so this doesn't erase that
+  // signal, just takes it out of the queue).
+  try {
+    await db.moderationCase.updateMany({
+      where: {
+        subjectUserId: session.userId,
+        category: { in: ['photo_violation', 'sexual_content'] },
+        status: { in: ['OPEN', 'IN_REVIEW', 'ESCALATED'] },
+        evidence: { path: ['photoId'], equals: photoId },
+      },
+      data: {
+        status: 'DISMISSED',
+        resolution: 'Auto-closed: the photo this case was about was deleted by its owner before review.',
+        resolvedAt: new Date(),
+      },
+    });
+  } catch (err) {
+    console.error('[profile/photos] auto-closing moderation case(s) for deleted photo failed', { photoId, err });
+  }
+
   return NextResponse.json({ ok: true });
 }
 
