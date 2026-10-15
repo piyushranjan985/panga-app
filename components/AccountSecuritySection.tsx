@@ -28,6 +28,16 @@ export interface AccountSecurityData {
  * those are the two things grandfathered accounts are missing. (Apple
  * Sign-In was removed 2026-10-05 -- it was a scaffold, never configured
  * in production -- see docs/PHONE_FIRST_AUTH.md.)
+ *
+ * The SAME "add/verify" flow also covers CHANGING an already-verified
+ * phone or email -- both hit the same /request-otp + /verify-otp pair
+ * either way (see those routes' doc comments), so this component just
+ * swaps "Add phone"/"Add email" for "Change" once a value is already
+ * verified, rather than branching into a second UI. The one thing that
+ * differs between add and change is server-side and invisible here: a
+ * genuine change (not a first-time add) gets the OLD contact notified
+ * once it succeeds, since that's the one person who'd notice an account
+ * takeover in progress.
  */
 export default function AccountSecuritySection({
   account,
@@ -182,24 +192,41 @@ export default function AccountSecuritySection({
                 {account.phone && account.phoneVerified ? maskPhone(account.phone) : 'Not added yet'}
               </p>
             </div>
-            {account.phone && account.phoneVerified ? (
-              <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">Verified</span>
-            ) : phoneStep === 'closed' ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setPhoneError(null);
-                  setPhoneStep('phone');
-                }}
-                className="rounded-full border border-line px-4 py-2 text-xs font-bold"
-              >
-                Add phone
-              </button>
-            ) : null}
+            <div className="flex items-center gap-2">
+              {account.phone && account.phoneVerified && (
+                <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">Verified</span>
+              )}
+              {phoneStep === 'closed' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhoneError(null);
+                    setPhoneDraft('+91');
+                    setPhoneCode('');
+                    setPhoneStep('phone');
+                  }}
+                  className="rounded-full border border-line px-4 py-2 text-xs font-bold"
+                >
+                  {account.phone && account.phoneVerified ? 'Change' : 'Add phone'}
+                </button>
+              )}
+            </div>
           </div>
 
           {phoneStep === 'phone' && (
             <form onSubmit={sendPhoneCode} className="mt-3 flex flex-col gap-2">
+              {account.phone && account.phoneVerified && (
+                account.email && account.emailVerified ? (
+                  <p className="text-sm text-inkSoft">
+                    We&apos;ll email {maskEmail(account.email)} once this is done, in case it wasn&apos;t you.
+                  </p>
+                ) : (
+                  <p className="text-sm text-inkSoft">
+                    Heads up: you don&apos;t have a verified email on file, so we won&apos;t be able to notify you
+                    elsewhere if this number ever changes without your knowledge. Consider adding one below.
+                  </p>
+                )
+              )}
               <input
                 type="tel"
                 value={phoneDraft}
@@ -259,27 +286,42 @@ export default function AccountSecuritySection({
                 {account.email && account.emailVerified ? maskEmail(account.email) : 'Not added yet'}
               </p>
             </div>
-            {account.email && account.emailVerified ? (
-              <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">Verified</span>
-            ) : !emailAdding ? (
-              <button
-                type="button"
-                onClick={() => setEmailAdding(true)}
-                className="rounded-full border border-line px-4 py-2 text-xs font-bold"
-              >
-                Add email
-              </button>
-            ) : null}
+            <div className="flex items-center gap-2">
+              {account.email && account.emailVerified && (
+                <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">Verified</span>
+              )}
+              {!emailAdding && (
+                <button
+                  type="button"
+                  onClick={() => setEmailAdding(true)}
+                  className="rounded-full border border-line px-4 py-2 text-xs font-bold"
+                >
+                  {account.email && account.emailVerified ? 'Change' : 'Add email'}
+                </button>
+              )}
+            </div>
           </div>
 
-          {emailAdding && !(account.email && account.emailVerified) && (
-            <div className="mt-3">
+          {emailAdding && (
+            <div className="mt-3 flex flex-col gap-2">
+              {account.email && account.emailVerified && (
+                <p className="text-sm text-inkSoft">
+                  We&apos;ll email {maskEmail(account.email)} once this is done, in case it wasn&apos;t you.
+                </p>
+              )}
               <EmailVerifyField
                 onVerified={() => {
                   setEmailAdding(false);
                   onChange();
                 }}
               />
+              <button
+                type="button"
+                onClick={() => setEmailAdding(false)}
+                className="self-start text-sm font-semibold text-inkSoft"
+              >
+                Cancel
+              </button>
             </div>
           )}
         </div>
