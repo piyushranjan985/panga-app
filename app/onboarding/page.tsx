@@ -17,6 +17,7 @@ import IntentBadge from '@/components/IntentBadge';
 import EmailVerifyField from '@/components/EmailVerifyField';
 import { assertValidImage } from '@/lib/imageValidation';
 import { safeJson } from '@/lib/clientJson';
+import { getCurrentPosition, requestPushPermission } from '@/lib/native';
 
 type Interest = { id: string; label: string; emoji: string; intents: string[] };
 type Prompt = { id: string; text: string; emoji: string; optionA: string; optionB: string; intents: string[] };
@@ -41,6 +42,7 @@ const INTENTS = [
 type StepKey =
   | 'intent'
   | 'basics'
+  | 'permissions'
   | 'photos'
   | 'interests'
   | 'tribe'
@@ -56,6 +58,7 @@ type StepKey =
 const STEP_LABELS: Record<StepKey, string> = {
   intent: 'Intent',
   basics: 'Basics',
+  permissions: 'Stay in the loop',
   photos: 'Photos',
   interests: 'Interests',
   tribe: 'Tribe',
@@ -72,11 +75,22 @@ const STEP_LABELS: Record<StepKey, string> = {
 type IntentValue = 'JUST_VIBING' | 'SOMETHING_REAL' | 'RISHTA_READY';
 
 const STEP_FLOWS: Record<IntentValue, StepKey[]> = {
-  JUST_VIBING: ['intent', 'basics', 'photos', 'interests', 'datevibe', 'tonight', 'vybecheck', 'ready'],
-  SOMETHING_REAL: ['intent', 'basics', 'photos', 'interests', 'tribe', 'relationship', 'vybecheck', 'ready'],
+  JUST_VIBING: ['intent', 'basics', 'permissions', 'photos', 'interests', 'datevibe', 'tonight', 'vybecheck', 'ready'],
+  SOMETHING_REAL: [
+    'intent',
+    'basics',
+    'permissions',
+    'photos',
+    'interests',
+    'tribe',
+    'relationship',
+    'vybecheck',
+    'ready',
+  ],
   RISHTA_READY: [
     'intent',
     'basics',
+    'permissions',
     'photos',
     'interests',
     'tribe',
@@ -137,6 +151,15 @@ function OnboardingForm() {
     promptAnswers: [] as { promptId: string; answer: string }[],
     familyPreviewOn: false,
     photoUrls: [] as string[],
+    // Set from the new "Stay in the loop" permissions step below (opt-in,
+    // same native/browser Geolocation call the Profile screen's own
+    // "Share location" uses -- see lib/native.ts). Carried in form state
+    // rather than posted immediately because, unlike push notifications,
+    // there's no Profile row yet to attach it to until `finish()` submits
+    // this whole form -- see app/api/profile/route.ts's PUT, which only
+    // ever applies these two on first create, same as photos.
+    latitude: null as number | null,
+    longitude: null as number | null,
     avatarHue: Math.ceil(Math.random() * 6),
     // Just Vibing only
     dateVibeTags: [] as string[],
@@ -155,6 +178,15 @@ function OnboardingForm() {
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoNotice, setPhotoNotice] = useState<string | null>(null);
   const [finishNotice, setFinishNotice] = useState<string | null>(null);
+
+  // "Stay in the loop" step -- both opt-in, both skippable (see nextDisabled
+  // below: this step never blocks Next). pushGranted only reflects this
+  // page load's own attempt, same as the Profile screen's equivalent.
+  const [locBusy, setLocBusy] = useState(false);
+  const [locError, setLocError] = useState<string | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
+  const [pushGranted, setPushGranted] = useState(false);
 
   useEffect(() => {
     fetch('/api/onboarding-options')
@@ -208,6 +240,12 @@ function OnboardingForm() {
           familyPreviewOn: p.familyPreviewOn ?? f.familyPreviewOn,
           photoUrls: (p.photos ?? []).slice().sort((a: { position: number }, b: { position: number }) => a.position - b.position).map((ph: { url: string }) => ph.url),
           avatarHue: p.avatarHue ?? f.avatarHue,
+          // Prefill from what's already on file -- otherwise the
+          // permissions step's "Share location" card would show its
+          // unfilled state for someone who already shared it long before
+          // revisiting onboarding to switch intent.
+          latitude: p.latitude ?? f.latitude,
+          longitude: p.longitude ?? f.longitude,
           // Everything below is intent-specific -- start clean under the
           // new intent rather than carrying over the old one's picks.
           tribeIds: [],
@@ -478,6 +516,50 @@ function OnboardingForm() {
   // people who picked Rishta Ready.
   const previewUrl = myUserId ? `${typeof window !== 'undefined' ? window.location.origin : ''}/preview/${myUserId}` : null;
 
+  // Opt-in, same contract as the Profile screen's shareLocation/enablePush
+  // (lib/native.ts handles the native-vs-browser branching either way).
+  // In edit mode the Profile row already exists, so this persists right
+  // away through the same endpoint Settings uses; for a brand-new
+  // profile there's nothing to attach it to yet, so it's just carried in
+  // form state and goes out with the rest of the form in finish() below.
+  async function sharePermLocation() {
+    setLocBusy(true);
+    setLocError(null);
+    try {
+      const { latitude, longitude } = await getCurrentPosition();
+      setForm((f) => ({ ...f, latitude, longitude }));
+      if (editMode) {
+        await fetch('/api/profile/location', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ latitude, longitude }),
+        });
+      }
+    } catch (err) {
+      setLocError(err instanceof Error ? err.message : 'Could not get your location. Try again.');
+    } finally {
+      setLocBusy(false);
+    }
+  }
+
+  // Push registration never depends on a Profile row existing (just the
+  // signed-in session -- see app/api/push/register/route.ts), so unlike
+  // location this is identical in new-profile and edit mode: it's fully
+  // persisted the moment it succeeds, nothing to carry in form state.
+  async function enablePermPush() {
+    setPushBusy(true);
+    setPushError(null);
+    try {
+      const ok = await requestPushPermission();
+      if (ok) setPushGranted(true);
+      else setPushError('Push notifications aren’t supported in this browser.');
+    } catch (err) {
+      setPushError(err instanceof Error ? err.message : 'Could not turn on notifications.');
+    } finally {
+      setPushBusy(false);
+    }
+  }
+
   async function finish() {
     setSaving(true);
     setError(null);
@@ -494,6 +576,13 @@ function OnboardingForm() {
         futureCareer: form.futureCareer || undefined,
         futureMoney: form.futureMoney || undefined,
         children: form.children || undefined,
+        // Same null -> undefined drop as the Rishta Ready fields above --
+        // the server only ever applies these on first create (see PUT
+        // /api/profile), so in edit mode they're already persisted
+        // directly by sharePermLocation() and don't need to ride along
+        // here at all.
+        latitude: form.latitude ?? undefined,
+        longitude: form.longitude ?? undefined,
       };
       const res = await fetch('/api/profile', {
         method: 'PUT',
@@ -717,6 +806,69 @@ function OnboardingForm() {
                 ))}
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {stepKey === 'permissions' && (
+        <div className="flex flex-col gap-4">
+          <h1 className="font-display text-2xl font-extrabold">Stay in the loop</h1>
+          <p className="text-sm text-inkSoft">
+            Two quick things that make findmyVybe work better for you -- both optional, both changeable later from
+            your profile.
+          </p>
+
+          <div className="rounded-2xl border border-line bg-white p-4">
+            <p className="font-bold">📍 Location</p>
+            <p className="mb-3 text-sm text-inkSoft">
+              {form.intent === 'JUST_VIBING'
+                ? 'Just Vibing is distance-based -- sharing your location gets you closer, better matches instead of just your city’s general area.'
+                : 'Lets matches see how far away you are. Your exact location is never shown to anyone -- only a rounded distance.'}
+            </p>
+            {form.latitude != null ? (
+              <p className="text-sm font-semibold text-green-700">✓ Location shared</p>
+            ) : (
+              <button
+                type="button"
+                onClick={sharePermLocation}
+                disabled={locBusy}
+                className="gradient-btn rounded-full px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {locBusy ? 'Getting location…' : 'Share location'}
+              </button>
+            )}
+            {locError && <p className="mt-2 text-xs text-magenta">{locError}</p>}
+          </div>
+
+          <div className="rounded-2xl border border-line bg-white p-4">
+            <p className="font-bold">🔔 Notifications</p>
+            <p className="mb-3 text-sm text-inkSoft">
+              Get notified the moment you match, get a message, or someone sends a Vybe Vouch -- easy to miss
+              otherwise.
+            </p>
+            {pushGranted ? (
+              <p className="text-sm font-semibold text-green-700">✓ Notifications on</p>
+            ) : (
+              <button
+                type="button"
+                onClick={enablePermPush}
+                disabled={pushBusy}
+                className="gradient-btn rounded-full px-4 py-2 text-sm font-bold text-white disabled:opacity-60"
+              >
+                {pushBusy ? 'Turning on…' : 'Turn on notifications'}
+              </button>
+            )}
+            {pushError && <p className="mt-2 text-xs text-magenta">{pushError}</p>}
+          </div>
+
+          {form.latitude == null && !pushGranted && (
+            <button
+              type="button"
+              onClick={() => setStep((s) => s + 1)}
+              className="self-center text-sm font-semibold text-inkSoft underline"
+            >
+              Not now -- I&apos;ll turn these on later
+            </button>
           )}
         </div>
       )}

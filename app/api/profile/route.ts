@@ -96,6 +96,13 @@ const upsertSchema = z.object({
     .min(1, 'Add at least 1 photo')
     .max(5),
 
+  // Optional, opt-in -- set by onboarding's "Stay in the loop" permissions
+  // step (app/onboarding/page.tsx's sharePermLocation), same contract as
+  // the Profile screen's own location sharing. Only ever applied on
+  // first create below, never on update -- see that branch's comment.
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+
   // --- Just Vibing only ("What's your kind of date?" / "Tonight?") ---
   dateVibeTags: z.array(dateVibeEnum).max(3).default([]),
   tonightTags: z.array(tonightEnum).max(2).default([]),
@@ -259,6 +266,14 @@ export async function PUT(req: Request) {
       futureCareer: data.futureCareer ?? null,
       futureMoney: data.futureMoney ?? null,
       children: data.children ?? null,
+      // Set only here, same as photos a few lines up -- a later `update`
+      // (e.g. switchIntent revisiting this same PUT) must never clobber
+      // what someone's since changed from the Profile screen's own
+      // Location section, or a value an edit-mode pass through this step
+      // already wrote directly via POST /api/profile/location.
+      latitude: data.latitude ?? null,
+      longitude: data.longitude ?? null,
+      locationUpdatedAt: data.latitude != null ? new Date() : null,
     },
     update: {
       displayName: data.displayName,
