@@ -15,6 +15,127 @@ export interface AccountSecurityData {
 }
 
 /**
+ * The mandatory "confirm it's you" step before a genuine phone/email
+ * CHANGE (not a first-time add) is allowed to proceed -- see
+ * app/api/profile/{phone,email}/confirm-old/*.ts's doc comments for
+ * the server-side half of this. Shared between the Phone and Email
+ * cards below since it's the exact same two-call shape either way
+ * (POST with no body to send a code to whichever destination the
+ * server picks, then POST {code} to verify it) -- only the endpoints
+ * differ.
+ */
+function ConfirmOldStep({
+  requestPath,
+  verifyPath,
+  onConfirmed,
+  onCancel,
+}: {
+  requestPath: string;
+  verifyPath: string;
+  onConfirmed: () => void;
+  onCancel: () => void;
+}) {
+  const [step, setStep] = useState<'intro' | 'code'>('intro');
+  const [maskedDestination, setMaskedDestination] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function sendCode() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(requestPath, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Something went wrong');
+      setMaskedDestination(data.maskedDestination ?? null);
+      setStep('code');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verifyCode(codeToSubmit: string) {
+    if (codeToSubmit.length !== 6 || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(verifyPath, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: codeToSubmit }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Invalid code');
+      onConfirmed();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Invalid code');
+      setCode('');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      <p className="text-sm text-inkSoft">
+        First, let&apos;s confirm it&apos;s you -- we&apos;ll send a one-time code to the contact method this account
+        already trusts, separate from the one you&apos;re about to change.
+      </p>
+      {step === 'intro' && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            sendCode();
+          }}
+          className="flex gap-2"
+        >
+          <button
+            type="submit"
+            disabled={busy}
+            className="gradient-btn rounded-full px-5 py-2 text-sm font-bold text-white disabled:opacity-60"
+          >
+            {busy ? 'Sending...' : 'Send code'}
+          </button>
+          <button type="button" onClick={onCancel} className="text-sm font-semibold text-inkSoft">
+            Cancel
+          </button>
+        </form>
+      )}
+      {step === 'code' && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            verifyCode(code);
+          }}
+          className="flex flex-col gap-2"
+        >
+          <p className="text-sm text-inkSoft">
+            Enter the 6-digit code we sent to {maskedDestination ?? 'your trusted contact'}.
+          </p>
+          <OtpCodeInput value={code} onChange={setCode} onComplete={verifyCode} disabled={busy} error={Boolean(error)} />
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={busy || code.length !== 6}
+              className="gradient-btn rounded-full px-5 py-2 text-sm font-bold text-white disabled:opacity-60"
+            >
+              {busy ? 'Verifying...' : 'Verify'}
+            </button>
+            <button type="button" onClick={onCancel} className="text-sm font-semibold text-inkSoft">
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+      {error && <p className="text-sm text-magenta">{error}</p>}
+    </div>
+  );
+}
+
+/**
  * Account & Security section on the Profile screen -- see
  * docs/PHONE_FIRST_AUTH.md. New sign-ups are phone-first (the account
  * can't exist without a verified phone), but every account that existed
@@ -33,11 +154,17 @@ export interface AccountSecurityData {
  * phone or email -- both hit the same /request-otp + /verify-otp pair
  * either way (see those routes' doc comments), so this component just
  * swaps "Add phone"/"Add email" for "Change" once a value is already
- * verified, rather than branching into a second UI. The one thing that
- * differs between add and change is server-side and invisible here: a
- * genuine change (not a first-time add) gets the OLD contact notified
- * once it succeeds, since that's the one person who'd notice an account
- * takeover in progress.
+ * verified, rather than branching into a second UI. A genuine change
+ * (not a first-time add) gets the OLD contact notified once it
+ * succeeds, since that's the one person who'd notice an account
+ * takeover in progress -- and, before that, has to clear the
+ * ConfirmOldStep gate above first: a code sent to whatever this
+ * account already trusts, required before the server will even issue
+ * a code to a NEW destination. That's what actually stops a stolen
+ * session cookie alone from being enough to hijack the account's
+ * contact info -- the post-change notice is a backstop, this is the
+ * lock. See app/api/profile/{phone,email}/confirm-old/*.ts's doc
+ * comments for the server side.
  */
 export default function AccountSecuritySection({
   account,
@@ -46,13 +173,13 @@ export default function AccountSecuritySection({
   account: AccountSecurityData | null;
   onChange: () => void;
 }) {
-  const [phoneStep, setPhoneStep] = useState<'closed' | 'phone' | 'code'>('closed');
+  const [phoneStep, setPhoneStep] = useState<'closed' | 'confirmOld' | 'phone' | 'code'>('closed');
   const [phoneDraft, setPhoneDraft] = useState('+91');
   const [phoneCode, setPhoneCode] = useState('');
   const [phoneBusy, setPhoneBusy] = useState(false);
   const [phoneError, setPhoneError] = useState<string | null>(null);
 
-  const [emailAdding, setEmailAdding] = useState(false);
+  const [emailStep, setEmailStep] = useState<'closed' | 'confirmOld' | 'verify'>('closed');
 
   const [passkeyBusy, setPasskeyBusy] = useState(false);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
@@ -75,7 +202,16 @@ export default function AccountSecuritySection({
         body: JSON.stringify({ phone: phoneDraft }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Something went wrong');
+      if (!res.ok) {
+        // The confirm-old window (see lib/otp.ts) lapsed between finishing
+        // that step and getting here -- send them back to redo it rather
+        // than surfacing a confusing error for something routine.
+        if (data.code === 'CONFIRM_OLD_REQUIRED') {
+          setPhoneStep('confirmOld');
+          return;
+        }
+        throw new Error(data.error ?? 'Something went wrong');
+      }
       setPhoneStep('code');
     } catch (err) {
       setPhoneError(err instanceof Error ? err.message : 'Something went wrong');
@@ -203,7 +339,7 @@ export default function AccountSecuritySection({
                     setPhoneError(null);
                     setPhoneDraft('+91');
                     setPhoneCode('');
-                    setPhoneStep('phone');
+                    setPhoneStep(account.phone && account.phoneVerified ? 'confirmOld' : 'phone');
                   }}
                   className="rounded-full border border-line px-4 py-2 text-xs font-bold"
                 >
@@ -212,6 +348,15 @@ export default function AccountSecuritySection({
               )}
             </div>
           </div>
+
+          {phoneStep === 'confirmOld' && (
+            <ConfirmOldStep
+              requestPath="/api/profile/phone/confirm-old/request-otp"
+              verifyPath="/api/profile/phone/confirm-old/verify-otp"
+              onConfirmed={() => setPhoneStep('phone')}
+              onCancel={() => setPhoneStep('closed')}
+            />
+          )}
 
           {phoneStep === 'phone' && (
             <form onSubmit={sendPhoneCode} className="mt-3 flex flex-col gap-2">
@@ -290,10 +435,10 @@ export default function AccountSecuritySection({
               {account.email && account.emailVerified && (
                 <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-800">Verified</span>
               )}
-              {!emailAdding && (
+              {emailStep === 'closed' && (
                 <button
                   type="button"
-                  onClick={() => setEmailAdding(true)}
+                  onClick={() => setEmailStep(account.email && account.emailVerified ? 'confirmOld' : 'verify')}
                   className="rounded-full border border-line px-4 py-2 text-xs font-bold"
                 >
                   {account.email && account.emailVerified ? 'Change' : 'Add email'}
@@ -302,7 +447,16 @@ export default function AccountSecuritySection({
             </div>
           </div>
 
-          {emailAdding && (
+          {emailStep === 'confirmOld' && (
+            <ConfirmOldStep
+              requestPath="/api/profile/email/confirm-old/request-otp"
+              verifyPath="/api/profile/email/confirm-old/verify-otp"
+              onConfirmed={() => setEmailStep('verify')}
+              onCancel={() => setEmailStep('closed')}
+            />
+          )}
+
+          {emailStep === 'verify' && (
             <div className="mt-3 flex flex-col gap-2">
               {account.email && account.emailVerified && (
                 <p className="text-sm text-inkSoft">
@@ -311,13 +465,13 @@ export default function AccountSecuritySection({
               )}
               <EmailVerifyField
                 onVerified={() => {
-                  setEmailAdding(false);
+                  setEmailStep('closed');
                   onChange();
                 }}
               />
               <button
                 type="button"
-                onClick={() => setEmailAdding(false)}
+                onClick={() => setEmailStep('closed')}
                 className="self-start text-sm font-semibold text-inkSoft"
               >
                 Cancel

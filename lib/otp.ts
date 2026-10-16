@@ -514,3 +514,37 @@ export async function consumeOtp(userId: string, code: string, channel: OtpChann
   await db.otpCode.update({ where: { id: latest.id }, data: { consumedAt: new Date() } });
   return { ok: true, channel: effectiveChannel };
 }
+
+/**
+ * How long a completed "confirm it's you" step (an OTP consumed against
+ * an account's OLD, already-trusted phone/email) stays good enough to
+ * unlock issuing a code to a NEW destination -- see
+ * app/api/profile/{phone,email}/confirm-old/*.ts and the matching
+ * request-otp routes' doc comments for how this fits together. Kept
+ * short on purpose: this is a short-lived unlock for one change in
+ * progress, not a standing grant.
+ */
+export const CONFIRM_OLD_WINDOW_MINUTES = 15;
+
+/**
+ * Whether `destination` has a CONSUMED OtpCode for this user within the
+ * last `windowMinutes` -- the server-side gate behind the "confirm it's
+ * you" step that a genuine phone/email CHANGE (not a first-time add)
+ * now requires before a code can even be requested for the new
+ * destination. Deliberately keyed on this specific `destination`, not
+ * just "this user completed some OTP recently" -- a code consumed
+ * against an unrelated sign-in, or against the NEW destination from a
+ * previous attempt, doesn't count as confirming THIS old value right
+ * now. See hasRecentConfirmedOtp's callers for why this exists: without
+ * it, a stolen session cookie alone would be enough to swap a verified
+ * phone/email for one the attacker controls, with nothing standing in
+ * the way but a code sent to a destination THEY chose.
+ */
+export async function hasRecentConfirmedOtp(userId: string, destination: string, windowMinutes = CONFIRM_OLD_WINDOW_MINUTES): Promise<boolean> {
+  const since = new Date(Date.now() - windowMinutes * 60_000);
+  const row = await db.otpCode.findFirst({
+    where: { userId, destination, consumedAt: { gte: since } },
+    select: { id: true },
+  });
+  return Boolean(row);
+}
