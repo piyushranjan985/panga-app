@@ -34,6 +34,12 @@ const bodySchema = z.object({
  * endpoint directly and swap the number with nothing but a code sent to
  * a destination THEY chose. A first-time add (no previous verified
  * phone) skips this entirely -- there's nothing to confirm yet.
+ *
+ * The confirm-old destination is always the account's verified EMAIL
+ * (see ./confirm-old/request-otp/route.ts) -- a phone-only account with
+ * no verified email can't clear this gate at all, by design: every
+ * phone-only grandfathered account gets cleared out before launch (see
+ * docs/PHONE_FIRST_AUTH.md), so this isn't worth a fallback code path.
  */
 export async function POST(req: Request) {
   const session = await getSession();
@@ -59,12 +65,16 @@ export async function POST(req: Request) {
 
   const isChange = Boolean(currentUser?.phone && currentUser.phoneVerified && currentUser.phone !== phone);
   if (isChange) {
-    const confirmDestination =
-      currentUser!.email && currentUser!.emailVerified ? (currentUser!.email as string) : (currentUser!.phone as string);
-    const confirmed = await hasRecentConfirmedOtp(session.userId, confirmDestination, CONFIRM_OLD_WINDOW_MINUTES);
+    if (!currentUser?.email || !currentUser.emailVerified) {
+      return NextResponse.json(
+        { error: 'Add a verified email first, then you can change your phone number.' },
+        { status: 400 },
+      );
+    }
+    const confirmed = await hasRecentConfirmedOtp(session.userId, currentUser.email, CONFIRM_OLD_WINDOW_MINUTES);
     if (!confirmed) {
       return NextResponse.json(
-        { error: 'Please confirm your current number first.', code: 'CONFIRM_OLD_REQUIRED' },
+        { error: 'Please confirm your current email first.', code: 'CONFIRM_OLD_REQUIRED' },
         { status: 403 },
       );
     }

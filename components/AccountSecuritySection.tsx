@@ -360,17 +360,14 @@ export default function AccountSecuritySection({
 
           {phoneStep === 'phone' && (
             <form onSubmit={sendPhoneCode} className="mt-3 flex flex-col gap-2">
-              {account.phone && account.phoneVerified && (
-                account.email && account.emailVerified ? (
-                  <p className="text-sm text-inkSoft">
-                    We&apos;ll email {maskEmail(account.email)} once this is done, in case it wasn&apos;t you.
-                  </p>
-                ) : (
-                  <p className="text-sm text-inkSoft">
-                    Heads up: you don&apos;t have a verified email on file, so we won&apos;t be able to notify you
-                    elsewhere if this number ever changes without your knowledge. Consider adding one below.
-                  </p>
-                )
+              {/* Reaching this step for a CHANGE (not a first-time add) already
+                  means ConfirmOldStep passed, which requires a verified email --
+                  see app/api/profile/phone/confirm-old/request-otp/route.ts's doc
+                  comment -- so account.email is guaranteed here. */}
+              {account.phone && account.phoneVerified && account.email && (
+                <p className="text-sm text-inkSoft">
+                  We&apos;ll email {maskEmail(account.email)} once this is done, in case it wasn&apos;t you.
+                </p>
               )}
               <input
                 type="tel"
