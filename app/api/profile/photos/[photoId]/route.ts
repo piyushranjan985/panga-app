@@ -28,13 +28,15 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ phot
 
   // A still-open moderation case about this exact photo (REJECTED or
   // MANUAL_REVIEW -- see lib/safety/moderateAndUpload.ts's
-  // recordPhotoModeration, which opens one for anything short of an
-  // outright APPROVED) has nothing left to review once its photo is
-  // gone. Left alone, it just sits in admin's open queue forever,
-  // pointing at a deleted row -- auto-close it rather than leave that
-  // for an admin to notice and clear by hand. Best-effort: this must
-  // never fail (or block) the person's own delete, which already
-  // succeeded above.
+  // recordPhotoModeration, which opens one for most outcomes short of an
+  // outright APPROVED -- though not for a REJECTED decision with nothing
+  // left to review in the first place, see its NO_REVIEW_NEEDED_REASONS)
+  // has nothing left to review once its photo is gone. Left alone, it
+  // just sits in admin's open queue forever, pointing at a deleted row --
+  // auto-close it rather than leave that for an admin to notice and clear
+  // by hand. A no-op (updateMany matches zero rows) when no case was ever
+  // opened for this photo. Best-effort: this must never fail (or block)
+  // the person's own delete, which already succeeded above.
   //
   // Deliberately DISMISSED, not deleted -- the case row itself stays for
   // history (isRepeatOffender's count, a few lines up in that same file,

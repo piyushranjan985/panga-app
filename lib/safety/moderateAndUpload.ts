@@ -20,10 +20,12 @@ export interface ModerationOutcome {
   // Only set for reasons: ['moderation_unavailable'] -- the actual thrown
   // error's message, for the server log only (see moderateImageBuffer's
   // catch block). This decision is now a hard REJECTED (see that block's
-  // comment for why), which never opens a ModerationCase -- so unlike the
-  // other REJECTED reasons this text has nowhere to surface in the admin
-  // UI either. It exists purely so a `console.error` grep in the deploy
-  // logs shows a real message, not a guess. Never shown to the uploader.
+  // comment for why), which never opens a ModerationCase (see
+  // recordPhotoModeration's NO_REVIEW_NEEDED_REASONS) -- so unlike
+  // explicit_content_detected this text has nowhere to surface in the
+  // admin UI either. It exists purely so a `console.error` grep in the
+  // deploy logs shows a real message, not a guess. Never shown to the
+  // uploader.
   errorDetail?: string;
 }
 
@@ -81,9 +83,10 @@ export async function moderateImageBuffer(imageBuffer: Buffer): Promise<Moderati
     // retry, which is the right answer for what's usually a transient
     // failure anyway (see next.config.mjs's outputFileTracingIncludes
     // comment for the specific bug this was covering for). No
-    // ModerationCase gets opened for this reason any more -- see
-    // recordPhotoModeration, which only ever runs for a Photo row that
-    // was actually created, and a REJECTED photo never is.
+    // ModerationCase gets opened for this reason either -- see
+    // recordPhotoModeration's NO_REVIEW_NEEDED_REASONS, which this reason
+    // is deliberately part of (a provider outage leaves nothing for a
+    // human to review any more than a confirmed no-face photo does).
     console.error('[moderateImageBuffer] provider analysis failed, rejecting upload', err);
     // Every photo upload hard-rejects while this is happening (see the
     // comment above) -- that's a silent, total outage of photo uploads
@@ -224,10 +227,12 @@ const SEVERITY_FOR_DECISION = (decision: PhotoModerationDecision): 'LOW' | 'MEDI
  * Persists an already-computed ModerationOutcome against a Photo row:
  * writes the PhotoModerationResult history row, updates
  * Photo.moderationStatus/moderatedAt, and -- for anything other than a
- * clean APPROVED -- opens a ModerationCase so it shows up in the admin
- * moderation queue (admin/app/(console)/moderation/page.tsx already
- * surfaces these with no changes needed -- its default view shows all
- * OPEN/IN_REVIEW/ESCALATED cases regardless of category).
+ * clean APPROVED, MINUS the REJECTED reasons that leave nothing for a
+ * human to review (see shouldOpenCase below) -- opens a ModerationCase
+ * so it shows up in the admin moderation queue
+ * (admin/app/(console)/moderation/page.tsx already surfaces these with
+ * no changes needed -- its default view shows all OPEN/IN_REVIEW/
+ * ESCALATED cases regardless of category).
  */
 export async function recordPhotoModeration(params: {
   photoId: string;
@@ -236,8 +241,31 @@ export async function recordPhotoModeration(params: {
 }): Promise<void> {
   const { photoId, subjectUserId, outcome } = params;
 
+  // REJECTED reasons where there's nothing left for a human to review and
+  // no way to reverse the decision even if an admin wanted to: a few
+  // lines down, a REJECTED photo's row is immediately soft-removed
+  // (removedAt/removedReason), and resolvePendingPhotoModeration deletes
+  // the actual blob right after this function returns -- so by the time
+  // this ModerationCase would show up in the queue, there is nothing left
+  // to look at and nothing an override could meaningfully restore.
+  // PhotoDecisionOverride (admin/components/PhotoDecisionOverride.tsx)
+  // already refuses to render once isRemoved is true, and the case
+  // resolve route (admin/app/api/moderation/cases/[caseId]/resolve/
+  // route.ts) only ever writes a decision back to a still-MANUAL_REVIEW
+  // photo -- so dismissing one of these cases as "no violation" closes
+  // the case but can never flip the photo back, leaving an admin unable
+  // to do anything but close a case that should never have opened.
+  // `explicit_content_detected` is deliberately NOT in this set: zero-
+  // tolerance nudity hits still need human/account-level review (repeat-
+  // offender tracking, escalation), unlike a camera angle, a corrupt
+  // upload, or a provider outage.
+  const NO_REVIEW_NEEDED_REASONS = new Set(['no_face_detected', 'unsupported_or_corrupt_image', 'moderation_unavailable']);
+  const hasNothingToReview =
+    outcome.decision === 'REJECTED' && outcome.reasons.every((reason) => NO_REVIEW_NEEDED_REASONS.has(reason));
+  const shouldOpenCase = outcome.decision !== 'APPROVED' && !hasNothingToReview;
+
   let moderationCaseId: string | undefined;
-  if (outcome.decision !== 'APPROVED') {
+  if (shouldOpenCase) {
     const priorCases = await db.moderationCase.count({
       where: { subjectUserId, category: { in: ['photo_violation', 'sexual_content'] } },
     });
