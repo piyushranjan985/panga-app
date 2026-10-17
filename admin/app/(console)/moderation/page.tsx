@@ -7,6 +7,8 @@ import Badge from '@/components/Badge';
 import EmptyState from '@/components/EmptyState';
 import type { Prisma } from '@prisma/client';
 import { matchingUserIds } from '@/lib/userSearch';
+import { matchingUserIdsByAge, parseAgeBound } from '@/lib/ageFilter';
+import AgeRangeInputs from '@/components/AgeRangeInputs';
 
 const SEVERITY_TONE: Record<string, 'default' | 'success' | 'warning' | 'critical'> = {
   LOW: 'default',
@@ -30,7 +32,19 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
   // admin/lib/userSearch.ts) -- instead of first detouring through the
   // Users page to look up their internal subjectUserId.
   const q = sp.q?.trim();
-  if (q) where.subjectUserId = { in: await matchingUserIds(q) };
+  const ageMin = parseAgeBound(sp.ageMin);
+  const ageMax = parseAgeBound(sp.ageMax);
+  // Both q and the age range narrow down to the same field
+  // (subjectUserId), so each becomes its own AND'd `in` filter rather
+  // than one replacing the other -- "find the harassment case about the
+  // 19-year-old named Priya" needs both to hold at once.
+  const subjectFilters: Prisma.ModerationCaseWhereInput[] = [];
+  if (q) subjectFilters.push({ subjectUserId: { in: await matchingUserIds(q) } });
+  if (ageMin != null || ageMax != null) {
+    const ids = await matchingUserIdsByAge(ageMin, ageMax);
+    if (ids) subjectFilters.push({ subjectUserId: { in: ids } });
+  }
+  if (subjectFilters.length > 0) where.AND = subjectFilters;
 
   const cases = await db.moderationCase.findMany({
     where,
@@ -49,7 +63,7 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
         actions={
           hasPermission(admin.role, 'reporting.export') && (
             <a
-              href={`/api/moderation/export?${new URLSearchParams({ status: sp.status ?? '', severity: sp.severity ?? '', category: sp.category ?? '', q: sp.q ?? '' }).toString()}`}
+              href={`/api/moderation/export?${new URLSearchParams({ status: sp.status ?? '', severity: sp.severity ?? '', category: sp.category ?? '', q: sp.q ?? '', ageMin: sp.ageMin ?? '', ageMax: sp.ageMax ?? '' }).toString()}`}
               className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas"
             >
               Export CSV
@@ -77,6 +91,7 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
           <label className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-inkSoft">
             <input type="checkbox" name="mine" value="1" defaultChecked={sp.mine === '1'} /> Assigned to me
           </label>
+          <AgeRangeInputs defaultMin={sp.ageMin} defaultMax={sp.ageMax} />
           <button type="submit" className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white">Filter</button>
         </form>
 

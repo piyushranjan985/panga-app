@@ -4,6 +4,7 @@ import { getRequestContext } from '@/lib/requestContext';
 import { writeAudit } from '@/lib/audit';
 import { toCsv, csvResponse } from '@/lib/csv';
 import { matchingUserIds } from '@/lib/userSearch';
+import { matchingUserIdsByAge, parseAgeBound } from '@/lib/ageFilter';
 import type { Prisma } from '@prisma/client';
 
 // Mirrors app/(console)/reports/page.tsx's query -- every report a user
@@ -18,12 +19,20 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const q = searchParams.get('q')?.trim();
+  const ageMin = parseAgeBound(searchParams.get('ageMin') ?? undefined);
+  const ageMax = parseAgeBound(searchParams.get('ageMax') ?? undefined);
 
   const where: Prisma.ReportWhereInput = {};
+  const and: Prisma.ReportWhereInput[] = [];
   if (q) {
     const ids = await matchingUserIds(q);
-    where.OR = [{ reporterId: { in: ids } }, { aboutId: { in: ids } }];
+    and.push({ OR: [{ reporterId: { in: ids } }, { aboutId: { in: ids } }] });
   }
+  if (ageMin != null || ageMax != null) {
+    const ids = await matchingUserIdsByAge(ageMin, ageMax);
+    if (ids) and.push({ OR: [{ reporterId: { in: ids } }, { aboutId: { in: ids } }] });
+  }
+  if (and.length > 0) where.AND = and;
 
   const reports = await db.report.findMany({
     where,

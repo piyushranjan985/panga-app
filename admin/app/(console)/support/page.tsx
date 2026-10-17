@@ -7,6 +7,8 @@ import { hasPermission } from '@/lib/rbac';
 import EmptyState from '@/components/EmptyState';
 import type { Prisma } from '@prisma/client';
 import { matchingUserIds } from '@/lib/userSearch';
+import { matchingUserIdsByAge, parseAgeBound } from '@/lib/ageFilter';
+import AgeRangeInputs from '@/components/AgeRangeInputs';
 
 const STATUS_TONE: Record<string, 'default' | 'success' | 'warning' | 'critical' | 'info'> = {
   OPEN: 'warning',
@@ -28,11 +30,22 @@ export default async function SupportPage({ searchParams }: { searchParams: Prom
   // nullable -- see the model comment), so the search has to match the
   // guest's own typed-in contactEmail/contactPhone too, not just a
   // resolved User ID (see admin/lib/userSearch.ts).
+  const and: Prisma.SupportTicketWhereInput[] = [];
   const q = sp.q?.trim();
   if (q) {
     const ids = await matchingUserIds(q);
-    where.OR = [{ userId: { in: ids } }, { contactEmail: { contains: q, mode: 'insensitive' } }, { contactPhone: { contains: q } }];
+    and.push({ OR: [{ userId: { in: ids } }, { contactEmail: { contains: q, mode: 'insensitive' } }, { contactPhone: { contains: q } }] });
   }
+  // Unlike q, age has no guest-contact equivalent -- a ticket with no
+  // matched account has no dateOfBirth to check, so this only ever
+  // narrows by the ticket's own userId.
+  const ageMin = parseAgeBound(sp.ageMin);
+  const ageMax = parseAgeBound(sp.ageMax);
+  if (ageMin != null || ageMax != null) {
+    const ids = await matchingUserIdsByAge(ageMin, ageMax);
+    if (ids) and.push({ userId: { in: ids } });
+  }
+  if (and.length > 0) where.AND = and;
 
   const tickets = await db.supportTicket.findMany({
     where,
@@ -49,7 +62,7 @@ export default async function SupportPage({ searchParams }: { searchParams: Prom
         actions={
           hasPermission(admin.role, 'reporting.export') && (
             <a
-              href={`/api/support/export?${new URLSearchParams({ status: sp.status ?? '', priority: sp.priority ?? '', q: sp.q ?? '' }).toString()}`}
+              href={`/api/support/export?${new URLSearchParams({ status: sp.status ?? '', priority: sp.priority ?? '', q: sp.q ?? '', ageMin: sp.ageMin ?? '', ageMax: sp.ageMax ?? '' }).toString()}`}
               className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas"
             >
               Export CSV
@@ -68,6 +81,7 @@ export default async function SupportPage({ searchParams }: { searchParams: Prom
           />
           <Select name="status" label="Open queue" defaultValue={sp.status} options={['OPEN', 'IN_PROGRESS', 'WAITING_ON_USER', 'ESCALATED', 'RESOLVED', 'CLOSED']} />
           <Select name="priority" label="Any priority" defaultValue={sp.priority} options={['LOW', 'NORMAL', 'HIGH', 'URGENT']} />
+          <AgeRangeInputs defaultMin={sp.ageMin} defaultMax={sp.ageMax} />
           <button type="submit" className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white">Filter</button>
         </form>
 

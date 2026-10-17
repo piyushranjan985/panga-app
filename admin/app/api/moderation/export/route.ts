@@ -4,6 +4,7 @@ import { getRequestContext } from '@/lib/requestContext';
 import { writeAudit } from '@/lib/audit';
 import { toCsv, csvResponse } from '@/lib/csv';
 import { matchingUserIds } from '@/lib/userSearch';
+import { matchingUserIdsByAge, parseAgeBound } from '@/lib/ageFilter';
 import type { Prisma } from '@prisma/client';
 
 // Same filters as app/(console)/moderation/page.tsx. Risk score is
@@ -21,12 +22,22 @@ export async function GET(req: Request) {
   const severity = searchParams.get('severity');
   const category = searchParams.get('category');
   const q = searchParams.get('q')?.trim();
+  const ageMin = parseAgeBound(searchParams.get('ageMin') ?? undefined);
+  const ageMax = parseAgeBound(searchParams.get('ageMax') ?? undefined);
 
   const where: Prisma.ModerationCaseWhereInput = {};
   where.status = status ? (status as never) : { in: ['OPEN', 'IN_REVIEW', 'ESCALATED'] };
   if (severity) where.severity = severity as never;
   if (category) where.category = category;
-  if (q) where.subjectUserId = { in: await matchingUserIds(q) };
+  // Same AND'd-rather-than-replaced combination as the page -- see
+  // app/(console)/moderation/page.tsx.
+  const subjectFilters: Prisma.ModerationCaseWhereInput[] = [];
+  if (q) subjectFilters.push({ subjectUserId: { in: await matchingUserIds(q) } });
+  if (ageMin != null || ageMax != null) {
+    const ids = await matchingUserIdsByAge(ageMin, ageMax);
+    if (ids) subjectFilters.push({ subjectUserId: { in: ids } });
+  }
+  if (subjectFilters.length > 0) where.AND = subjectFilters;
 
   const cases = await db.moderationCase.findMany({
     where,

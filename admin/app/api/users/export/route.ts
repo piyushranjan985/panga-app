@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { requirePermission } from '@/lib/apiGuard';
 import { getRequestContext } from '@/lib/requestContext';
 import { writeAudit } from '@/lib/audit';
+import { ageRangeToDobWindow, parseAgeBound } from '@/lib/ageFilter';
 import type { Prisma } from '@prisma/client';
 
 // Exports are permission-controlled and logged, per the spec's Data &
@@ -22,6 +23,8 @@ export async function GET(req: Request) {
   const city = searchParams.get('city');
   if (status) and.push({ status: status as never });
   if (city) and.push({ profile: { city } });
+  const ageWindow = ageRangeToDobWindow(parseAgeBound(searchParams.get('ageMin') ?? undefined), parseAgeBound(searchParams.get('ageMax') ?? undefined));
+  if (ageWindow) and.push({ profile: { dateOfBirth: ageWindow } });
   if (and.length > 0) where.AND = and;
 
   const users = await db.user.findMany({

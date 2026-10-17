@@ -6,6 +6,8 @@ import Badge from '@/components/Badge';
 import { hasPermission } from '@/lib/rbac';
 import EmptyState from '@/components/EmptyState';
 import { maskEmail, maskPhone, ageFromDob } from '@/lib/mask';
+import { ageRangeToDobWindow, parseAgeBound } from '@/lib/ageFilter';
+import AgeRangeInputs from '@/components/AgeRangeInputs';
 import type { Prisma } from '@prisma/client';
 
 const PAGE_SIZE = 25;
@@ -46,6 +48,10 @@ export default async function UsersPage({
   if (sp.gender) and.push({ profile: { gender: sp.gender as never } });
   if (sp.intent) and.push({ profile: { intent: sp.intent as never } });
   if (sp.verification) and.push({ profile: { verification: sp.verification as never } });
+  const ageMin = parseAgeBound(sp.ageMin);
+  const ageMax = parseAgeBound(sp.ageMax);
+  const ageWindow = ageRangeToDobWindow(ageMin, ageMax);
+  if (ageWindow) and.push({ profile: { dateOfBirth: ageWindow } });
   if (and.length > 0) where.AND = and;
 
   const [total, users, cities] = await Promise.all([
@@ -72,7 +78,7 @@ export default async function UsersPage({
         actions={
           canExport && (
             <a
-              href={`/api/users/export?${new URLSearchParams({ status: sp.status ?? '', city: sp.city ?? '' }).toString()}`}
+              href={`/api/users/export?${new URLSearchParams({ status: sp.status ?? '', city: sp.city ?? '', ageMin: sp.ageMin ?? '', ageMax: sp.ageMax ?? '' }).toString()}`}
               className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas"
             >
               Export CSV
@@ -94,6 +100,7 @@ export default async function UsersPage({
           <Select name="gender" label="Any gender" defaultValue={sp.gender} options={['WOMAN', 'MAN', 'NON_BINARY', 'OTHER']} />
           <Select name="intent" label="Any intent" defaultValue={sp.intent} options={['JUST_VIBING', 'SOMETHING_REAL', 'RISHTA_READY']} />
           <Select name="verification" label="Any verification" defaultValue={sp.verification} options={['UNVERIFIED', 'PENDING', 'VERIFIED', 'REJECTED']} />
+          <AgeRangeInputs defaultMin={sp.ageMin} defaultMax={sp.ageMax} />
           <button type="submit" className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white">
             Filter
           </button>

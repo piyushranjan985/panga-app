@@ -7,6 +7,8 @@ import Badge from '@/components/Badge';
 import EmptyState from '@/components/EmptyState';
 import OpenCaseButton from '@/components/OpenCaseButton';
 import { matchingUserIds } from '@/lib/userSearch';
+import { matchingUserIdsByAge, parseAgeBound } from '@/lib/ageFilter';
+import AgeRangeInputs from '@/components/AgeRangeInputs';
 import type { Prisma } from '@prisma/client';
 
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -20,11 +22,23 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   // both start from the same phone/email/name they have on hand (see
   // admin/lib/userSearch.ts).
   const where: Prisma.ReportWhereInput = {};
+  const and: Prisma.ReportWhereInput[] = [];
   const q = sp.q?.trim();
   if (q) {
     const ids = await matchingUserIds(q);
-    where.OR = [{ reporterId: { in: ids } }, { aboutId: { in: ids } }];
+    and.push({ OR: [{ reporterId: { in: ids } }, { aboutId: { in: ids } }] });
   }
+  // A report has two users on it, same as the q search above -- an
+  // admin filtering by age doesn't necessarily know which side of the
+  // report the age they have in mind belongs to, so this matches either
+  // the reporter or the reported person being in range, not both.
+  const ageMin = parseAgeBound(sp.ageMin);
+  const ageMax = parseAgeBound(sp.ageMax);
+  if (ageMin != null || ageMax != null) {
+    const ids = await matchingUserIdsByAge(ageMin, ageMax);
+    if (ids) and.push({ OR: [{ reporterId: { in: ids } }, { aboutId: { in: ids } }] });
+  }
+  if (and.length > 0) where.AND = and;
 
   const reports = await db.report.findMany({
     where,
@@ -47,7 +61,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         actions={
           hasPermission(admin.role, 'reporting.export') && (
             <a
-              href={`/api/reports/export?${new URLSearchParams({ q: sp.q ?? '' }).toString()}`}
+              href={`/api/reports/export?${new URLSearchParams({ q: sp.q ?? '', ageMin: sp.ageMin ?? '', ageMax: sp.ageMax ?? '' }).toString()}`}
               className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas"
             >
               Export CSV
@@ -64,6 +78,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
             placeholder="Search reporter or reported user's name, email, or phone"
             className="min-w-[280px] flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
           />
+          <AgeRangeInputs defaultMin={sp.ageMin} defaultMax={sp.ageMax} />
           <button type="submit" className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white">Filter</button>
         </form>
 

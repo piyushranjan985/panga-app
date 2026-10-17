@@ -7,6 +7,8 @@ import { hasPermission } from '@/lib/rbac';
 import EmptyState from '@/components/EmptyState';
 import type { Prisma } from '@prisma/client';
 import { matchingUserIds } from '@/lib/userSearch';
+import { matchingUserIdsByAge, parseAgeBound } from '@/lib/ageFilter';
+import AgeRangeInputs from '@/components/AgeRangeInputs';
 
 const PURPOSES = ['ACCOUNT_ESSENTIAL', 'PRECISE_LOCATION', 'MARKETING_COMMUNICATIONS', 'ANALYTICS', 'THIRD_PARTY_SHARING'];
 
@@ -24,6 +26,12 @@ export default async function ConsentsPage({ searchParams }: { searchParams: Pro
   // consent history rarely has their internal ID on hand.
   const q = sp.q?.trim();
   if (q) and.push({ userId: { in: await matchingUserIds(q) } });
+  const ageMin = parseAgeBound(sp.ageMin);
+  const ageMax = parseAgeBound(sp.ageMax);
+  if (ageMin != null || ageMax != null) {
+    const ids = await matchingUserIdsByAge(ageMin, ageMax);
+    if (ids) and.push({ userId: { in: ids } });
+  }
   if (and.length > 0) where.AND = and;
 
   const [records, purposeSummary] = await Promise.all([
@@ -44,7 +52,7 @@ export default async function ConsentsPage({ searchParams }: { searchParams: Pro
         actions={
           hasPermission(admin.role, 'reporting.export') && (
             <a
-              href={`/api/privacy/consents/export?${new URLSearchParams({ purpose: sp.purpose ?? '', status: sp.status ?? '', q: sp.q ?? '' }).toString()}`}
+              href={`/api/privacy/consents/export?${new URLSearchParams({ purpose: sp.purpose ?? '', status: sp.status ?? '', q: sp.q ?? '', ageMin: sp.ageMin ?? '', ageMax: sp.ageMax ?? '' }).toString()}`}
               className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas"
             >
               Export CSV
@@ -76,6 +84,7 @@ export default async function ConsentsPage({ searchParams }: { searchParams: Pro
             placeholder="Search name, email, or phone"
             className="min-w-[220px] flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
           />
+          <AgeRangeInputs defaultMin={sp.ageMin} defaultMax={sp.ageMax} />
           <button type="submit" className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white">Filter</button>
         </form>
 

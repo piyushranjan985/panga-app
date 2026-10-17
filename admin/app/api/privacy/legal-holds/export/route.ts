@@ -4,6 +4,7 @@ import { getRequestContext } from '@/lib/requestContext';
 import { writeAudit } from '@/lib/audit';
 import { toCsv, csvResponse } from '@/lib/csv';
 import { matchingUserIds } from '@/lib/userSearch';
+import { matchingUserIdsByAge, parseAgeBound } from '@/lib/ageFilter';
 import type { Prisma } from '@prisma/client';
 
 // Mirrors app/(console)/privacy/legal-holds/page.tsx's query.
@@ -14,9 +15,17 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const q = searchParams.get('q')?.trim();
+  const ageMin = parseAgeBound(searchParams.get('ageMin') ?? undefined);
+  const ageMax = parseAgeBound(searchParams.get('ageMax') ?? undefined);
 
   const where: Prisma.LegalHoldWhereInput = {};
-  if (q) where.userId = { in: await matchingUserIds(q) };
+  const and: Prisma.LegalHoldWhereInput[] = [];
+  if (q) and.push({ userId: { in: await matchingUserIds(q) } });
+  if (ageMin != null || ageMax != null) {
+    const ids = await matchingUserIdsByAge(ageMin, ageMax);
+    if (ids) and.push({ userId: { in: ids } });
+  }
+  if (and.length > 0) where.AND = and;
 
   const holds = await db.legalHold.findMany({
     where,

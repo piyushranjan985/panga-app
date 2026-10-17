@@ -4,6 +4,7 @@ import { getRequestContext } from '@/lib/requestContext';
 import { writeAudit } from '@/lib/audit';
 import { toCsv, csvResponse } from '@/lib/csv';
 import { matchingUserIds } from '@/lib/userSearch';
+import { matchingUserIdsByAge, parseAgeBound } from '@/lib/ageFilter';
 import type { Prisma } from '@prisma/client';
 
 // List-level export of DPDP data-principal requests (ACCESS, CORRECTION,
@@ -23,6 +24,8 @@ export async function GET(req: Request) {
   const status = searchParams.get('status');
   const overdue = searchParams.get('overdue');
   const q = searchParams.get('q')?.trim();
+  const ageMin = parseAgeBound(searchParams.get('ageMin') ?? undefined);
+  const ageMax = parseAgeBound(searchParams.get('ageMax') ?? undefined);
 
   const where: Prisma.PrivacyRequestWhereInput = {};
   const and: Prisma.PrivacyRequestWhereInput[] = [];
@@ -33,6 +36,10 @@ export async function GET(req: Request) {
   if (q) {
     const ids = await matchingUserIds(q);
     and.push({ OR: [{ userId: { in: ids } }, { contactEmail: { contains: q, mode: 'insensitive' } }] });
+  }
+  if (ageMin != null || ageMax != null) {
+    const ids = await matchingUserIdsByAge(ageMin, ageMax);
+    if (ids) and.push({ userId: { in: ids } });
   }
   if (and.length > 0) where.AND = and;
 

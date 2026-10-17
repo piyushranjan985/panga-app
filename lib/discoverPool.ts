@@ -45,7 +45,15 @@ export const ELIGIBLE_POOL_LIMIT = 3000;
 // (see lib/cache.ts) -- behaves identically either way, just faster once
 // the cache is on.
 const ELIGIBLE_POOL_CACHE_TTL_SECONDS = 45;
-const ELIGIBLE_POOL_CACHE_KEY_VERSION = 'v3';
+// v4 -- dateOfBirth/ageMin/ageMax were added to the cached MatchableProfile
+// shape (2026-10-17, see lib/matching.ts's age-scoring comment). Bumping
+// the version isn't about eligibility (age is a soft rank-only signal, it
+// never changes who's IN the pool, so the cache key itself below still
+// doesn't need to include it) -- it's purely so a stale v3 entry already
+// sitting in cache at deploy time can never be handed back missing the
+// fields scoreCandidate's ageFitFactor now reads unconditionally. The
+// short 45s TTL would self-heal this anyway; bumping is free insurance.
+const ELIGIBLE_POOL_CACHE_KEY_VERSION = 'v4';
 
 export function toMatchable(p: {
   userId: string;
@@ -58,6 +66,9 @@ export function toMatchable(p: {
   user: { lastActiveAt: Date };
   latitude?: number | null;
   longitude?: number | null;
+  dateOfBirth: Date;
+  ageMin: number;
+  ageMax: number;
 }): MatchableProfile {
   // Effective coords (real GPS if shared, else the city's centroid) --
   // same fallback distanceLabel() already uses for the display string, now
@@ -76,6 +87,9 @@ export function toMatchable(p: {
     lastActiveAt: p.user.lastActiveAt,
     latitude: coords?.lat ?? null,
     longitude: coords?.lng ?? null,
+    dateOfBirth: p.dateOfBirth,
+    ageMin: p.ageMin,
+    ageMax: p.ageMax,
   };
 }
 
@@ -116,6 +130,9 @@ export type EligiblePoolRow = {
   latitude: number | null;
   longitude: number | null;
   lastActiveAt: Date;
+  dateOfBirth: Date;
+  ageMin: number;
+  ageMax: number;
 };
 
 /**
@@ -145,7 +162,8 @@ export async function queryEligiblePool(params: EligiblePoolParams, limit: numbe
 
   return db.$queryRaw<EligiblePoolRow[]>`
     SELECT p."userId", p.gender, p."lookingFor", p.city, p.intent, p."quietMode",
-           p.latitude, p.longitude, u."lastActiveAt"
+           p.latitude, p.longitude, u."lastActiveAt",
+           p."dateOfBirth", p."ageMin", p."ageMax"
     FROM "Profile" p
     JOIN "User" u ON u.id = p."userId"
     WHERE p.city = ${city}
@@ -193,6 +211,9 @@ async function toMatchablePool(rows: EligiblePoolRow[]): Promise<MatchableProfil
       user: { lastActiveAt: row.lastActiveAt },
       latitude: row.latitude,
       longitude: row.longitude,
+      dateOfBirth: row.dateOfBirth,
+      ageMin: row.ageMin,
+      ageMax: row.ageMax,
     }),
   );
 }

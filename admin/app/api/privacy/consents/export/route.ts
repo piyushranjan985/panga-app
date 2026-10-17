@@ -4,6 +4,7 @@ import { getRequestContext } from '@/lib/requestContext';
 import { writeAudit } from '@/lib/audit';
 import { toCsv, csvResponse } from '@/lib/csv';
 import { matchingUserIds } from '@/lib/userSearch';
+import { matchingUserIdsByAge, parseAgeBound } from '@/lib/ageFilter';
 import type { Prisma } from '@prisma/client';
 
 // Same filters as app/(console)/privacy/consents/page.tsx. Gated on the
@@ -20,12 +21,18 @@ export async function GET(req: Request) {
   const purpose = searchParams.get('purpose');
   const status = searchParams.get('status');
   const q = searchParams.get('q')?.trim();
+  const ageMin = parseAgeBound(searchParams.get('ageMin') ?? undefined);
+  const ageMax = parseAgeBound(searchParams.get('ageMax') ?? undefined);
 
   const where: Prisma.ConsentRecordWhereInput = {};
   const and: Prisma.ConsentRecordWhereInput[] = [];
   if (purpose) and.push({ purpose: purpose as never });
   if (status) and.push({ status: status as never });
   if (q) and.push({ userId: { in: await matchingUserIds(q) } });
+  if (ageMin != null || ageMax != null) {
+    const ids = await matchingUserIdsByAge(ageMin, ageMax);
+    if (ids) and.push({ userId: { in: ids } });
+  }
   if (and.length > 0) where.AND = and;
 
   const records = await db.consentRecord.findMany({

@@ -16,7 +16,23 @@
  * who've granted precise location. This file keeps its own tiny haversine
  * helper rather than importing lib/geo.ts's, purely to stay self-contained
  * per the paragraph above; the two are intentionally the same formula.
+ *
+ * ageMin/ageMax (product decision, 2026-10-17) are the VIEWER's own
+ * preferred age range (see prisma/schema.prisma's Profile.ageMin/ageMax
+ * doc comment) and feed scoreCandidate's ageFitFactor below -- a SOFT
+ * signal, deliberately not part of isEligibleCandidate: being outside
+ * someone's preferred range down-ranks a candidate, it never removes them
+ * from the feed outright, unlike the mutual gender check or the intent-
+ * compatibility floor. Only the viewer's own range is ever consulted when
+ * scoring a candidate -- this isn't mutual the way gender is; a 50-year-
+ * old who narrows their own range to 45-55 still appears normally in a
+ * 25-year-old's feed, exactly as a wide search radius for one person
+ * doesn't shrink anyone else's. dateOfBirth is required (every real
+ * Profile row has one -- see lib/age.ts) and is used only for this
+ * scoring factor; nothing here duplicates lib/age.ts's age math.
  */
+
+import { ageFromDateOfBirth } from '@/lib/age';
 
 export type IntentType = 'JUST_VIBING' | 'SOMETHING_REAL' | 'RISHTA_READY';
 export type Gender = 'WOMAN' | 'MAN' | 'NON_BINARY' | 'OTHER';
@@ -36,6 +52,15 @@ export interface MatchableProfile {
   // have them; every distance check below is null-safe.
   latitude?: number | null;
   longitude?: number | null;
+  // See the file-level comment above -- dateOfBirth is THIS profile's own
+  // birth date (used to compute ITS age when it's the candidate being
+  // scored); ageMin/ageMax are THIS profile's own preferred range (used
+  // when it's the viewer doing the scoring). Every real profile has all
+  // three (schema defaults ageMin/ageMax to 18/99), so these are required,
+  // not optional like lat/lng.
+  dateOfBirth: Date;
+  ageMin: number;
+  ageMax: number;
 }
 
 /**
@@ -79,7 +104,15 @@ const WEIGHTS = {
   recency: 8, // active in the last 48h
   proximityPrimary: 30, // Just Vibing: distance is THE location signal -- see DISTANCE_RADIUS_KM
   proximitySecondary: 10, // Something Real / Rishta Ready: a same-city tiebreaker, not a requirement
+  age: 15, // within the viewer's preferred range -- see ageFitFactor and MatchableProfile's doc comment
 };
+
+// Years outside the viewer's [ageMin, ageMax] before the age bonus fully
+// disappears -- same linear-taper shape as proximityFactor below, just for
+// age instead of distance. Arbitrary but reasonable: one year outside a
+// chosen range shouldn't feel like a cliff edge, ten years outside it
+// should contribute nothing.
+const AGE_TAPER_YEARS = 10;
 
 /**
  * Per-intent location rules (see isEligibleCandidate and scoreCandidate).
@@ -128,6 +161,19 @@ function distanceKmBetween(a: MatchableProfile, b: MatchableProfile): number | n
 function proximityFactor(distanceKm: number | null, radiusKm: number): number {
   if (distanceKm === null) return 0;
   return Math.max(0, 1 - distanceKm / radiusKm);
+}
+
+/**
+ * 1 when candidateAge falls inside [ageMin, ageMax], tapering linearly to
+ * 0 at AGE_TAPER_YEARS past whichever bound it missed -- see WEIGHTS.age's
+ * comment. Only ever evaluated against the VIEWER's own range (this is a
+ * one-sided preference, not mutual like gender -- see the file-level
+ * comment), so this takes the bounds directly rather than a MatchableProfile.
+ */
+function ageFitFactor(candidateAge: number, ageMin: number, ageMax: number): number {
+  if (candidateAge >= ageMin && candidateAge <= ageMax) return 1;
+  const over = candidateAge < ageMin ? ageMin - candidateAge : candidateAge - ageMax;
+  return Math.max(0, 1 - over / AGE_TAPER_YEARS);
 }
 
 function mutualGenderMatch(a: MatchableProfile, b: MatchableProfile): boolean {
@@ -223,6 +269,18 @@ export function scoreCandidate(viewer: MatchableProfile, candidate: MatchablePro
     else reasons.push('close by');
   }
 
+  // Age: a soft, one-sided signal (see the file-level comment and
+  // ageFitFactor) -- only pushes a reason when the viewer has actually
+  // narrowed their default wide-open 18-99 range, so the vast majority of
+  // candidates (everyone still on the default) never get a reason that'd
+  // be true of virtually every profile in the pool.
+  const ageFit = ageFitFactor(ageFromDateOfBirth(candidate.dateOfBirth, now), viewer.ageMin, viewer.ageMax);
+  if (ageFit > 0) {
+    score += ageFit * WEIGHTS.age;
+    const viewerNarrowedRange = viewer.ageMin > 18 || viewer.ageMax < 99;
+    if (ageFit === 1 && viewerNarrowedRange) reasons.push('in your preferred age range');
+  }
+
   const hoursSinceActive = (now.getTime() - candidate.lastActiveAt.getTime()) / 36e5;
   if (hoursSinceActive <= 48) {
     score += WEIGHTS.recency * (1 - hoursSinceActive / 48);
@@ -289,6 +347,18 @@ export function scoreWildCardCandidate(viewer: MatchableProfile, candidate: Matc
     score += proximity * weight;
     if (distance !== null && distance <= 2) reasons.push('right nearby');
     else reasons.push('close by');
+  }
+
+  // Age: a soft, one-sided signal (see the file-level comment and
+  // ageFitFactor) -- only pushes a reason when the viewer has actually
+  // narrowed their default wide-open 18-99 range, so the vast majority of
+  // candidates (everyone still on the default) never get a reason that'd
+  // be true of virtually every profile in the pool.
+  const ageFit = ageFitFactor(ageFromDateOfBirth(candidate.dateOfBirth, now), viewer.ageMin, viewer.ageMax);
+  if (ageFit > 0) {
+    score += ageFit * WEIGHTS.age;
+    const viewerNarrowedRange = viewer.ageMin > 18 || viewer.ageMax < 99;
+    if (ageFit === 1 && viewerNarrowedRange) reasons.push('in your preferred age range');
   }
 
   const hoursSinceActive = (now.getTime() - candidate.lastActiveAt.getTime()) / 36e5;
