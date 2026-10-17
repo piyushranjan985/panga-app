@@ -25,7 +25,9 @@
     "cap:ios": "npx cap open ios",
     "cap:android": "npx cap open android",
     "prebuild": "node scripts/download-face-api-models.mjs",
-    "predev": "node scripts/download-face-api-models.mjs"
+    "predev": "node scripts/download-face-api-models.mjs",
+    "db:seed:payments": "tsx scripts/seed-payment-plans.ts",
+    "db:smoke-test:payments": "tsx scripts/smoke-test-payments.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

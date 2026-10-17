@@ -46,6 +46,8 @@ export type Permission =
   | 'config.approve'
   | 'config.featureFlags.manage'
   | 'payments.view'
+  | 'payments.manage'
+  | 'payments.subscriptions.override'
   | 'reporting.export'
   | 'systemHealth.view'
   | 'auditLogs.view'
@@ -94,6 +96,8 @@ const ALL: Permission[] = [
   'config.approve',
   'config.featureFlags.manage',
   'payments.view',
+  'payments.manage',
+  'payments.subscriptions.override',
   'reporting.export',
   'systemHealth.view',
   'auditLogs.view',
@@ -224,7 +228,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
     'reporting.export',
   ],
 
-  FINANCE: ['dashboard.view', 'payments.view', 'reporting.export', 'analytics.view'],
+  FINANCE: ['dashboard.view', 'payments.view', 'payments.manage', 'payments.subscriptions.override', 'reporting.export', 'analytics.view'],
 
   ANALYTICS: ['dashboard.view', 'analytics.view', 'analytics.export', 'reporting.export'],
 
@@ -245,6 +249,7 @@ export function hasAnyPermission(role: AdminRole, permissions: Permission[]): bo
 // /high-risk actions must require confirmation" from the spec, enforced
 // server-side, not just a client-side confirm() dialog.
 export const STEP_UP_REQUIRED: Permission[] = [
+  'payments.subscriptions.override',
   'users.action.ban',
   'users.action.deleteAccount',
   'privacy.requests.handle',

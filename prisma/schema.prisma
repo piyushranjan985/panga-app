@@ -187,22 +187,22 @@ model User {
   profile Profile?
 
   otpCodes                OtpCode[]
-  swipesSent              Swipe[]               @relation("SwipesBySender")
-  swipesReceived          Swipe[]               @relation("SwipesByTarget")
-  matchesAsUserA          Match[]               @relation("MatchUserA")
-  matchesAsUserB          Match[]               @relation("MatchUserB")
-  mysteryHistoryAsUserA   MysteryMatchHistory[] @relation("MysteryHistoryUserA")
-  mysteryHistoryAsUserB   MysteryMatchHistory[] @relation("MysteryHistoryUserB")
+  swipesSent              Swipe[]                    @relation("SwipesBySender")
+  swipesReceived          Swipe[]                    @relation("SwipesByTarget")
+  matchesAsUserA          Match[]                    @relation("MatchUserA")
+  matchesAsUserB          Match[]                    @relation("MatchUserB")
+  mysteryHistoryAsUserA   MysteryMatchHistory[]      @relation("MysteryHistoryUserA")
+  mysteryHistoryAsUserB   MysteryMatchHistory[]      @relation("MysteryHistoryUserB")
   mysteryNotifications    MysteryMatchNotification[]
-  wildCardUsesAsViewer    WildCardUse[]         @relation("WildCardUseViewer")
-  wildCardUsesAsCandidate WildCardUse[]         @relation("WildCardUseCandidate")
+  wildCardUsesAsViewer    WildCardUse[]              @relation("WildCardUseViewer")
+  wildCardUsesAsCandidate WildCardUse[]              @relation("WildCardUseCandidate")
   trustedDevices          TrustedDevice[]
   webAuthnCredentials     WebAuthnCredential[]
-  messagesSent            Message[]             @relation("MessagesBySender")
-  reportsFiled            Report[]              @relation("ReportsByReporter")
-  reportsReceived         Report[]              @relation("ReportsAboutUser")
-  blocksMade              Block[]               @relation("BlocksByBlocker")
-  blocksReceived          Block[]               @relation("BlocksByBlocked")
+  messagesSent            Message[]                  @relation("MessagesBySender")
+  reportsFiled            Report[]                   @relation("ReportsByReporter")
+  reportsReceived         Report[]                   @relation("ReportsAboutUser")
+  blocksMade              Block[]                    @relation("BlocksByBlocker")
+  blocksReceived          Block[]                    @relation("BlocksByBlocked")
   dateFeedback            DateFeedback[]
   messageLikes            MessageLike[]
   vybeVouchInvitesSent    VybeVouchInvite[]
@@ -217,6 +217,14 @@ model User {
   privacyRequests       PrivacyRequest[]
   legalHolds            LegalHold[]
   loginEvents           LoginEvent[]
+
+  // --- Admin Portal: Payments & Monetization relations -------------------
+  subscriptions    Subscription[]
+  transactions     Transaction[]
+  invoices         Invoice[]
+  creditBalance    CreditBalance?
+  creditLedger     CreditLedgerEntry[]
+  promoRedemptions PromoRedemption[]
 
   @@index([lastActiveAt])
   @@index([status])
@@ -629,10 +637,10 @@ model Match {
   revealedAAt     DateTime?
   revealedBAt     DateTime?
 
-  messages              Message[]
-  mysteryNotifications  MysteryMatchNotification[]
-  dateFeedback     DateFeedback[]
-  vybeVouchInvites VybeVouchInvite[]
+  messages             Message[]
+  mysteryNotifications MysteryMatchNotification[]
+  dateFeedback         DateFeedback[]
+  vybeVouchInvites     VybeVouchInvite[]
 
   @@unique([userAId, userBId])
   @@index([userBId])
@@ -670,19 +678,19 @@ model MysteryMatchHistory {
 // "2026-10-08") purely for observability/sweeping stuck rows -- the
 // deliver route itself just queries PENDING + due, runId or not.
 model MysteryMatchNotification {
-  id            String                     @id @default(cuid())
-  runId         String
-  matchId       String
-  match         Match                      @relation(fields: [matchId], references: [id], onDelete: Cascade)
-  userId        String // who gets notified
-  user          User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  otherUserId   String // whose displayName fills the push template -- denormalized so delivery needs no extra join back to Match
-  category      MysteryCategory
-  scheduledFor  DateTime // jittered send time inside the 7:30-8:30pm IST window
-  status        MysteryNotificationStatus  @default(PENDING)
-  attempts      Int                        @default(0)
-  sentAt        DateTime?
-  createdAt     DateTime                   @default(now())
+  id           String                    @id @default(cuid())
+  runId        String
+  matchId      String
+  match        Match                     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId       String // who gets notified
+  user         User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  otherUserId  String // whose displayName fills the push template -- denormalized so delivery needs no extra join back to Match
+  category     MysteryCategory
+  scheduledFor DateTime // jittered send time inside the 7:30-8:30pm IST window
+  status       MysteryNotificationStatus @default(PENDING)
+  attempts     Int                       @default(0)
+  sentAt       DateTime?
+  createdAt    DateTime                  @default(now())
 
   // (status, scheduledFor) is the drain query's exact shape: "due PENDING
   // rows, oldest first". runId is separate (not folded into the same
@@ -1653,4 +1661,316 @@ model LoginEvent {
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+// =============================================================================
+// Payments & Monetization
+// -----------------------------------------------------------------------------
+// Added additively for the FindMyVybe payment strategy build -- nothing
+// above this point in the file was changed. Mock-mode-only until
+// PAYMENT_MODE=live is explicitly activated AND Free_Tier=false -- see
+// lib/payments/flags.ts (root app) / admin/lib/payments/flags.ts (admin,
+// same logic, duplicated because the two Next.js apps don't share a lib
+// tree) and docs/PAYMENTS.md for the full picture.
+//
+// Plan edits never mutate a PaymentPlan row a live Subscription/Transaction
+// already references -- editing a plan in the admin portal creates a new
+// row (version = previous + 1, supersedesId -> previous row) and flips
+// isActive on the old one. This is what lets pricing change going forward
+// without rewriting what an existing subscriber agreed to.
+// =============================================================================
+
+enum PaymentPlanKind {
+  SUBSCRIPTION
+  CREDIT_PACK
+}
+
+enum BillingInterval {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  GRACE
+  EXPIRED
+  CANCELLED
+}
+
+enum TransactionStatus {
+  CREATED
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum GatewayName {
+  MOCK
+  RAZORPAY
+  CASHFREE
+  PAYU
+}
+
+enum DiscountType {
+  PERCENT
+  FLAT
+}
+
+// One row per plan *version*. intent=null means the row applies across all
+// three IntentType segments (e.g. a universal credit pack) rather than
+// being specific to Dating/Serious Relationship/Matchmaking.
+model PaymentPlan {
+  id     String          @id @default(cuid())
+  intent IntentType?
+  kind   PaymentPlanKind
+
+  name        String
+  slug        String // stable across versions, e.g. "serious-plus" -- see lib/payments/plans.ts
+  description String @default("")
+
+  priceInPaise Int // whole-rupee prices are stored as paise (x100); see lib/payments/money.ts
+  currency     String @default("INR")
+
+  billingInterval BillingInterval? // set only when kind = SUBSCRIPTION
+  creditAmount    Int? // set only when kind = CREDIT_PACK -- number of credits this pack grants
+
+  features Json @default("{}") // entitlement keys this plan/pack grants -- see lib/payments/entitlements.ts
+
+  isActive Boolean @default(true)
+  version  Int     @default(1)
+
+  supersedesId String?      @unique
+  supersedes   PaymentPlan? @relation("PlanVersionChain", fields: [supersedesId], references: [id], onDelete: SetNull)
+  supersededBy PaymentPlan? @relation("PlanVersionChain")
+
+  createdByAdminId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  subscriptions Subscription[]
+  transactions  Transaction[]
+
+  @@index([slug, version])
+  @@index([intent, kind, isActive])
+}
+
+model Subscription {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  planId String
+  plan   PaymentPlan @relation(fields: [planId], references: [id])
+
+  status             SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean            @default(false)
+  cancelledAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions Transaction[]
+
+  @@index([userId, status])
+  @@index([planId])
+}
+
+// One row per payment attempt -- never per successful payment only. A
+// failed/abandoned/retried checkout still gets its own row so the funnel
+// and the idempotency/out-of-order-event story are both fully reconstructable.
+model Transaction {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  planId String?
+  plan   PaymentPlan? @relation(fields: [planId], references: [id])
+
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  kind    PaymentPlanKind
+  gateway GatewayName
+  status  TransactionStatus @default(CREATED)
+
+  // Client- or server-generated key that makes "create this transaction"
+  // safe to retry -- see lib/payments/idempotency.ts. Unique so a retried
+  // checkout call can never create a second row for the same attempt.
+  idempotencyKey String @unique
+
+  amountInPaise   Int
+  discountInPaise Int    @default(0)
+  gstInPaise      Int    @default(0)
+  totalInPaise    Int
+  currency        String @default("INR")
+
+  gatewayOrderId   String?
+  gatewayPaymentId String?
+
+  promoCodeId String?
+  promoCode   PromoCode? @relation(fields: [promoCodeId], references: [id])
+
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events              TransactionEvent[]
+  invoice             Invoice?
+  creditLedgerEntries CreditLedgerEntry[]
+  promoRedemption     PromoRedemption?
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@index([gateway, status])
+}
+
+// Append-only log of every state-changing event received for a transaction
+// (a real gateway webhook, or the mock adapter's equivalent simulated
+// event). externalEventId is always populated -- the mock adapter
+// generates a deterministic "mock-<transactionId>-<eventType>" id for its
+// own internal transitions specifically so this unique constraint also
+// catches a duplicate *mock* event, not just a duplicate real webhook
+// delivery (Postgres treats NULL as distinct from NULL, so a nullable
+// externalEventId would silently defeat this for internally-generated
+// events). See lib/payments/idempotency.ts.
+model TransactionEvent {
+  id            String      @id @default(cuid())
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  eventType       String // "order.created" | "payment.succeeded" | "payment.failed" | "payment.pending" | "refund.processed" | ...
+  externalEventId String
+  payload         Json   @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@unique([transactionId, eventType, externalEventId])
+  @@index([transactionId, createdAt])
+}
+
+// Generated on a successful transaction. isMock stays true for as long as
+// PAYMENT_MODE=mock -- the admin Transactions/Reports screens and the
+// member-facing receipt both render a prominent "MOCK INVOICE -- NOT A
+// TAX DOCUMENT" label whenever isMock is true (see lib/payments/gst.ts).
+model Invoice {
+  id            String      @id @default(cuid())
+  transactionId String      @unique
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  invoiceNumber String @unique
+
+  subtotalInPaise Int
+  discountInPaise Int @default(0)
+  gstInPaise      Int
+  totalInPaise    Int
+
+  placeOfSupply String? // state name used for the CGST+SGST vs IGST split -- see lib/payments/gst.ts
+  gstBreakdown  Json // { cgst, sgst, igst } in paise
+
+  isMock Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model PromoCode {
+  id          String @id @default(cuid())
+  code        String @unique
+  description String @default("")
+
+  discountType  DiscountType
+  discountValue Int // percent (0-100) when PERCENT, paise when FLAT
+
+  applicablePlanIds String[] @default([]) // empty = applies to every active plan
+
+  maxRedemptions  Int?
+  redemptionCount Int  @default(0)
+
+  validFrom  DateTime  @default(now())
+  validUntil DateTime?
+
+  isActive Boolean @default(true)
+
+  createdByAdminId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  transactions Transaction[]
+  redemptions  PromoRedemption[]
+
+  @@index([code, isActive])
+}
+
+model PromoRedemption {
+  id          String    @id @default(cuid())
+  promoCodeId String
+  promoCode   PromoCode @relation(fields: [promoCodeId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  transactionId String      @unique
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([promoCodeId, userId])
+}
+
+// Hybrid-model credit wallet -- a user's running credit balance for the
+// CREDIT_PACK side of the pricing model (one-off power features), kept
+// separate from the subscription side entirely. Balance is
+// denormalized here for fast reads; CreditLedgerEntry is the append-only
+// source of truth it's derived from.
+model CreditBalance {
+  userId    String   @id
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance   Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+model CreditLedgerEntry {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  delta  Int // positive = granted/purchased, negative = spent
+  reason String // "credit_pack_purchase" | "feature_redeem:<key>" | "admin_grant" | "admin_revoke"
+
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  createdByAdminId String? // set only for a manual admin grant/revoke (audit-logged separately too)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// Display-only, non-secret gateway settings an admin can see/toggle for
+// planning purposes. Real credentials live in environment variables /
+// secret storage and are never written here -- see docs/PAYMENTS.md
+// "Gateway configuration" section. This table does NOT control whether
+// live payments are reachable; only Free_Tier/PAYMENT_MODE (plain env
+// vars, not admin-mutable) do that -- see lib/payments/flags.ts.
+model GatewayConfig {
+  id      String      @id @default(cuid())
+  gateway GatewayName @unique
+
+  displayName      String
+  isEnabledForLive Boolean @default(false) // planning toggle only -- never bypasses the env-var gate
+  nonSecretConfig  Json    @default("{}")
+
+  updatedByAdminId String?
+  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now())
 }
