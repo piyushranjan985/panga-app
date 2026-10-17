@@ -6,10 +6,12 @@
 import assert from 'node:assert/strict';
 import { isEligibleCandidate, rankCandidates, scoreCandidate, type MatchableProfile } from '../lib/matching';
 
-// Default dateOfBirth makes every existing test's candidate exactly 30
-// years old as of "now" -- well inside the default 18-99 ageMin/ageMax
-// below, so none of the tests written before age scoring existed need to
-// care about it unless they override one of these three fields directly.
+// Default dateOfBirth makes every existing test's profile exactly 30
+// years old as of "now" -- since age scoring (see lib/matching.ts) now
+// compares the viewer's own age against the candidate's rather than a
+// preference field, every profile defaulting to the SAME age means none
+// of the tests written before age scoring existed get an unexpected age
+// bonus/penalty unless they override dateOfBirth directly.
 function defaultDateOfBirth(): Date {
   const d = new Date();
   d.setFullYear(d.getFullYear() - 30);
@@ -32,8 +34,6 @@ function profile(overrides: Partial<MatchableProfile> & { userId: string }): Mat
     interestIds: [],
     lastActiveAt: new Date(),
     dateOfBirth: defaultDateOfBirth(),
-    ageMin: 18,
-    ageMax: 99,
     ...overrides,
   };
 }
@@ -197,45 +197,44 @@ test('Rishta Ready: same OR-distance rule as Something Real', () => {
   assert.equal(isEligibleCandidate(viewer, faraway), false);
 });
 
-test('age is a soft signal, not eligibility -- a candidate outside the viewer\'s preferred range still appears', () => {
-  const viewer = profile({ userId: 'v', gender: 'WOMAN', lookingFor: ['MAN'], city: 'Pune', ageMin: 25, ageMax: 30 });
-  const tooOld = profile({ userId: 'c', gender: 'MAN', lookingFor: ['WOMAN'], city: 'Pune', dateOfBirth: ageYearsAgo(45) });
-  assert.equal(isEligibleCandidate(viewer, tooOld), true);
+test('age is a soft signal, not eligibility -- a candidate far from the viewer\'s own age still appears in the eligible pool', () => {
+  const viewer = profile({ userId: 'v', gender: 'WOMAN', lookingFor: ['MAN'], city: 'Pune', dateOfBirth: ageYearsAgo(25) });
+  const muchOlder = profile({ userId: 'c', gender: 'MAN', lookingFor: ['WOMAN'], city: 'Pune', dateOfBirth: ageYearsAgo(55) });
+  assert.equal(isEligibleCandidate(viewer, muchOlder), true);
 });
 
-test('a candidate inside the viewer\'s preferred range scores higher than one outside it, all else equal', () => {
-  const viewer = profile({ userId: 'v', gender: 'WOMAN', lookingFor: ['MAN'], city: 'Pune', ageMin: 25, ageMax: 30 });
-  const inRange = profile({ userId: 'in', gender: 'MAN', lookingFor: ['WOMAN'], city: 'Pune', dateOfBirth: ageYearsAgo(27) });
-  const farOutside = profile({ userId: 'out', gender: 'MAN', lookingFor: ['WOMAN'], city: 'Pune', dateOfBirth: ageYearsAgo(55) });
-  const inScore = scoreCandidate(viewer, inRange).score;
-  const outScore = scoreCandidate(viewer, farOutside).score;
-  assert.ok(inScore > outScore, `expected in-range (${inScore}) > far-outside (${outScore})`);
+test('a candidate closer to the viewer\'s own age scores higher than one farther away, all else equal', () => {
+  const viewer = profile({ userId: 'v', gender: 'WOMAN', lookingFor: ['MAN'], city: 'Pune', dateOfBirth: ageYearsAgo(28) });
+  const close = profile({ userId: 'close', gender: 'MAN', lookingFor: ['WOMAN'], city: 'Pune', dateOfBirth: ageYearsAgo(30) });
+  const far = profile({ userId: 'far', gender: 'MAN', lookingFor: ['WOMAN'], city: 'Pune', dateOfBirth: ageYearsAgo(55) });
+  const closeScore = scoreCandidate(viewer, close).score;
+  const farScore = scoreCandidate(viewer, far).score;
+  assert.ok(closeScore > farScore, `expected close-in-age (${closeScore}) > far-apart (${farScore})`);
 });
 
-test('age scoring is one-sided: the CANDIDATE\'s own narrow range never affects how the VIEWER is scored', () => {
-  // viewer is 50 and wide-open; candidate is 25 and has narrowed their own
-  // range to 20-24 (i.e. they wouldn't want to see the viewer) -- that
-  // must not change this score at all, since this call is scoring the
-  // candidate from the VIEWER's point of view, using only the viewer's
-  // own ageMin/ageMax.
-  const viewer = profile({ userId: 'v', gender: 'WOMAN', lookingFor: ['MAN'], city: 'Pune', dateOfBirth: ageYearsAgo(50), ageMin: 18, ageMax: 99 });
-  const candidateNarrow = profile({ userId: 'c1', gender: 'MAN', lookingFor: ['WOMAN'], city: 'Pune', dateOfBirth: ageYearsAgo(25), ageMin: 20, ageMax: 24 });
-  const candidateWide = profile({ userId: 'c2', gender: 'MAN', lookingFor: ['WOMAN'], city: 'Pune', dateOfBirth: ageYearsAgo(25), ageMin: 18, ageMax: 99 });
-  assert.equal(scoreCandidate(viewer, candidateNarrow).score, scoreCandidate(viewer, candidateWide).score);
+test('age scoring is derived from each viewer\'s OWN age, not a shared/preference field -- two viewers get different results against the identical candidate', () => {
+  const sameAgeViewer = profile({ userId: 'v1', gender: 'WOMAN', lookingFor: ['MAN'], city: 'Pune', dateOfBirth: ageYearsAgo(25) });
+  const farawayViewer = profile({ userId: 'v2', gender: 'WOMAN', lookingFor: ['MAN'], city: 'Pune', dateOfBirth: ageYearsAgo(55) });
+  const candidate = profile({ userId: 'c', gender: 'MAN', lookingFor: ['WOMAN'], city: 'Pune', dateOfBirth: ageYearsAgo(25) });
+  const sameAgeScore = scoreCandidate(sameAgeViewer, candidate).score;
+  const farawayScore = scoreCandidate(farawayViewer, candidate).score;
+  assert.ok(sameAgeScore > farawayScore, `expected same-age viewer (${sameAgeScore}) > far-apart-in-age viewer (${farawayScore}) for the identical candidate`);
 });
 
-test('a candidate exactly on the preferred-range boundary gets the full age bonus and the reason text', () => {
-  const viewer = profile({ userId: 'v', gender: 'WOMAN', lookingFor: ['MAN'], city: 'Pune', ageMin: 25, ageMax: 30 });
-  const onBoundary = profile({ userId: 'c', gender: 'MAN', lookingFor: ['WOMAN'], city: 'Pune', dateOfBirth: ageYearsAgo(30) });
-  const { reasons } = scoreCandidate(viewer, onBoundary);
-  assert.ok(reasons.includes('in your preferred age range'));
+test('a candidate exactly the viewer\'s own age gets the full age bonus and the "same age as you" reason', () => {
+  const viewer = profile({ userId: 'v', gender: 'WOMAN', lookingFor: ['MAN'], city: 'Pune', dateOfBirth: ageYearsAgo(27) });
+  const sameAge = profile({ userId: 'c', gender: 'MAN', lookingFor: ['WOMAN'], city: 'Pune', dateOfBirth: ageYearsAgo(27) });
+  const { reasons } = scoreCandidate(viewer, sameAge);
+  assert.ok(reasons.includes('same age as you'));
 });
 
-test('a viewer who never narrowed their default 18-99 range never gets the age reason, even for an exact-fit candidate', () => {
-  const viewer = profile({ userId: 'v', gender: 'WOMAN', lookingFor: ['MAN'], city: 'Pune' }); // default 18-99
-  const candidate = profile({ userId: 'c', gender: 'MAN', lookingFor: ['WOMAN'], city: 'Pune', dateOfBirth: ageYearsAgo(27) });
-  const { reasons } = scoreCandidate(viewer, candidate);
-  assert.ok(!reasons.includes('in your preferred age range'));
+test('a candidate 10+ years apart in age gets no age bonus and no age-related reason text', () => {
+  const viewer = profile({ userId: 'v', gender: 'WOMAN', lookingFor: ['MAN'], city: 'Pune', dateOfBirth: ageYearsAgo(30) });
+  const tenYearsApart = profile({ userId: 'c', gender: 'MAN', lookingFor: ['WOMAN'], city: 'Pune', dateOfBirth: ageYearsAgo(40) });
+  const withAgeGap = scoreCandidate(viewer, tenYearsApart);
+  const noAgeGapAtAll = scoreCandidate(viewer, profile({ userId: 'same', gender: 'MAN', lookingFor: ['WOMAN'], city: 'Pune', dateOfBirth: ageYearsAgo(30) }));
+  assert.ok(!withAgeGap.reasons.includes('same age as you') && !withAgeGap.reasons.includes('close in age'));
+  assert.ok(withAgeGap.score < noAgeGapAtAll.score, `expected the 10-years-apart candidate (${withAgeGap.score}) to score lower than the same-age one (${noAgeGapAtAll.score})`);
 });
 
 console.log(`\n${passed}/${passed} checks passed.`);

@@ -33,11 +33,6 @@ interface ProfileData {
   bio: string;
   intent: string;
   quietMode: boolean;
-  // Preferred age range for who shows up in Discover -- a soft ranking
-  // signal (see lib/matching.ts), defaults to 18-99 until someone narrows
-  // it from the "Age range" section below.
-  ageMin: number;
-  ageMax: number;
   familyPreviewOn: boolean;
   notifyMatchesMessages: boolean;
   notifyVybeVouch: boolean;
@@ -216,7 +211,6 @@ function EditActions({
 
 type EditSection =
   | 'bio'
-  | 'ageRange'
   | 'interests'
   | 'tribes'
   | 'relationship'
@@ -262,8 +256,6 @@ export default function ProfilePage() {
   const [draftTribeIds, setDraftTribeIds] = useState<string[]>([]);
   const [draftSubIds, setDraftSubIds] = useState<string[]>([]);
   const [draftSingle, setDraftSingle] = useState(''); // living preference / children
-  const [draftAgeMin, setDraftAgeMin] = useState(18);
-  const [draftAgeMax, setDraftAgeMax] = useState(99);
   const [draftFuture, setDraftFuture] = useState({ home: '', family: '', career: '', money: '' });
   const [draftPromptAnswers, setDraftPromptAnswers] = useState<{ promptId: string; answer: string }[]>([]);
 
@@ -797,71 +789,6 @@ export default function ProfilePage() {
               }`}
             />
           </button>
-        </section>
-
-        <section className="mt-3 rounded-2xl border border-line bg-white p-4">
-          {editing === 'ageRange' ? (
-            <div>
-              <p className="font-bold">Age range</p>
-              <p className="mb-2 text-xs text-inkSoft">
-                Nudges who Discover ranks higher for you -- nobody outside this range is ever hidden from your feed
-                entirely, they just show up further down.
-              </p>
-              <div className="flex items-center gap-3">
-                <label className="flex flex-1 flex-col gap-1 text-xs font-semibold text-inkSoft">
-                  Min
-                  <input
-                    type="number"
-                    min={18}
-                    max={99}
-                    value={draftAgeMin}
-                    onChange={(e) => setDraftAgeMin(Number(e.target.value))}
-                    className="rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-magenta"
-                  />
-                </label>
-                <span className="mt-5 text-inkSoft">–</span>
-                <label className="flex flex-1 flex-col gap-1 text-xs font-semibold text-inkSoft">
-                  Max
-                  <input
-                    type="number"
-                    min={18}
-                    max={99}
-                    value={draftAgeMax}
-                    onChange={(e) => setDraftAgeMax(Number(e.target.value))}
-                    className="rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-magenta"
-                  />
-                </label>
-              </div>
-              <EditActions
-                onSave={() => saveSection({ ageRange: { ageMin: draftAgeMin, ageMax: draftAgeMax } })}
-                onCancel={closeEdit}
-                saving={savingSection}
-                disabled={draftAgeMin < 18 || draftAgeMax > 99 || draftAgeMin > draftAgeMax}
-                hint="Saved as soon as you hit Save -- it only reorders Discover, nothing else changes right away."
-                error={sectionError}
-              />
-            </div>
-          ) : (
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-bold">Age range</p>
-                <p className="text-sm text-inkSoft">
-                  {profile.ageMin === 18 && profile.ageMax === 99
-                    ? "Showing everyone 18+. Narrow this and Discover will rank people in your range higher."
-                    : `Ranking people ${profile.ageMin}–${profile.ageMax} higher in your Discover feed.`}
-                </p>
-              </div>
-              <EditButton
-                label="Edit age range"
-                onClick={() => {
-                  setDraftAgeMin(profile.ageMin);
-                  setDraftAgeMax(profile.ageMax);
-                  setSectionError(null);
-                  setEditing('ageRange');
-                }}
-              />
-            </div>
-          )}
         </section>
 
         <section className="mt-3 rounded-2xl border border-line bg-white p-4">

@@ -368,26 +368,10 @@ export async function PUT(req: Request) {
 // accepts, all optional so a save only ever touches the one section it
 // came from. Reuses the same enums as upsertSchema so a slug field can
 // never drift out of sync between onboarding and profile-page editing.
-// Age range the person wants to see in Discover -- see
-// prisma/schema.prisma's Profile.ageMin/ageMax doc comment and
-// lib/matching.ts's file-level comment: a soft ranking signal, not a hard
-// filter, defaulting to the platform's full 18-99 adult range. Always
-// sent as a pair (never just one bound) so this validation never has to
-// reach into the currently-stored value to check the other side -- the
-// profile screen's own "Age range" section (app/profile/page.tsx) always
-// submits both together for exactly this reason.
-const ageRangeSchema = z
-  .object({
-    ageMin: z.number().int().min(18).max(99),
-    ageMax: z.number().int().min(18).max(99),
-  })
-  .refine((v) => v.ageMin <= v.ageMax, { message: 'Minimum age must be at or below the maximum', path: ['ageMin'] });
-
 const patchSchema = z.object({
   intent: intentEnum.optional(),
   quietMode: z.boolean().optional(),
   familyPreviewOn: z.boolean().optional(),
-  ageRange: ageRangeSchema.optional(),
   // Mystery Match -- see docs/MYSTERY_MATCH.md. mysteryNoLabelsAck lets
   // the client confirm the one-time No-Labels explainer in the SAME
   // request that selects it, rather than a separate round trip -- true
@@ -438,7 +422,7 @@ export async function PATCH(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid update' }, { status: 400 });
   }
-  const { interestIds, tribeIds, subCommunityIds, relationshipStyleIds, promptAnswers, mysteryCategory, mysteryNoLabelsAck, ageRange, ...scalarUpdates } =
+  const { interestIds, tribeIds, subCommunityIds, relationshipStyleIds, promptAnswers, mysteryCategory, mysteryNoLabelsAck, ...scalarUpdates } =
     parsed.data;
 
   // mysteryCategorySetAt only bumps when the category actually changes --
@@ -462,12 +446,6 @@ export async function PATCH(req: Request) {
     data: {
       ...scalarUpdates,
       ...mysteryUpdate,
-      // ageRange arrives as the nested { ageMin, ageMax } pair
-      // ageRangeSchema validated above -- Profile itself has flat
-      // ageMin/ageMax columns, so this unwraps it rather than spreading
-      // scalarUpdates (which would otherwise try to write a nonexistent
-      // "ageRange" column).
-      ...(ageRange !== undefined ? { ageMin: ageRange.ageMin, ageMax: ageRange.ageMax } : {}),
       ...(interestIds !== undefined ? { interests: { set: interestIds.map((id) => ({ id })) } } : {}),
       ...(tribeIds !== undefined ? { tribes: { set: tribeIds.map((id) => ({ id })) } } : {}),
       ...(subCommunityIds !== undefined ? { subCommunities: { set: subCommunityIds.map((id) => ({ id })) } } : {}),

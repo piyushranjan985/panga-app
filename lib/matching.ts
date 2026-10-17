@@ -17,19 +17,21 @@
  * helper rather than importing lib/geo.ts's, purely to stay self-contained
  * per the paragraph above; the two are intentionally the same formula.
  *
- * ageMin/ageMax (product decision, 2026-10-17) are the VIEWER's own
- * preferred age range (see prisma/schema.prisma's Profile.ageMin/ageMax
- * doc comment) and feed scoreCandidate's ageFitFactor below -- a SOFT
- * signal, deliberately not part of isEligibleCandidate: being outside
- * someone's preferred range down-ranks a candidate, it never removes them
- * from the feed outright, unlike the mutual gender check or the intent-
- * compatibility floor. Only the viewer's own range is ever consulted when
- * scoring a candidate -- this isn't mutual the way gender is; a 50-year-
- * old who narrows their own range to 45-55 still appears normally in a
- * 25-year-old's feed, exactly as a wide search radius for one person
- * doesn't shrink anyone else's. dateOfBirth is required (every real
- * Profile row has one -- see lib/age.ts) and is used only for this
- * scoring factor; nothing here duplicates lib/age.ts's age math.
+ * Age (product decision, 2026-10-17) is a SOFT, ALWAYS-ON signal, not
+ * part of isEligibleCandidate: a candidate far from the viewer's own age
+ * is down-ranked, never removed from the feed outright, unlike the mutual
+ * gender check or the intent-compatibility floor. There's no preference
+ * to set -- scoreCandidate's ageFitFactor below compares the viewer's own
+ * age against the candidate's directly (same age scores highest, tapering
+ * to zero extra credit by AGE_TAPER_YEARS apart), so it works out of the
+ * box for every existing profile with zero setup, rather than only ever
+ * doing anything once someone opts into a preference nobody's likely to
+ * find. Unlike the mutual gender check, this isn't reciprocal either --
+ * each side's own age is compared against the other's, symmetrically
+ * (A's distance-from-B equals B's distance-from-A), so it doesn't need to
+ * be. dateOfBirth is required (every real Profile row has one -- see
+ * lib/age.ts) and is used only for this scoring factor; nothing here
+ * duplicates lib/age.ts's age math.
  */
 
 import { ageFromDateOfBirth } from '@/lib/age';
@@ -52,15 +54,11 @@ export interface MatchableProfile {
   // have them; every distance check below is null-safe.
   latitude?: number | null;
   longitude?: number | null;
-  // See the file-level comment above -- dateOfBirth is THIS profile's own
-  // birth date (used to compute ITS age when it's the candidate being
-  // scored); ageMin/ageMax are THIS profile's own preferred range (used
-  // when it's the viewer doing the scoring). Every real profile has all
-  // three (schema defaults ageMin/ageMax to 18/99), so these are required,
-  // not optional like lat/lng.
+  // See the file-level comment above -- this profile's own birth date,
+  // used to compute ITS age whichever role (viewer or candidate) it's
+  // playing in a given scoreCandidate call. Every real Profile row has
+  // one (see lib/age.ts), so this is required, not optional like lat/lng.
   dateOfBirth: Date;
-  ageMin: number;
-  ageMax: number;
 }
 
 /**
@@ -104,14 +102,13 @@ const WEIGHTS = {
   recency: 8, // active in the last 48h
   proximityPrimary: 30, // Just Vibing: distance is THE location signal -- see DISTANCE_RADIUS_KM
   proximitySecondary: 10, // Something Real / Rishta Ready: a same-city tiebreaker, not a requirement
-  age: 15, // within the viewer's preferred range -- see ageFitFactor and MatchableProfile's doc comment
+  age: 15, // closeness to the viewer's own age -- see ageFitFactor and the file-level comment
 };
 
-// Years outside the viewer's [ageMin, ageMax] before the age bonus fully
-// disappears -- same linear-taper shape as proximityFactor below, just for
-// age instead of distance. Arbitrary but reasonable: one year outside a
-// chosen range shouldn't feel like a cliff edge, ten years outside it
-// should contribute nothing.
+// Years of age difference before the age bonus fully disappears -- same
+// linear-taper shape as proximityFactor below, just for age instead of
+// distance. Arbitrary but reasonable: a year or two apart shouldn't feel
+// like a cliff edge, ten years apart should contribute nothing.
 const AGE_TAPER_YEARS = 10;
 
 /**
@@ -164,16 +161,15 @@ function proximityFactor(distanceKm: number | null, radiusKm: number): number {
 }
 
 /**
- * 1 when candidateAge falls inside [ageMin, ageMax], tapering linearly to
- * 0 at AGE_TAPER_YEARS past whichever bound it missed -- see WEIGHTS.age's
- * comment. Only ever evaluated against the VIEWER's own range (this is a
- * one-sided preference, not mutual like gender -- see the file-level
- * comment), so this takes the bounds directly rather than a MatchableProfile.
+ * 1 at zero years apart, tapering linearly to 0 at AGE_TAPER_YEARS apart
+ * -- see WEIGHTS.age's comment. Symmetric in both ages (same shape as
+ * proximityFactor's distance taper), which is also why, unlike the old
+ * preference-range design, A's fit against B is identical to B's fit
+ * against A -- it just isn't consulted in both directions at once, since
+ * each side's own feed only ever scores from its own viewpoint.
  */
-function ageFitFactor(candidateAge: number, ageMin: number, ageMax: number): number {
-  if (candidateAge >= ageMin && candidateAge <= ageMax) return 1;
-  const over = candidateAge < ageMin ? ageMin - candidateAge : candidateAge - ageMax;
-  return Math.max(0, 1 - over / AGE_TAPER_YEARS);
+function ageFitFactor(viewerAge: number, candidateAge: number): number {
+  return Math.max(0, 1 - Math.abs(viewerAge - candidateAge) / AGE_TAPER_YEARS);
 }
 
 function mutualGenderMatch(a: MatchableProfile, b: MatchableProfile): boolean {
@@ -269,16 +265,18 @@ export function scoreCandidate(viewer: MatchableProfile, candidate: MatchablePro
     else reasons.push('close by');
   }
 
-  // Age: a soft, one-sided signal (see the file-level comment and
-  // ageFitFactor) -- only pushes a reason when the viewer has actually
-  // narrowed their default wide-open 18-99 range, so the vast majority of
-  // candidates (everyone still on the default) never get a reason that'd
-  // be true of virtually every profile in the pool.
-  const ageFit = ageFitFactor(ageFromDateOfBirth(candidate.dateOfBirth, now), viewer.ageMin, viewer.ageMax);
+  // Age: a soft, always-on signal (see the file-level comment and
+  // ageFitFactor) -- same reason-text pattern as the proximity block
+  // above (exact vs. near), not an all-or-nothing "in range" label, since
+  // there's no range here anymore, just a distance in years.
+  const viewerAge = ageFromDateOfBirth(viewer.dateOfBirth, now);
+  const candidateAge = ageFromDateOfBirth(candidate.dateOfBirth, now);
+  const ageDiff = Math.abs(viewerAge - candidateAge);
+  const ageFit = ageFitFactor(viewerAge, candidateAge);
   if (ageFit > 0) {
     score += ageFit * WEIGHTS.age;
-    const viewerNarrowedRange = viewer.ageMin > 18 || viewer.ageMax < 99;
-    if (ageFit === 1 && viewerNarrowedRange) reasons.push('in your preferred age range');
+    if (ageDiff === 0) reasons.push('same age as you');
+    else if (ageDiff <= 2) reasons.push('close in age');
   }
 
   const hoursSinceActive = (now.getTime() - candidate.lastActiveAt.getTime()) / 36e5;
@@ -349,16 +347,18 @@ export function scoreWildCardCandidate(viewer: MatchableProfile, candidate: Matc
     else reasons.push('close by');
   }
 
-  // Age: a soft, one-sided signal (see the file-level comment and
-  // ageFitFactor) -- only pushes a reason when the viewer has actually
-  // narrowed their default wide-open 18-99 range, so the vast majority of
-  // candidates (everyone still on the default) never get a reason that'd
-  // be true of virtually every profile in the pool.
-  const ageFit = ageFitFactor(ageFromDateOfBirth(candidate.dateOfBirth, now), viewer.ageMin, viewer.ageMax);
+  // Age: a soft, always-on signal (see the file-level comment and
+  // ageFitFactor) -- same reason-text pattern as the proximity block
+  // above (exact vs. near), not an all-or-nothing "in range" label, since
+  // there's no range here anymore, just a distance in years.
+  const viewerAge = ageFromDateOfBirth(viewer.dateOfBirth, now);
+  const candidateAge = ageFromDateOfBirth(candidate.dateOfBirth, now);
+  const ageDiff = Math.abs(viewerAge - candidateAge);
+  const ageFit = ageFitFactor(viewerAge, candidateAge);
   if (ageFit > 0) {
     score += ageFit * WEIGHTS.age;
-    const viewerNarrowedRange = viewer.ageMin > 18 || viewer.ageMax < 99;
-    if (ageFit === 1 && viewerNarrowedRange) reasons.push('in your preferred age range');
+    if (ageDiff === 0) reasons.push('same age as you');
+    else if (ageDiff <= 2) reasons.push('close in age');
   }
 
   const hoursSinceActive = (now.getTime() - candidate.lastActiveAt.getTime()) / 36e5;

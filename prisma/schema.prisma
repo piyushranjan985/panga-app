@@ -231,23 +231,6 @@ model Profile {
   dateOfBirth DateTime
   gender      Gender
   lookingFor  Gender[]
-  // Preferred age range for who shows up in Discover -- a SOFT ranking
-  // signal (lib/matching.ts's scoreCandidate), not a hard eligibility
-  // filter like lookingFor/gender: someone outside this range is
-  // down-ranked, never excluded outright (product decision, 2026-10-17 --
-  // unlike gender, this isn't mutual either: it's only ever applied to
-  // what the person holding the preference sees, the same way distance
-  // narrows Discover for the viewer without blocking them from anyone
-  // else's feed). Defaults to the platform's full adult range so nobody's
-  // feed changes shape until they deliberately narrow it (see
-  // app/profile/page.tsx's "Age range" section). The *existing*
-  // app/api/discover/search/route.ts search feature already took an
-  // ageMin/ageMax pair as an explicit, one-off HARD filter per request
-  // (lib/searchQueryParser.ts) -- these are a different, persisted thing:
-  // the standing preference behind the ambient feed everyone sees by
-  // default, not that search box's per-query override.
-  ageMin      Int      @default(18)
-  ageMax      Int      @default(99)
   city        String
   bio         String   @default("")
 
