@@ -34,6 +34,16 @@ export const ALL_FEATURE_KEYS: FeatureKey[] = [
 // CREDIT_PACK side of the hybrid pricing model buys.
 export type CreditFeatureKey = 'profile_boost' | 'super_like' | 'profile_spotlight' | 'assisted_shortlist_review';
 
+export const FEATURE_LABELS: Record<FeatureKey, string> = {
+  unlimited_swipes: 'Unlimited swipes',
+  see_who_liked_you: 'See who liked you',
+  advanced_filters: 'Advanced search filters',
+  rewind_last_swipe: 'Rewind last swipe',
+  priority_placement: 'Priority placement in discovery',
+  extra_vybe_vouch_invites: 'Extra Vybe Vouch invites',
+  read_receipts: 'Read receipts',
+};
+
 export const ALL_CREDIT_FEATURE_KEYS: CreditFeatureKey[] = [
   'profile_boost',
   'super_like',

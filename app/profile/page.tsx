@@ -745,6 +745,19 @@ export default function ProfilePage() {
         </section>
 
         <section className="mt-8">
+          <Link
+            href="/upgrade"
+            className="flex items-center justify-between gap-3 rounded-2xl border-2 border-magenta bg-magenta/5 px-4 py-4"
+          >
+            <div>
+              <p className="font-display text-base font-extrabold">Vybe Plus & Boosts</p>
+              <p className="text-xs text-inkSoft">Safety stays free for everyone -- these are optional extras.</p>
+            </div>
+            <span className="text-xs font-semibold text-magenta">See plans →</span>
+          </Link>
+        </section>
+
+        <section className="mt-8">
           <h2 className="mb-2 font-display text-lg font-bold">Intent</h2>
           <p className="mb-3 text-xs text-inkSoft">Your vibe can change. Switch your intent anytime.</p>
           <div className="flex items-center gap-3 rounded-2xl border-2 border-magenta bg-magenta/5 px-4 py-4">
