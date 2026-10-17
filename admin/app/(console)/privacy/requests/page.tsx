@@ -6,6 +6,7 @@ import Badge from '@/components/Badge';
 import { hasPermission } from '@/lib/rbac';
 import EmptyState from '@/components/EmptyState';
 import type { Prisma } from '@prisma/client';
+import { matchingUserIds } from '@/lib/userSearch';
 
 const STATUS_TONE: Record<string, 'default' | 'success' | 'warning' | 'critical' | 'info'> = {
   RECEIVED: 'warning',
@@ -26,6 +27,16 @@ export default async function PrivacyRequestsPage({ searchParams }: { searchPara
   if (sp.overdue === '1') and.push({ dueAt: { lt: new Date() }, status: { in: ['RECEIVED', 'VERIFYING_IDENTITY', 'IN_PROGRESS'] } });
   else if (!sp.status) and.push({ status: { in: ['RECEIVED', 'VERIFYING_IDENTITY', 'IN_PROGRESS', 'ON_HOLD_LEGAL'] } });
   if (sp.status) and.push({ status: sp.status as never });
+  // A request can exist before/without a matched account (userId is
+  // nullable, contactEmail carries the identity instead) -- match
+  // both: a resolved User ID for the matched-account case, and the
+  // raw contactEmail an unmatched request was filed under (see
+  // admin/lib/userSearch.ts).
+  const q = sp.q?.trim();
+  if (q) {
+    const ids = await matchingUserIds(q);
+    and.push({ OR: [{ userId: { in: ids } }, { contactEmail: { contains: q, mode: 'insensitive' } }] });
+  }
   if (and.length > 0) where.AND = and;
 
   const requests = await db.privacyRequest.findMany({
@@ -43,7 +54,7 @@ export default async function PrivacyRequestsPage({ searchParams }: { searchPara
         actions={
           hasPermission(admin.role, 'reporting.export') && (
             <a
-              href={`/api/privacy/requests/export?${new URLSearchParams({ type: sp.type ?? '', status: sp.status ?? '', overdue: sp.overdue ?? '' }).toString()}`}
+              href={`/api/privacy/requests/export?${new URLSearchParams({ type: sp.type ?? '', status: sp.status ?? '', overdue: sp.overdue ?? '', q: sp.q ?? '' }).toString()}`}
               className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas"
             >
               Export CSV
@@ -53,6 +64,13 @@ export default async function PrivacyRequestsPage({ searchParams }: { searchPara
       />
       <div className="p-8">
         <form className="mb-5 flex flex-wrap gap-2" method="get">
+          <input
+            type="text"
+            name="q"
+            defaultValue={sp.q}
+            placeholder="Search name, email, or phone"
+            className="min-w-[240px] flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
+          />
           <Select name="type" label="Any type" defaultValue={sp.type} options={['ACCESS', 'CORRECTION', 'DELETION', 'GRIEVANCE', 'PORTABILITY', 'CONSENT_WITHDRAWAL']} />
           <Select name="status" label="Open" defaultValue={sp.status} options={['RECEIVED', 'VERIFYING_IDENTITY', 'IN_PROGRESS', 'ON_HOLD_LEGAL', 'COMPLETED', 'REJECTED']} />
           <button type="submit" className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white">Filter</button>

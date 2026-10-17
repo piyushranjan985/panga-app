@@ -3,13 +3,23 @@ import { requirePermission } from '@/lib/apiGuard';
 import { getRequestContext } from '@/lib/requestContext';
 import { writeAudit } from '@/lib/audit';
 import { toCsv, csvResponse } from '@/lib/csv';
+import { matchingUserIds } from '@/lib/userSearch';
+import type { Prisma } from '@prisma/client';
 
-export async function GET() {
+// Mirrors app/(console)/privacy/legal-holds/page.tsx's query.
+export async function GET(req: Request) {
   const guard = await requirePermission('reporting.export');
   if ('error' in guard) return guard.error;
   const { admin } = guard;
 
+  const { searchParams } = new URL(req.url);
+  const q = searchParams.get('q')?.trim();
+
+  const where: Prisma.LegalHoldWhereInput = {};
+  if (q) where.userId = { in: await matchingUserIds(q) };
+
   const holds = await db.legalHold.findMany({
+    where,
     include: { user: { include: { profile: { select: { displayName: true } } } }, requestedBy: { select: { name: true } } },
     orderBy: [{ active: 'desc' }, { createdAt: 'desc' }],
     take: 5000,
@@ -33,7 +43,7 @@ export async function GET() {
     actorEmail: admin.email,
     action: 'privacyLegalHolds.export',
     category: 'privacy',
-    newValue: { count: holds.length },
+    newValue: { count: holds.length, filters: Object.fromEntries(searchParams) },
     context: await getRequestContext(),
   });
 

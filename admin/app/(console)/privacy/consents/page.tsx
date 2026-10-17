@@ -6,6 +6,7 @@ import Badge from '@/components/Badge';
 import { hasPermission } from '@/lib/rbac';
 import EmptyState from '@/components/EmptyState';
 import type { Prisma } from '@prisma/client';
+import { matchingUserIds } from '@/lib/userSearch';
 
 const PURPOSES = ['ACCOUNT_ESSENTIAL', 'PRECISE_LOCATION', 'MARKETING_COMMUNICATIONS', 'ANALYTICS', 'THIRD_PARTY_SHARING'];
 
@@ -17,7 +18,12 @@ export default async function ConsentsPage({ searchParams }: { searchParams: Pro
   const and: Prisma.ConsentRecordWhereInput[] = [];
   if (sp.purpose) and.push({ purpose: sp.purpose as never });
   if (sp.status) and.push({ status: sp.status as never });
-  if (sp.userId) and.push({ userId: sp.userId });
+  // Was a raw "User ID" text box -- upgraded to the same name/email/phone
+  // search every other list page in this portal uses (see
+  // admin/lib/userSearch.ts), since an admin chasing a specific person's
+  // consent history rarely has their internal ID on hand.
+  const q = sp.q?.trim();
+  if (q) and.push({ userId: { in: await matchingUserIds(q) } });
   if (and.length > 0) where.AND = and;
 
   const [records, purposeSummary] = await Promise.all([
@@ -38,7 +44,7 @@ export default async function ConsentsPage({ searchParams }: { searchParams: Pro
         actions={
           hasPermission(admin.role, 'reporting.export') && (
             <a
-              href={`/api/privacy/consents/export?${new URLSearchParams({ purpose: sp.purpose ?? '', status: sp.status ?? '', userId: sp.userId ?? '' }).toString()}`}
+              href={`/api/privacy/consents/export?${new URLSearchParams({ purpose: sp.purpose ?? '', status: sp.status ?? '', q: sp.q ?? '' }).toString()}`}
               className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas"
             >
               Export CSV
@@ -65,10 +71,10 @@ export default async function ConsentsPage({ searchParams }: { searchParams: Pro
           <Select name="purpose" label="Any purpose" defaultValue={sp.purpose} options={PURPOSES} />
           <Select name="status" label="Any status" defaultValue={sp.status} options={['GRANTED', 'WITHDRAWN']} />
           <input
-            name="userId"
-            defaultValue={sp.userId ?? ''}
-            placeholder="User ID"
-            className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
+            name="q"
+            defaultValue={sp.q ?? ''}
+            placeholder="Search name, email, or phone"
+            className="min-w-[220px] flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
           />
           <button type="submit" className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white">Filter</button>
         </form>

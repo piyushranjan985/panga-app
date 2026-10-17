@@ -3,6 +3,7 @@ import { requirePermission } from '@/lib/apiGuard';
 import { getRequestContext } from '@/lib/requestContext';
 import { writeAudit } from '@/lib/audit';
 import { toCsv, csvResponse } from '@/lib/csv';
+import { matchingUserIds } from '@/lib/userSearch';
 import type { Prisma } from '@prisma/client';
 
 // Same filters as app/(console)/moderation/page.tsx. Risk score is
@@ -19,11 +20,13 @@ export async function GET(req: Request) {
   const status = searchParams.get('status');
   const severity = searchParams.get('severity');
   const category = searchParams.get('category');
+  const q = searchParams.get('q')?.trim();
 
   const where: Prisma.ModerationCaseWhereInput = {};
   where.status = status ? (status as never) : { in: ['OPEN', 'IN_REVIEW', 'ESCALATED'] };
   if (severity) where.severity = severity as never;
   if (category) where.category = category;
+  if (q) where.subjectUserId = { in: await matchingUserIds(q) };
 
   const cases = await db.moderationCase.findMany({
     where,

@@ -6,6 +6,7 @@ import Badge from '@/components/Badge';
 import { hasPermission } from '@/lib/rbac';
 import EmptyState from '@/components/EmptyState';
 import type { Prisma } from '@prisma/client';
+import { matchingUserIds } from '@/lib/userSearch';
 
 const STATUS_TONE: Record<string, 'default' | 'success' | 'warning' | 'critical' | 'info'> = {
   OPEN: 'warning',
@@ -23,6 +24,15 @@ export default async function SupportPage({ searchParams }: { searchParams: Prom
   const where: Prisma.SupportTicketWhereInput = {};
   where.status = sp.status ? (sp.status as never) : { in: ['OPEN', 'IN_PROGRESS', 'WAITING_ON_USER', 'ESCALATED'] };
   if (sp.priority) where.priority = sp.priority as never;
+  // A ticket can exist for a guest with no matched account (userId is
+  // nullable -- see the model comment), so the search has to match the
+  // guest's own typed-in contactEmail/contactPhone too, not just a
+  // resolved User ID (see admin/lib/userSearch.ts).
+  const q = sp.q?.trim();
+  if (q) {
+    const ids = await matchingUserIds(q);
+    where.OR = [{ userId: { in: ids } }, { contactEmail: { contains: q, mode: 'insensitive' } }, { contactPhone: { contains: q } }];
+  }
 
   const tickets = await db.supportTicket.findMany({
     where,
@@ -39,7 +49,7 @@ export default async function SupportPage({ searchParams }: { searchParams: Prom
         actions={
           hasPermission(admin.role, 'reporting.export') && (
             <a
-              href={`/api/support/export?${new URLSearchParams({ status: sp.status ?? '', priority: sp.priority ?? '' }).toString()}`}
+              href={`/api/support/export?${new URLSearchParams({ status: sp.status ?? '', priority: sp.priority ?? '', q: sp.q ?? '' }).toString()}`}
               className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas"
             >
               Export CSV
@@ -49,6 +59,13 @@ export default async function SupportPage({ searchParams }: { searchParams: Prom
       />
       <div className="p-8">
         <form className="mb-5 flex flex-wrap gap-2" method="get">
+          <input
+            type="text"
+            name="q"
+            defaultValue={sp.q}
+            placeholder="Search user's name, email, or phone"
+            className="min-w-[240px] flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
+          />
           <Select name="status" label="Open queue" defaultValue={sp.status} options={['OPEN', 'IN_PROGRESS', 'WAITING_ON_USER', 'ESCALATED', 'RESOLVED', 'CLOSED']} />
           <Select name="priority" label="Any priority" defaultValue={sp.priority} options={['LOW', 'NORMAL', 'HIGH', 'URGENT']} />
           <button type="submit" className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white">Filter</button>

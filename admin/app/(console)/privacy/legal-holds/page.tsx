@@ -7,10 +7,19 @@ import EmptyState from '@/components/EmptyState';
 import ConfirmActionButton from '@/components/ConfirmActionButton';
 import NewLegalHoldForm from '@/components/NewLegalHoldForm';
 import { hasPermission } from '@/lib/rbac';
+import { matchingUserIds } from '@/lib/userSearch';
+import type { Prisma } from '@prisma/client';
 
-export default async function LegalHoldsPage() {
+export default async function LegalHoldsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const admin = await requirePageAccess('privacy.view');
+  const sp = await searchParams;
+
+  const where: Prisma.LegalHoldWhereInput = {};
+  const q = sp.q?.trim();
+  if (q) where.userId = { in: await matchingUserIds(q) };
+
   const holds = await db.legalHold.findMany({
+    where,
     include: { user: { include: { profile: { select: { displayName: true } } } }, requestedBy: { select: { name: true } } },
     orderBy: [{ active: 'desc' }, { createdAt: 'desc' }],
     take: 100,
@@ -24,11 +33,7 @@ export default async function LegalHoldsPage() {
         description="A hold blocks a DPDP deletion request from being completed against that user's account until it's released."
         actions={
           hasPermission(admin.role, 'reporting.export') && (
-            /* eslint-disable-next-line @next/next/no-html-link-for-pages -- this is a
-               real file download hitting an API route, not client-side navigation
-               between pages; <Link> would try to soft-navigate to a CSV response
-               instead of downloading it. */
-            <a href="/api/privacy/legal-holds/export" className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas">
+            <a href={`/api/privacy/legal-holds/export?${new URLSearchParams({ q: sp.q ?? '' }).toString()}`} className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas">
               Export CSV
             </a>
           )
@@ -37,8 +42,19 @@ export default async function LegalHoldsPage() {
       <div className="space-y-6 p-8">
         {canManage && <NewLegalHoldForm />}
 
+        <form className="flex flex-wrap gap-2" method="get">
+          <input
+            type="text"
+            name="q"
+            defaultValue={sp.q}
+            placeholder="Search user's name, email, or phone"
+            className="min-w-[240px] flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
+          />
+          <button type="submit" className="rounded-lg bg-brand px-4 py-2 text-sm font-bold text-white">Filter</button>
+        </form>
+
         {holds.length === 0 ? (
-          <EmptyState title="No legal holds on record" />
+          <EmptyState title={q ? 'No legal holds match this search' : 'No legal holds on record'} />
         ) : (
           <div className="overflow-hidden rounded-card border border-border bg-surface">
             <table className="w-full text-sm">

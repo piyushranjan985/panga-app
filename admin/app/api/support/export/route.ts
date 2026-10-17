@@ -3,6 +3,7 @@ import { requirePermission } from '@/lib/apiGuard';
 import { getRequestContext } from '@/lib/requestContext';
 import { writeAudit } from '@/lib/audit';
 import { toCsv, csvResponse } from '@/lib/csv';
+import { matchingUserIds } from '@/lib/userSearch';
 import type { Prisma } from '@prisma/client';
 
 // Same filters as app/(console)/support/page.tsx. Contact email/phone are
@@ -18,10 +19,15 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const status = searchParams.get('status');
   const priority = searchParams.get('priority');
+  const q = searchParams.get('q')?.trim();
 
   const where: Prisma.SupportTicketWhereInput = {};
   where.status = status ? (status as never) : { in: ['OPEN', 'IN_PROGRESS', 'WAITING_ON_USER', 'ESCALATED'] };
   if (priority) where.priority = priority as never;
+  if (q) {
+    const ids = await matchingUserIds(q);
+    where.OR = [{ userId: { in: ids } }, { contactEmail: { contains: q, mode: 'insensitive' } }, { contactPhone: { contains: q } }];
+  }
 
   const tickets = await db.supportTicket.findMany({
     where,

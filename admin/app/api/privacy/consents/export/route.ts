@@ -3,6 +3,7 @@ import { requirePermission } from '@/lib/apiGuard';
 import { getRequestContext } from '@/lib/requestContext';
 import { writeAudit } from '@/lib/audit';
 import { toCsv, csvResponse } from '@/lib/csv';
+import { matchingUserIds } from '@/lib/userSearch';
 import type { Prisma } from '@prisma/client';
 
 // Same filters as app/(console)/privacy/consents/page.tsx. Gated on the
@@ -18,13 +19,13 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const purpose = searchParams.get('purpose');
   const status = searchParams.get('status');
-  const userId = searchParams.get('userId');
+  const q = searchParams.get('q')?.trim();
 
   const where: Prisma.ConsentRecordWhereInput = {};
   const and: Prisma.ConsentRecordWhereInput[] = [];
   if (purpose) and.push({ purpose: purpose as never });
   if (status) and.push({ status: status as never });
-  if (userId) and.push({ userId });
+  if (q) and.push({ userId: { in: await matchingUserIds(q) } });
   if (and.length > 0) where.AND = and;
 
   const records = await db.consentRecord.findMany({

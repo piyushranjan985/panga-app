@@ -3,18 +3,30 @@ import { requirePermission } from '@/lib/apiGuard';
 import { getRequestContext } from '@/lib/requestContext';
 import { writeAudit } from '@/lib/audit';
 import { toCsv, csvResponse } from '@/lib/csv';
+import { matchingUserIds } from '@/lib/userSearch';
+import type { Prisma } from '@prisma/client';
 
 // Mirrors app/(console)/reports/page.tsx's query -- every report a user
 // has filed, cross-referenced with whatever moderation case it became (if
 // any). Gated on reporting.export (same generic export permission as
 // Dashboard/Audit Logs), on top of the moderation.view the page itself
 // already requires to be visible.
-export async function GET() {
+export async function GET(req: Request) {
   const guard = await requirePermission('reporting.export');
   if ('error' in guard) return guard.error;
   const { admin } = guard;
 
+  const { searchParams } = new URL(req.url);
+  const q = searchParams.get('q')?.trim();
+
+  const where: Prisma.ReportWhereInput = {};
+  if (q) {
+    const ids = await matchingUserIds(q);
+    where.OR = [{ reporterId: { in: ids } }, { aboutId: { in: ids } }];
+  }
+
   const reports = await db.report.findMany({
+    where,
     include: {
       reporter: { include: { profile: { select: { displayName: true } } } },
       about: { include: { profile: { select: { displayName: true } } } },
@@ -44,7 +56,7 @@ export async function GET() {
     actorEmail: admin.email,
     action: 'reports.export',
     category: 'moderation',
-    newValue: { count: reports.length },
+    newValue: { count: reports.length, filters: Object.fromEntries(searchParams) },
     context: await getRequestContext(),
   });
 

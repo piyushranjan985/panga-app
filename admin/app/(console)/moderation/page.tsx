@@ -6,6 +6,7 @@ import PageHeader from '@/components/PageHeader';
 import Badge from '@/components/Badge';
 import EmptyState from '@/components/EmptyState';
 import type { Prisma } from '@prisma/client';
+import { matchingUserIds } from '@/lib/userSearch';
 
 const SEVERITY_TONE: Record<string, 'default' | 'success' | 'warning' | 'critical'> = {
   LOW: 'default',
@@ -23,6 +24,13 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
   if (sp.severity) where.severity = sp.severity as never;
   if (sp.category) where.category = sp.category;
   if (sp.mine === '1') where.assigneeId = admin.id;
+  // Lets an admin jump straight to a specific person's cases by phone,
+  // email, or name -- the three things they actually have on hand when
+  // the person who hit this is the one reporting it (see
+  // admin/lib/userSearch.ts) -- instead of first detouring through the
+  // Users page to look up their internal subjectUserId.
+  const q = sp.q?.trim();
+  if (q) where.subjectUserId = { in: await matchingUserIds(q) };
 
   const cases = await db.moderationCase.findMany({
     where,
@@ -41,7 +49,7 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
         actions={
           hasPermission(admin.role, 'reporting.export') && (
             <a
-              href={`/api/moderation/export?${new URLSearchParams({ status: sp.status ?? '', severity: sp.severity ?? '', category: sp.category ?? '' }).toString()}`}
+              href={`/api/moderation/export?${new URLSearchParams({ status: sp.status ?? '', severity: sp.severity ?? '', category: sp.category ?? '', q: sp.q ?? '' }).toString()}`}
               className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-inkSoft hover:bg-canvas"
             >
               Export CSV
@@ -51,6 +59,13 @@ export default async function ModerationPage({ searchParams }: { searchParams: P
       />
       <div className="p-8">
         <form className="mb-5 flex flex-wrap gap-2" method="get">
+          <input
+            type="text"
+            name="q"
+            defaultValue={sp.q}
+            placeholder="Search subject's name, email, or phone"
+            className="min-w-[240px] flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
+          />
           <Select name="status" label="Open + In review + Escalated" defaultValue={sp.status} options={['OPEN', 'IN_REVIEW', 'ESCALATED', 'RESOLVED', 'DISMISSED']} />
           <Select name="severity" label="Any severity" defaultValue={sp.severity} options={['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']} />
           <Select

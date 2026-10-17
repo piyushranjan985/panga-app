@@ -3,6 +3,7 @@ import { requirePermission } from '@/lib/apiGuard';
 import { getRequestContext } from '@/lib/requestContext';
 import { writeAudit } from '@/lib/audit';
 import { toCsv, csvResponse } from '@/lib/csv';
+import { matchingUserIds } from '@/lib/userSearch';
 import type { Prisma } from '@prisma/client';
 
 // List-level export of DPDP data-principal requests (ACCESS, CORRECTION,
@@ -21,6 +22,7 @@ export async function GET(req: Request) {
   const type = searchParams.get('type');
   const status = searchParams.get('status');
   const overdue = searchParams.get('overdue');
+  const q = searchParams.get('q')?.trim();
 
   const where: Prisma.PrivacyRequestWhereInput = {};
   const and: Prisma.PrivacyRequestWhereInput[] = [];
@@ -28,6 +30,10 @@ export async function GET(req: Request) {
   if (overdue === '1') and.push({ dueAt: { lt: new Date() }, status: { in: ['RECEIVED', 'VERIFYING_IDENTITY', 'IN_PROGRESS'] } });
   else if (!status) and.push({ status: { in: ['RECEIVED', 'VERIFYING_IDENTITY', 'IN_PROGRESS', 'ON_HOLD_LEGAL'] } });
   if (status) and.push({ status: status as never });
+  if (q) {
+    const ids = await matchingUserIds(q);
+    and.push({ OR: [{ userId: { in: ids } }, { contactEmail: { contains: q, mode: 'insensitive' } }] });
+  }
   if (and.length > 0) where.AND = and;
 
   const requests = await db.privacyRequest.findMany({
