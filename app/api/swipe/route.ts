@@ -5,6 +5,8 @@ import { getSession } from '@/lib/session';
 import { checkAccountActive } from '@/lib/accountEnforcement';
 import { isPushCategoryEnabled, sendPushToUser } from '@/lib/notifications/push';
 import { getSwipeDailyLimit, evaluateSwipeCount } from '@/lib/swipeRateLimit';
+import { getFreeTierSwipeDailyCap, evaluateFreeSwipeCount } from '@/lib/payments/swipeCap';
+import { getEntitlements, isFeatureLocked } from '@/lib/payments/entitlements';
 
 const bodySchema = z.object({
   toUserId: z.string(),
@@ -46,6 +48,28 @@ export async function POST(req: Request) {
       { error: `You've hit today's swipe limit (${dailyLimit}). More will unlock in a bit -- come back soon!` },
       { status: 429 },
     );
+  }
+
+  // Payments & Monetization (2026-10-17): unlimited_swipes's actual
+  // enforcement -- a SEPARATE, lower, monetization-only cap from the
+  // abuse valve just above (see lib/payments/swipeCap.ts's file
+  // comment). Reuses the same countLast24h -- it's the same rolling-
+  // window count either cap is checked against, just two different
+  // thresholds. isFeatureLocked() returns false outright while
+  // Free_Tier is on, so this entire branch is inert in that mode.
+  const entitlements = await getEntitlements(session.userId);
+  if (isFeatureLocked(entitlements, 'unlimited_swipes')) {
+    const freeCap = getFreeTierSwipeDailyCap();
+    if (!evaluateFreeSwipeCount(freeCap, countLast24h).ok) {
+      return NextResponse.json(
+        {
+          error: `You've used today's ${freeCap} free swipes. Upgrade for unlimited swipes, or come back tomorrow.`,
+          code: 'UPGRADE_REQUIRED',
+          feature: 'unlimited_swipes',
+        },
+        { status: 403 },
+      );
+    }
   }
 
   await db.swipe.upsert({

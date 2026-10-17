@@ -27,7 +27,8 @@
     "prebuild": "node scripts/download-face-api-models.mjs",
     "predev": "node scripts/download-face-api-models.mjs",
     "db:seed:payments": "tsx scripts/seed-payment-plans.ts",
-    "db:smoke-test:payments": "tsx scripts/smoke-test-payments.ts"
+    "db:smoke-test:payments": "tsx scripts/smoke-test-payments.ts",
+    "db:smoke-test:feature-enforcement": "tsx scripts/smoke-test-feature-enforcement.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

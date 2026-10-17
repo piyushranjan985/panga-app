@@ -137,8 +137,13 @@ entitlement:
   `see_who_liked_you`, `advanced_filters`, `rewind_last_swipe`,
   `priority_placement`, `extra_vybe_vouch_invites`, `read_receipts`.
 - **`CreditFeatureKey`** (one-off, spent via `spendCredits()`):
-  `profile_boost`, `super_like`, `profile_spotlight`,
-  `assisted_shortlist_review`.
+  `profile_boost`, `super_like`, `profile_spotlight`. (An earlier draft
+  also listed `assisted_shortlist_review` -- deliberately dropped per
+  your explicit instruction: it didn't map to any existing feature in
+  the app, and building one to fit it would have been a guess at an
+  unscoped product idea rather than wiring up something real. If a
+  "matchmaking review" feature gets designed later, it gets its own
+  `CreditFeatureKey` added fresh.)
 
 **Safety features are never in either list** -- identity verification,
 reporting/blocking, content moderation, account recovery, force logout,
@@ -147,6 +152,32 @@ that could gate them behind a paid plan. An admin creating a plan can
 only ever grant a key from this fixed list (`admin/app/api/payments/
 plans/route.ts` filters the submitted features against it) -- there's no
 freeform "feature name" field to accidentally misuse.
+
+## Feature enforcement (Oct 2026 pass)
+
+Every `FeatureKey`/`CreditFeatureKey` above is wired into real,
+server-side-enforced behavior -- a purchase actually does something.
+**All of it is inert while `Free_Tier` is on** (today's default): every
+gate below is written against `isFeatureLocked(entitlements, key)`
+(`lib/payments/entitlements.ts`), which is defined to return `false`
+outright whenever `entitlements.freeTier` is `true`, regardless of the
+per-feature flag -- see that function's doc comment for why checking
+`hasFeature()`/`entitlements.features[key]` alone would get this
+backwards. **Wiring a new gate** means: fetch `getEntitlements(userId)`
+once, then guard with `isFeatureLocked(entitlements, key)` -- never
+`!entitlements.features[key]` on its own.
+
+| Key | Where it's enforced | What it does |
+|---|---|---|
+| `unlimited_swipes` | `app/api/swipe/route.ts` | A second, lower, monetization-only daily swipe cap (`lib/payments/swipeCap.ts`, default 20/day via `SWIPE_FREE_DAILY_CAP`) -- completely separate from `lib/swipeRateLimit.ts`'s 50/day abuse/cost safety valve, which still applies to everyone regardless of plan. |
+| `see_who_liked_you` | `GET /api/discover/liked-you` (new route) | Lists incoming VYBEs that haven't become a mutual Match or been decided on yet. A locked caller still gets an accurate `count` (for the upgrade nudge), just not the profile list. |
+| `advanced_filters` | `app/api/discover/search/route.ts` | Gates the **entire** Search route (structured filters -- age/distance/gender/intent/interests/tribes -- and the free-text box, which only ever resolves to the same fields). The ordinary, unfiltered Discover feed (`app/api/discover/route.ts`) is unaffected -- that's a separate route and was never part of this gate. **Note:** this endpoint was previously reachable by every user with no entitlement check at all; this pass intentionally locks it, per your explicit choice, rather than leaving today's free users with filters a paid plan is supposed to sell. |
+| `rewind_last_swipe` | `POST /api/swipe/rewind` (new route) | Deletes the caller's single most recent `Swipe` row, unless it already formed a Match (a real match can only be ended via the normal unmatch flow). |
+| `priority_placement` | `app/api/discover/route.ts` via `lib/payments/visibilityBoost.ts` | A score bonus added on top of `lib/matching.ts`'s ordinary ranking for any pool member with an ACTIVE subscription whose plan grants this key -- `lib/matching.ts` itself stays free of any payments concept. |
+| `extra_vybe_vouch_invites` | `app/api/matches/[matchId]/vouch/route.ts` via `lib/vybeVouch.ts`'s `vouchPendingCap()` | Raises the per-match pending-invite cap from 3 to 5. |
+| `read_receipts` | `GET /api/matches/[matchId]/messages/route.ts` | The recipient's read state (`Message.status`) is always tracked accurately on write; a non-entitled caller's own *sent* messages are masked back down to `DELIVERED` in the API response so they can't see when they were actually read. |
+| `super_like` (credit) | `POST /api/swipe/super` (new route) | Same swipe/match mechanics as an ordinary swipe, plus `Swipe.isSuperLike` (new, additive column) and an immediate push to the recipient if it didn't form a mutual match outright. |
+| `profile_boost` / `profile_spotlight` (credit) | `POST /api/boosts` (new route) + `lib/payments/visibilityBoost.ts` | Same score-bonus mechanism as `priority_placement`, for a fixed window after the spend (Boost: 30 min, a smaller bonus; Spotlight: 4 hours, a bigger one) -- read back from the `CreditLedgerEntry` the spend itself already writes, no new "active until" column needed. |
 
 ## Idempotency and out-of-order events
 

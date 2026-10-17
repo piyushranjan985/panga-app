@@ -8,6 +8,7 @@ import { toMatchable, queryEligiblePool, ELIGIBLE_POOL_LIMIT } from '@/lib/disco
 import { ageFromDateOfBirth } from '@/lib/age';
 import { parseSearchQuery } from '@/lib/searchQueryParser';
 import { buildBehaviorWeights, behaviorBoost } from '@/lib/searchBehaviorBoost';
+import { getEntitlements, isFeatureLocked } from '@/lib/payments/entitlements';
 
 // Same eligible-pool size as lib/discoverPool.ts's ordinary feed pool
 // (imported, not duplicated, so the two can't drift) -- for the same
@@ -55,6 +56,24 @@ export async function GET(req: Request) {
 
   const enforcement = await checkAccountActive(session.userId);
   if (enforcement.blocked) return NextResponse.json({ error: enforcement.reason }, { status: 403 });
+
+  // Payments & Monetization (2026-10-17): `advanced_filters`
+  // (lib/payments/types.ts's FeatureKey) now gates this entire route --
+  // age/distance/gender/intent/interest/tribe filtering AND the
+  // free-text box (which only ever resolves to the same filter fields,
+  // see lib/searchQueryParser.ts). The ordinary, unfiltered Discover
+  // feed (app/api/discover/route.ts) is a completely separate route and
+  // is NOT behind this gate -- only the dedicated Search feature is.
+  // Inert while Free_Tier is on (today's default): isFeatureLocked()
+  // always returns false then, so search keeps working for everyone
+  // exactly as it did before this gate existed.
+  const entitlements = await getEntitlements(session.userId);
+  if (isFeatureLocked(entitlements, 'advanced_filters')) {
+    return NextResponse.json(
+      { error: 'Search and filters are part of a paid plan. Upgrade to search by age, distance, interests, and more.', code: 'UPGRADE_REQUIRED', feature: 'advanced_filters' },
+      { status: 403 },
+    );
+  }
 
   const viewerProfile = await db.profile.findUnique({
     where: { userId: session.userId },

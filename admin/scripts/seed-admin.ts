@@ -278,8 +278,8 @@ async function seedSampleContent(ctx: Awaited<ReturnType<typeof main>>) {
   // even on a database that was already seeded before push notifications
   // existed. See lib/notifications/push.ts's fillTemplate() for the
   // {{placeholder}} substitution these rely on, and each trigger site
-  // (app/api/swipe, app/api/matches/[matchId]/messages, app/api/vouch/
-  // [token], lib/safety/identityVerification.ts, app/api/cron/
+  // (app/api/swipe, app/api/swipe/super, app/api/matches/[matchId]/messages,
+  // app/api/vouch/[token], lib/safety/identityVerification.ts, app/api/cron/
   // date-feedback-nudge) for what vars it passes.
   const pushTemplates = [
     { key: 'push.match', channel: 'push', subject: 'New match! 💛', body: 'You and {{name}} just matched on findmyVybe.' },
@@ -290,6 +290,7 @@ async function seedSampleContent(ctx: Awaited<ReturnType<typeof main>>) {
     { key: 'push.mystery_match', channel: 'push', subject: 'Your Mystery Match is here 🎭', body: 'Say hi to {{name}} -- today\'s Mystery Match pick.' },
     { key: 'push.mystery_reveal', channel: 'push', subject: 'Fully revealed! 🎭➡️💛', body: 'You and {{name}} both revealed -- say hi to the real them.' },
     { key: 'push.photo_moderation', channel: 'push', subject: 'findmyVybe', body: '{{outcome}}' },
+    { key: 'push.super_like', channel: 'push', subject: 'Someone Super Vybe\'d you! \u2b50', body: '{{name}} just sent you a Super Vybe.' },
   ];
   for (const t of pushTemplates) {
     await db.notificationTemplate.upsert({ where: { key: t.key }, create: t, update: {} });

@@ -54,10 +54,24 @@ export async function hasFeature(userId: string, feature: FeatureKey): Promise<b
   return entitlements.features[feature] === true;
 }
 
+// The one check every NEW monetization gate added across the app (Oct
+// 2026 feature-enforcement pass) should use -- see docs/PAYMENTS.md
+// "Wiring a new gate". Deliberately NOT the same thing as
+// `!entitlements.features[feature]` on its own: while Free_Tier is true,
+// getEntitlements() above returns every feature as false (see
+// allFeaturesOff()), which is a detail of how that short-circuit is
+// implemented, not a signal that anything should be blocked -- Free_Tier
+// means the opposite, nothing is gated at all (see lib/payments/flags.ts).
+// So a caller must always check `entitlements.freeTier` first; this
+// helper exists so no call site has to remember that rule by hand.
+export function isFeatureLocked(entitlements: Entitlements, feature: FeatureKey): boolean {
+  return !entitlements.freeTier && !entitlements.features[feature];
+}
+
 // Spends credits for a one-off CreditFeatureKey action (boost, super
-// like, profile spotlight, assisted shortlist review). Returns false
-// (never throws) on insufficient balance or while Free_Tier is on -- the
-// caller decides how to surface that to the user.
+// like, profile spotlight). Returns false (never throws) on insufficient
+// balance or while Free_Tier is on -- the caller decides how to surface
+// that to the user.
 export async function spendCredits(userId: string, amount: number, reason: string): Promise<boolean> {
   if (isFreeTier()) return false; // Free_Tier never has a credit balance to spend
   if (amount <= 0) return false;

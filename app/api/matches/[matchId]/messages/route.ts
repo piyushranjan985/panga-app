@@ -5,6 +5,7 @@ import type { Prisma } from '@prisma/client';
 import { getSession } from '@/lib/session';
 import { assertParticipant, otherUserId } from '@/lib/matchAuthz';
 import { checkMessagingAllowed } from '@/lib/accountEnforcement';
+import { getEntitlements, isFeatureLocked } from '@/lib/payments/entitlements';
 import { getMessageHourlyLimit, evaluateMessageCount } from '@/lib/messageRateLimit';
 import { isChatOpenRecently, isPushCategoryEnabled, sendPushToUser } from '@/lib/notifications/push';
 import { publishNewMessage } from '@/lib/realtime/ably';
@@ -28,6 +29,19 @@ export async function GET(_req: Request, { params }: { params: Promise<{ matchId
   const match = await assertParticipant(matchId, session.userId);
   if (!match) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
+  // Fetching the thread IS "opening the chat" from this user's side --
+  // mark whatever the OTHER participant sent as read. This happens
+  // regardless of either side's read_receipts entitlement: the read
+  // itself is just tracking real behavior (same as WhatsApp/iMessage
+  // internally knowing a message was opened); read_receipts only gates
+  // whether the SENDER is shown that it happened, done below on the
+  // response, never on what gets written here.
+  const otherId = otherUserId(match, session.userId);
+  await db.message.updateMany({
+    where: { matchId, senderId: otherId, status: { not: 'READ' } },
+    data: { status: 'READ' },
+  });
+
   const latest = await db.message.findMany({
     where: { matchId },
     orderBy: { createdAt: 'desc' },
@@ -42,7 +56,20 @@ export async function GET(_req: Request, { params }: { params: Promise<{ matchId
   // page already expects.
   const messages = latest.reverse();
 
-  return NextResponse.json({ messages });
+  // read_receipts (lib/payments/types.ts's FeatureKey) gates whether the
+  // CALLER (as a sender) is shown that their own messages were read --
+  // masked at the response layer, never in the database write above, so
+  // the recipient's own read-state is tracked accurately regardless of
+  // who's entitled to see it. Only ever masks the caller's OWN sent
+  // messages; a message the caller received always shows its real
+  // status, same as before this feature existed.
+  const entitlements = await getEntitlements(session.userId);
+  const canSeeReadReceipts = !isFeatureLocked(entitlements, 'read_receipts');
+  const visibleMessages = canSeeReadReceipts
+    ? messages
+    : messages.map((m) => (m.senderId === session.userId && m.status === 'READ' ? { ...m, status: 'DELIVERED' as const } : m));
+
+  return NextResponse.json({ messages: visibleMessages });
 }
 
 const NO_GHOST_CLOSE =

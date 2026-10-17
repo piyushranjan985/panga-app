@@ -7,10 +7,11 @@ import { resolvePairIntent, type PairIntent } from '@/lib/matchSignals';
 import {
   VOUCH_EXPIRY_DAYS,
   VOUCH_LABEL_MAX_LEN,
-  VOUCH_MAX_PENDING_PER_MATCH,
   isVouchEligiblePairIntent,
+  vouchPendingCap,
   vouchShareUrl,
 } from '@/lib/vybeVouch';
+import { getEntitlements, isFeatureLocked } from '@/lib/payments/entitlements';
 
 const bodySchema = z.object({
   vetterLabel: z.string().trim().min(1).max(VOUCH_LABEL_MAX_LEN),
@@ -59,7 +60,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ matchId
       expiresAt: { gt: new Date() },
     },
   });
-  if (pendingCount >= VOUCH_MAX_PENDING_PER_MATCH) {
+  // Payments & Monetization (2026-10-17): extra_vybe_vouch_invites
+  // raises the cap below the same way every other new gate in this pass
+  // does -- see lib/payments/entitlements.ts's isFeatureLocked(). Inert
+  // while Free_Tier is on (today's default): isFeatureLocked() always
+  // returns false then, so everyone just gets the base cap, unchanged
+  // from before this feature existed.
+  const entitlements = await getEntitlements(session.userId);
+  const cap = vouchPendingCap(!isFeatureLocked(entitlements, 'extra_vybe_vouch_invites'));
+  if (pendingCount >= cap) {
     return NextResponse.json({ error: 'You already have the maximum number of pending Vybe Vouch invites for this match.' }, { status: 429 });
   }
 

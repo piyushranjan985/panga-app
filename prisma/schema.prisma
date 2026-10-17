@@ -572,11 +572,20 @@ model OtpCode {
 // Every swipe is recorded (not just mutual likes) so the discovery feed can
 // exclude already-seen profiles and so the matching algorithm can learn later.
 model Swipe {
-  id         String      @id @default(cuid())
-  fromUserId String
-  toUserId   String
-  action     SwipeAction
-  createdAt  DateTime    @default(now())
+  id          String      @id @default(cuid())
+  fromUserId  String
+  toUserId    String
+  action      SwipeAction
+  createdAt   DateTime    @default(now())
+  // Payments & Monetization (2026-10-17) -- set only when this VYBE was
+  // sent via the paid "Super Vybe" action (see lib/payments/entitlements.ts's
+  // spendCredits and app/api/swipe/super/route.ts), never admin- or
+  // client-settable after the fact. Purely additive/display-and-ranking
+  // metadata -- isEligibleCandidate/scoreCandidate in lib/matching.ts
+  // don't read this field, so a Super Vybe is eligible/ranked exactly
+  // like an ordinary VYBE; it only changes what the RECIPIENT is shown
+  // (see app/api/discover/liked-you/route.ts).
+  isSuperLike Boolean     @default(false)
 
   fromUser User @relation("SwipesBySender", fields: [fromUserId], references: [id], onDelete: Cascade)
   toUser   User @relation("SwipesByTarget", fields: [toUserId], references: [id], onDelete: Cascade)

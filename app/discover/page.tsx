@@ -6,6 +6,7 @@ import InactivityLogout from '@/components/InactivityLogout';
 import VibeCard, { type FeedProfile } from '@/components/VibeCard';
 import MatchModal from '@/components/MatchModal';
 import { getCurrentPosition } from '@/lib/native';
+import { CREDIT_FEATURE_COSTS } from '@/lib/payments/types';
 
 interface MatchInfo {
   matchId: string;
@@ -56,6 +57,38 @@ const INTENT_FILTER_LABELS: Record<string, string> = {
   RISHTA_READY: 'Rishta Ready',
 };
 
+// Payments & Monetization (2026-10-17) -- the shape GET /api/payments/
+// subscription returns (see lib/payments/entitlements.ts's
+// Entitlements). Kept as a small local type rather than importing that
+// server-only file into this client component.
+interface DiscoverEntitlements {
+  freeTier: boolean;
+  features: Record<string, boolean>;
+  creditBalance: number;
+}
+
+interface ActiveBoost {
+  kind: 'profile_boost' | 'profile_spotlight';
+  activeUntil: string;
+}
+
+// Mirrors lib/payments/entitlements.ts's isFeatureLocked() -- can't
+// import that file directly here (it pulls in '@/lib/db'), so this is
+// the same one-line rule duplicated for the client: Free_Tier bypasses
+// every gate outright, regardless of the per-feature flag.
+function isLocked(entitlements: DiscoverEntitlements | null, feature: string): boolean {
+  if (!entitlements) return false;
+  return !entitlements.freeTier && !entitlements.features[feature];
+}
+
+function formatBoostCountdown(activeUntil: string): string {
+  const msLeft = new Date(activeUntil).getTime() - Date.now();
+  if (msLeft <= 0) return 'ending…';
+  const minutes = Math.ceil(msLeft / 60000);
+  if (minutes < 60) return `${minutes}m left`;
+  return `${Math.ceil(minutes / 60)}h left`;
+}
+
 export default function DiscoverPage() {
   const [feed, setFeed] = useState<FeedProfile[] | null>(null);
   const [meta, setMeta] = useState<DiscoverMeta | null>(null);
@@ -105,6 +138,42 @@ export default function DiscoverPage() {
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [appliedFilters, setAppliedFilters] = useState<AppliedFilters | null>(null);
+
+  // Payments & Monetization (2026-10-17) -- entitlements drive which of
+  // the actions below are enabled vs. show an upgrade nudge; see
+  // isLocked() above. All of this is a no-op/invisible while Free_Tier
+  // is on (today's default) -- isLocked() returns false for everything
+  // in that mode, same as the server-side gates it mirrors.
+  const [entitlements, setEntitlements] = useState<DiscoverEntitlements | null>(null);
+  const [likedYouCount, setLikedYouCount] = useState<number | null>(null);
+  const [rewindBusy, setRewindBusy] = useState(false);
+  const [rewindError, setRewindError] = useState<string | null>(null);
+  const [activeBoost, setActiveBoost] = useState<ActiveBoost | null>(null);
+  const [boostBusy, setBoostBusy] = useState<'profile_boost' | 'profile_spotlight' | null>(null);
+  const [boostError, setBoostError] = useState<string | null>(null);
+  const [superLikeBusy, setSuperLikeBusy] = useState(false);
+  const [superLikeError, setSuperLikeError] = useState<string | null>(null);
+
+  function loadEntitlements() {
+    fetch('/api/payments/subscription')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setEntitlements(d))
+      .catch(() => {});
+  }
+
+  function loadLikedYouCount() {
+    fetch('/api/discover/liked-you')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setLikedYouCount(typeof d?.count === 'number' ? d.count : null))
+      .catch(() => {});
+  }
+
+  function loadBoostStatus() {
+    fetch('/api/boosts')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setActiveBoost(d?.active ?? null))
+      .catch(() => {});
+  }
 
   function loadFeed() {
     fetch('/api/discover')
@@ -199,6 +268,9 @@ export default function DiscoverPage() {
 
   useEffect(() => {
     loadFeed();
+    loadEntitlements();
+    loadLikedYouCount();
+    loadBoostStatus();
     // Interests + tribes for the search filter panel's chip pickers --
     // same taxonomy onboarding already uses (see app/onboarding/page.tsx),
     // fetched once here since Discover doesn't otherwise need it.
@@ -207,6 +279,76 @@ export default function DiscoverPage() {
       .then((d) => setTaxonomy({ interests: d.interests ?? [], tribes: d.tribes ?? [] }))
       .catch(() => {});
   }, []);
+
+  async function rewindLastSwipe() {
+    setRewindBusy(true);
+    setRewindError(null);
+    try {
+      const res = await fetch('/api/swipe/rewind', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setRewindError(data.error ?? "Couldn't rewind right now.");
+        return;
+      }
+      setIndex(0);
+      loadFeed(); // the rewound profile is no longer excluded, so it'll reappear
+    } catch {
+      setRewindError("Couldn't rewind right now.");
+    } finally {
+      setRewindBusy(false);
+    }
+  }
+
+  async function spendBoost(kind: 'profile_boost' | 'profile_spotlight') {
+    setBoostBusy(kind);
+    setBoostError(null);
+    try {
+      const res = await fetch('/api/boosts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setBoostError(data.error ?? "Couldn't activate that right now.");
+        return;
+      }
+      setActiveBoost({ kind, activeUntil: data.activeUntil });
+      loadEntitlements(); // credit balance just changed
+    } catch {
+      setBoostError("Couldn't activate that right now.");
+    } finally {
+      setBoostBusy(null);
+    }
+  }
+
+  async function superLikeCurrent() {
+    const current = feed?.[index];
+    if (!current) return;
+    setSuperLikeBusy(true);
+    setSuperLikeError(null);
+    try {
+      const res = await fetch('/api/swipe/super', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toUserId: current.userId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSuperLikeError(data.error ?? "Couldn't send a Super Vybe right now.");
+        return;
+      }
+      setIndex((i) => i + 1);
+      if (data.matched && data.matchId) {
+        setMatch({ matchId: data.matchId, name: current.displayName, avatarSeed: current.avatarSeed, avatarHue: current.avatarHue });
+      }
+      loadEntitlements(); // credit balance just changed
+    } catch {
+      setSuperLikeError("Couldn't send a Super Vybe right now.");
+    } finally {
+      setSuperLikeBusy(false);
+    }
+  }
 
   // Just Vibing is distance-based (see lib/matching.ts) -- without shared
   // GPS it still works (falls back to the city's centroid, see
@@ -283,12 +425,29 @@ export default function DiscoverPage() {
       <main className="mx-auto max-w-3xl px-4 py-6">
         <h1 className="mb-1 font-display text-2xl font-extrabold">Discover</h1>
 
-        {/* Search (item 5, Sept 2026) -- a free-text box backed by a
-            deterministic parser (see lib/searchQueryParser.ts; no LLM, no
-            paid API, per the user's explicit "keep it free/rule-based"
-            scoping) plus an explicit filter panel for when plain text
-            isn't precise enough. Both feed the same endpoint and combine
-            there -- see app/api/discover/search/route.ts. */}
+        {/* Payments & Monetization (2026-10-17): advanced_filters
+            (lib/payments/types.ts's FeatureKey) now gates this whole
+            search feature -- see app/api/discover/search/route.ts's
+            comment. Shown only once entitlements have actually loaded,
+            so the search box doesn't flash locked-then-unlocked on every
+            page load. */}
+        {isLocked(entitlements, 'advanced_filters') ? (
+          <div className="mb-4 rounded-2xl border border-line bg-white p-4">
+            <p className="font-bold">🔒 Search &amp; filters</p>
+            <p className="mt-1 text-sm text-inkSoft">
+              Searching by age, distance, gender, intent, interests, and tribes is part of a paid plan.
+            </p>
+            <a href="/upgrade" className="mt-2 inline-block text-sm font-bold text-magenta underline">
+              See plans
+            </a>
+          </div>
+        ) : (
+        // Search (item 5, Sept 2026) -- a free-text box backed by a
+        // deterministic parser (see lib/searchQueryParser.ts; no LLM, no
+        // paid API, per the user's explicit "keep it free/rule-based"
+        // scoping) plus an explicit filter panel for when plain text
+        // isn't precise enough. Both feed the same endpoint and combine
+        // there -- see app/api/discover/search/route.ts.
         <div className="mb-4 rounded-2xl border border-line bg-white p-3">
           <div className="flex gap-2">
             <input
@@ -457,6 +616,7 @@ export default function DiscoverPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* Wild Card -- see docs/WILD_CARD.md. Same intent, same city, but
             the opposite of what the ranked feed below favors: someone you
@@ -481,6 +641,61 @@ export default function DiscoverPage() {
             <p className="mt-1 text-xs text-inkSoft">Your total opposite, same city &amp; intent.</p>
           </div>
         )}
+
+        {/* Payments & Monetization (2026-10-17) -- rewind_last_swipe,
+            see_who_liked_you, profile_boost, profile_spotlight. All of
+            these are clickable regardless of entitlement (the 🔒 prefix
+            is just a hint); the server is the real gate and returns its
+            upgrade message into *Error below on a 403/402, same
+            "let the server decide, show whatever it says" pattern the
+            rest of this page already uses for feed/search errors. */}
+        {!searchActive && (
+          <div className="mb-6 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={rewindLastSwipe}
+              disabled={rewindBusy}
+              className="rounded-full border border-line bg-white px-3 py-1.5 text-xs font-bold text-ink shadow-sm disabled:opacity-50"
+            >
+              {rewindBusy ? 'Rewinding…' : `${isLocked(entitlements, 'rewind_last_swipe') ? '🔒 ' : '⏪ '}Rewind`}
+            </button>
+
+            <a
+              href="/liked-you"
+              className="rounded-full border border-line bg-white px-3 py-1.5 text-xs font-bold text-ink shadow-sm"
+            >
+              {isLocked(entitlements, 'see_who_liked_you') ? '🔒 ' : '💘 '}Liked you
+              {likedYouCount != null && likedYouCount > 0 ? ` (${likedYouCount})` : ''}
+            </a>
+
+            <button
+              type="button"
+              onClick={() => spendBoost('profile_boost')}
+              disabled={boostBusy !== null || activeBoost?.kind === 'profile_boost'}
+              className="rounded-full border border-line bg-white px-3 py-1.5 text-xs font-bold text-ink shadow-sm disabled:opacity-50"
+            >
+              {activeBoost?.kind === 'profile_boost'
+                ? `⚡ Boost · ${formatBoostCountdown(activeBoost.activeUntil)}`
+                : boostBusy === 'profile_boost'
+                  ? 'Boosting…'
+                  : `⚡ Boost (${CREDIT_FEATURE_COSTS.profile_boost})`}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => spendBoost('profile_spotlight')}
+              disabled={boostBusy !== null || activeBoost?.kind === 'profile_spotlight'}
+              className="rounded-full border border-line bg-white px-3 py-1.5 text-xs font-bold text-ink shadow-sm disabled:opacity-50"
+            >
+              {activeBoost?.kind === 'profile_spotlight'
+                ? `✨ Spotlight · ${formatBoostCountdown(activeBoost.activeUntil)}`
+                : boostBusy === 'profile_spotlight'
+                  ? 'Activating…'
+                  : `✨ Spotlight (${CREDIT_FEATURE_COSTS.profile_spotlight})`}
+            </button>
+          </div>
+        )}
+        {(rewindError || boostError) && <p className="mb-4 text-xs text-magenta">{rewindError || boostError}</p>}
 
         {match && (
           <MatchModal
@@ -558,7 +773,10 @@ export default function DiscoverPage() {
           </div>
         )}
 
-        {feed !== null && current && <VibeCard profile={current} onSwipe={swipe} />}
+        {feed !== null && current && (
+          <VibeCard profile={current} onSwipe={swipe} onSuperLike={superLikeCurrent} superLikeDisabled={superLikeBusy} />
+        )}
+        {superLikeError && <p className="mt-2 text-center text-xs text-magenta">{superLikeError}</p>}
 
         {feed !== null && feed.length > 0 && !current && (
           <div className="rounded-card border border-line bg-white p-8 text-center">

@@ -17,8 +17,24 @@ export const VOUCH_REACTIONS: VouchReaction[] = ['GOOD_VYBE', 'ASK_MORE', 'NO_ST
 
 export const VOUCH_EXPIRY_DAYS = 7;
 export const VOUCH_MAX_PENDING_PER_MATCH = 3;
+// Payments & Monetization (2026-10-17): extra_vybe_vouch_invites
+// (lib/payments/types.ts's FeatureKey) raises the pending-invite cap by
+// this many, on top of the base VOUCH_MAX_PENDING_PER_MATCH above -- see
+// vouchPendingCap() below, which is the one place that combines the two.
+export const VOUCH_EXTRA_PENDING_FOR_FEATURE = 2;
 export const VOUCH_LABEL_MAX_LEN = 40;
 export const VOUCH_NOTE_MAX_LEN = 200;
+
+/**
+ * Pure -- the caller (app/api/matches/[matchId]/vouch/route.ts) already
+ * has the entitlements check; this just combines the base cap with the
+ * extra_vybe_vouch_invites bonus into the one number the route compares
+ * its pendingCount against. Kept pure/DB-free so it's trivially
+ * unit-testable, same convention as lib/swipeRateLimit.ts.
+ */
+export function vouchPendingCap(hasExtraInvitesFeature: boolean): number {
+  return VOUCH_MAX_PENDING_PER_MATCH + (hasExtraInvitesFeature ? VOUCH_EXTRA_PENDING_FOR_FEATURE : 0);
+}
 
 const PROFILE_INCLUDE = {
   interests: true,

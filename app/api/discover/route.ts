@@ -6,6 +6,7 @@ import { distanceLabel } from '@/lib/geo';
 import { checkAccountActive } from '@/lib/accountEnforcement';
 import { getEligibleCandidatePool, toMatchable } from '@/lib/discoverPool';
 import { wildCardQuota } from '@/lib/wildCard';
+import { getActiveVisibilityBoostBonus, getPriorityPlacementUserIds, PRIORITY_PLACEMENT_SCORE_BONUS } from '@/lib/payments/visibilityBoost';
 
 const FEED_SIZE = 15;
 
@@ -85,7 +86,30 @@ export async function GET() {
   // generous on purpose. This is what applies the real cutoff against the
   // viewer's exact coordinates. See lib/discoverPool.ts and lib/geo.ts's
   // gridCellFor doc comment.
-  const ranked = rankCandidates(viewer, candidatePool, excluded).slice(0, FEED_SIZE);
+  const rankedAll = rankCandidates(viewer, candidatePool, excluded);
+
+  // Payments & Monetization (2026-10-17): priority_placement
+  // (subscription) and profile_boost/profile_spotlight (credit spends)
+  // both just add a score bonus on top of the ordinary ranking above,
+  // scoped to this request's own candidate pool -- see
+  // lib/payments/visibilityBoost.ts's file comment for why lib/
+  // matching.ts itself stays free of either concept. A no-op two cheap,
+  // empty-result queries while Free_Tier is on (the current default) or
+  // nobody in this pool happens to hold either.
+  const [priorityUserIds, boostBonusByUserId] = await Promise.all([
+    getPriorityPlacementUserIds(poolUserIds),
+    getActiveVisibilityBoostBonus(poolUserIds),
+  ]);
+  const ranked = (
+    priorityUserIds.size === 0 && boostBonusByUserId.size === 0
+      ? rankedAll
+      : rankedAll
+          .map((r) => {
+            const bonus = (priorityUserIds.has(r.userId) ? PRIORITY_PLACEMENT_SCORE_BONUS : 0) + (boostBonusByUserId.get(r.userId) ?? 0);
+            return bonus > 0 ? { ...r, score: r.score + bonus } : r;
+          })
+          .sort((a, b) => b.score - a.score)
+  ).slice(0, FEED_SIZE);
   const winnerIds = ranked.map((r) => r.userId);
 
   // Full detail (photos/interests/prompt answers) is fetched only for the

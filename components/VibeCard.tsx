@@ -41,9 +41,18 @@ const HUE_GRADIENTS: Record<number, string> = {
 export default function VibeCard({
   profile,
   onSwipe,
+  onSuperLike,
+  superLikeDisabled,
 }: {
   profile: FeedProfile;
   onSwipe: (action: 'PASS' | 'VYBE') => void;
+  // Optional -- only app/discover/page.tsx's ordinary feed passes this
+  // (not Wild Card, which reuses this same component for its card). See
+  // CreditFeatureKey's `super_like` in lib/payments/types.ts; the button
+  // itself is always shown when a handler is passed, the entitlement/
+  // credit-balance decision happens one level up.
+  onSuperLike?: () => void;
+  superLikeDisabled?: boolean;
 }) {
   const revealTargets = profile.prompts.length > 0 ? profile.prompts : profile.interests;
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
@@ -151,6 +160,18 @@ export default function VibeCard({
         >
           ✕
         </button>
+        {onSuperLike && (
+          <button
+            type="button"
+            onClick={onSuperLike}
+            disabled={superLikeDisabled}
+            className="grid h-11 w-11 place-items-center rounded-full border border-magenta bg-white text-lg text-magenta shadow disabled:opacity-50"
+            aria-label="Super Vybe"
+            title="Super Vybe"
+          >
+            ⭐
+          </button>
+        )}
         <button
           type="button"
           onClick={() => onSwipe('VYBE')}

@@ -1,0 +1,18 @@
+-- Payments & Monetization follow-up (2026-10-17): adds Swipe.isSuperLike,
+-- the flag the paid "Super Vybe" action sets (see
+-- app/api/swipe/super/route.ts and lib/payments/entitlements.ts's
+-- spendCredits). Purely additive, backward compatible (NOT NULL with a
+-- DEFAULT false, so every existing row is valid with no backfill step).
+--
+-- This file is HAND-FILTERED from `prisma migrate diff`'s raw output.
+-- The raw diff also included three statements from PRE-EXISTING,
+-- unrelated drift already present in the dev database before this
+-- change (DROP/CREATE INDEX "Swipe_fromUserId_action_createdAt_idx" and
+-- an ALTER COLUMN "Profile"."geoLocation" DROP DEFAULT) -- same drift
+-- story as migration 20261017120000_add_payments_domain's header
+-- comment. Those are intentionally NOT included here: they don't belong
+-- to this change, and the index they'd touch already exists correctly in
+-- the live dev database. Applied via `prisma db execute` + `prisma
+-- migrate resolve --applied` rather than `prisma migrate dev`, for the
+-- same reason.
+ALTER TABLE "Swipe" ADD COLUMN "isSuperLike" BOOLEAN NOT NULL DEFAULT false;
