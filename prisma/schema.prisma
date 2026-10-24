@@ -319,6 +319,17 @@ model Profile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Rules-based matching-intelligence signal (lib/matchIntelligence.ts) --
+  // a 0..1 score blending profile completeness, verification status,
+  // recent match activity and recency, written by the
+  // app/api/cron/intelligence-signal job. Defaults to 0 (inert) and is
+  // only ever read into a ranking score by lib/discoverPool.ts when the
+  // matching_intelligence_signal FeatureFlag is enabled (see
+  // lib/featureFlags.ts) -- off by default, so this field does nothing
+  // until that flag is explicitly turned on.
+  intelligenceScore          Float     @default(0)
+  intelligenceScoreUpdatedAt DateTime?
+
   @@index([city, intent, quietMode])
   // The actual filter every discovery/search/wildcard pool query runs
   // (lib/discoverPool.ts) -- see migration 20261011090000's notes.

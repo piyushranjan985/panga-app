@@ -5,6 +5,10 @@
       "schedule": "0 12 * * *"
     },
     {
+      "path": "/api/cron/intelligence-signal",
+      "schedule": "20 5 * * *"
+    },
+    {
       "path": "/api/cron/mystery-match",
       "schedule": "45 13 * * *"
     },

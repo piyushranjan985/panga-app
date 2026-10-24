@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { type MatchableProfile, type Gender, type IntentType, DISTANCE_RADIUS_KM, compatibleIntents } from '@/lib/matching';
 import { effectiveCoords, CITY_CENTROIDS, gridCellFor, GRID_CELL_RADIUS_PADDING_KM } from '@/lib/geo';
 import { cacheGet, cacheSet } from '@/lib/cache';
+import { isFeatureFlagEnabled } from '@/lib/featureFlags';
 
 // Shared between ordinary Discover (app/api/discover/route.ts) and Wild
 // Card (app/api/discover/wildcard/route.ts) -- both rank over the exact
@@ -67,6 +68,11 @@ export function toMatchable(p: {
   latitude?: number | null;
   longitude?: number | null;
   dateOfBirth: Date;
+  // Optional, and almost always omitted -- only getEligibleCandidatePool
+  // below passes this through, and only when the
+  // matching_intelligence_signal FeatureFlag is enabled. See
+  // lib/matching.ts's MatchableProfile doc comment.
+  intelligenceScore?: number | null;
 }): MatchableProfile {
   // Effective coords (real GPS if shared, else the city's centroid) --
   // same fallback distanceLabel() already uses for the display string, now
@@ -86,6 +92,7 @@ export function toMatchable(p: {
     latitude: coords?.lat ?? null,
     longitude: coords?.lng ?? null,
     dateOfBirth: p.dateOfBirth,
+    intelligenceScore: p.intelligenceScore ?? undefined,
   };
 }
 
@@ -127,6 +134,11 @@ export type EligiblePoolRow = {
   longitude: number | null;
   lastActiveAt: Date;
   dateOfBirth: Date;
+  // Always fetched (it's one cheap Float column) -- whether it actually
+  // reaches the MatchableProfile this pool hands back is gated once, in
+  // getEligibleCandidatePool, by the matching_intelligence_signal
+  // FeatureFlag, not by this query. See that function's own comment.
+  intelligenceScore: number;
 };
 
 /**
@@ -157,7 +169,7 @@ export async function queryEligiblePool(params: EligiblePoolParams, limit: numbe
   return db.$queryRaw<EligiblePoolRow[]>`
     SELECT p."userId", p.gender, p."lookingFor", p.city, p.intent, p."quietMode",
            p.latitude, p.longitude, u."lastActiveAt",
-           p."dateOfBirth"
+           p."dateOfBirth", p."intelligenceScore"
     FROM "Profile" p
     JOIN "User" u ON u.id = p."userId"
     WHERE p.city = ${city}
@@ -206,6 +218,9 @@ async function toMatchablePool(rows: EligiblePoolRow[]): Promise<MatchableProfil
       latitude: row.latitude,
       longitude: row.longitude,
       dateOfBirth: row.dateOfBirth,
+      // Raw value always carried through here -- gated once, in
+      // getEligibleCandidatePool, not per row. See that function's comment.
+      intelligenceScore: row.intelligenceScore,
     }),
   );
 }
@@ -230,32 +245,51 @@ export async function getEligibleCandidatePool(viewer: MatchableProfile): Promis
   const lookingForKey = [...viewer.lookingFor].sort().join(',');
   const cacheKey = `discover:pool:${ELIGIBLE_POOL_CACHE_KEY_VERSION}:${viewer.city}:${viewer.gender}:${lookingForKey}:${viewer.intent}:${cell.key}`;
 
+  // Checked once per pool query, not once per candidate row (see
+  // lib/featureFlags.ts). The raw intelligenceScore always flows through
+  // toMatchable/the cache below regardless of this flag's value, so a
+  // flag flip takes effect on the very next call to this function rather
+  // than waiting out the 45s cache TTL -- the gating happens only in the
+  // return statement at the bottom, applied uniformly whether `pool` just
+  // came from cache or from a fresh query.
+  const intelligenceSignalEnabled = await isFeatureFlagEnabled('matching_intelligence_signal');
+
   const cached = await cacheGet<MatchableProfile[]>(cacheKey);
+  let pool: MatchableProfile[];
   if (cached) {
     // Round-tripping through JSON (cacheSet/cacheGet) turns Date fields into
     // ISO strings -- scoreCandidate()/scoreWildCardCandidate() in
     // lib/matching.ts call .getTime() on lastActiveAt, so this has to be a
     // real Date again before use.
-    return cached.map((c) => ({ ...c, lastActiveAt: new Date(c.lastActiveAt) }));
+    pool = cached.map((c) => ({ ...c, lastActiveAt: new Date(c.lastActiveAt) }));
+  } else {
+    const rows = await queryEligiblePool(
+      {
+        city: viewer.city,
+        viewerUserId: viewer.userId,
+        viewerGender: viewer.gender,
+        viewerLookingFor: viewer.lookingFor,
+        viewerIntent: viewer.intent,
+        // Query from the CELL's center, not the viewer's exact point -- see
+        // lib/geo.ts's gridCellFor doc comment. Every viewer in this cell
+        // shares this exact query/cache entry.
+        viewerLat: cell.centerLat,
+        viewerLng: cell.centerLng,
+      },
+      ELIGIBLE_POOL_LIMIT,
+    );
+
+    pool = await toMatchablePool(rows);
+    await cacheSet(cacheKey, pool, ELIGIBLE_POOL_CACHE_TTL_SECONDS);
   }
 
-  const rows = await queryEligiblePool(
-    {
-      city: viewer.city,
-      viewerUserId: viewer.userId,
-      viewerGender: viewer.gender,
-      viewerLookingFor: viewer.lookingFor,
-      viewerIntent: viewer.intent,
-      // Query from the CELL's center, not the viewer's exact point -- see
-      // lib/geo.ts's gridCellFor doc comment. Every viewer in this cell
-      // shares this exact query/cache entry.
-      viewerLat: cell.centerLat,
-      viewerLng: cell.centerLng,
-    },
-    ELIGIBLE_POOL_LIMIT,
-  );
-
-  const pool = await toMatchablePool(rows);
-  await cacheSet(cacheKey, pool, ELIGIBLE_POOL_CACHE_TTL_SECONDS);
+  // See the matching_intelligence_signal comment above -- when the flag
+  // is off (the default), every candidate's intelligenceScore is stripped
+  // back out to undefined right here, so lib/matching.ts's
+  // WEIGHTS.intelligence term is always `undefined ?? 0 = 0` and ranking
+  // is byte-for-byte unchanged from before this feature existed.
+  if (!intelligenceSignalEnabled) {
+    pool = pool.map((c) => ({ ...c, intelligenceScore: undefined }));
+  }
   return pool;
 }

@@ -59,6 +59,15 @@ export interface MatchableProfile {
   // playing in a given scoreCandidate call. Every real Profile row has
   // one (see lib/age.ts), so this is required, not optional like lat/lng.
   dateOfBirth: Date;
+  // Rules-based matching-intelligence signal (lib/matchIntelligence.ts),
+  // 0..1. Optional and almost always undefined on purpose: only
+  // lib/discoverPool.ts's getEligibleCandidatePool ever sets this, and
+  // only when the matching_intelligence_signal FeatureFlag is enabled
+  // (see lib/featureFlags.ts) -- this file itself stays DB/flag-free and
+  // pure, exactly like every other field here. scoreCandidate below
+  // treats an undefined value as 0, so WEIGHTS.intelligence contributes
+  // nothing whenever this is unset.
+  intelligenceScore?: number;
 }
 
 /**
@@ -103,6 +112,13 @@ const WEIGHTS = {
   proximityPrimary: 30, // Just Vibing: distance is THE location signal -- see DISTANCE_RADIUS_KM
   proximitySecondary: 10, // Something Real / Rishta Ready: a same-city tiebreaker, not a requirement
   age: 15, // closeness to the viewer's own age -- see ageFitFactor and the file-level comment
+  // Rules-based matching-intelligence signal (lib/matchIntelligence.ts) --
+  // smaller than age's weight on purpose, since this is a new, less-proven
+  // signal than the hand-tuned terms above it. Only ever non-zero when
+  // candidate.intelligenceScore is set, which only happens behind the
+  // matching_intelligence_signal FeatureFlag -- see MatchableProfile's own
+  // doc comment and lib/discoverPool.ts.
+  intelligence: 8,
 };
 
 // Years of age difference before the age bonus fully disappears -- same
@@ -283,6 +299,15 @@ export function scoreCandidate(viewer: MatchableProfile, candidate: MatchablePro
   if (hoursSinceActive <= 48) {
     score += WEIGHTS.recency * (1 - hoursSinceActive / 48);
   }
+
+  // Matching intelligence (lib/matchIntelligence.ts) -- a soft,
+  // feature-flag-gated signal. candidate.intelligenceScore is only ever
+  // set by lib/discoverPool.ts, and only while the
+  // matching_intelligence_signal FeatureFlag is enabled; when it's
+  // undefined (the flag off, or any upstream error), this term is
+  // `0 * WEIGHTS.intelligence = 0`, so ranking is byte-for-byte unchanged
+  // from before this term existed. See MatchableProfile's own doc comment.
+  score += (candidate.intelligenceScore ?? 0) * WEIGHTS.intelligence;
 
   return { userId: candidate.userId, score: Math.round(score * 100) / 100, reasons };
 }
