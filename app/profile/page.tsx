@@ -863,8 +863,8 @@ export default function ProfilePage() {
               every one of these. */}
           <p className="font-bold">🎭 Blind Match</p>
           <p className="text-sm text-inkSoft">
-            A new hidden match every night at 8pm — photo and name reveal only if you both want to. Pick how it&apos;s
-            chosen, or turn it off anytime.
+            A new hidden match every night between 7:30–8:30pm — photo and name reveal only if you both want to. Pick
+            how it&apos;s chosen, or turn it off anytime.
           </p>
           <div className="mt-3 grid grid-cols-2 gap-2">
             {(

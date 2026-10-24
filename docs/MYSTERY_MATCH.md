@@ -17,11 +17,15 @@ this is built in the same spirit as), `docs/PUSH_NOTIFICATIONS.md`
 A standing daily preference, not a one-off action: every profile has a
 `mysteryCategory` (**Mystery Match**, **Vybe Flip**, **No-Labels Match**, or
 **Opted out**), shown as four buttons on the Profile screen, defaulting to
-Mystery Match and changeable any time. Once a day, at 8:00pm IST, a cron job
-pools everyone currently in each category (in the same city), pairs them up,
-and creates a real match between each pair — both people are notified at the
-same moment. The person shown is always someone that specific pair has never
-crossed paths with before, in any form (never swiped, never matched, never
+Mystery Match and changeable any time. Once a day, a cron job (7:15pm IST --
+moved earlier than the original 8:00pm design, see S11's delivery-pipeline
+note) pools everyone currently in each category (in the same city), pairs
+them up, and creates a real match between each pair. Each side's reveal
+notification then lands independently, jittered somewhere in the 7:30-8:30pm
+IST window (S7/S11) -- NOT both people at the same instant anymore, the way
+the original same-request design worked. The person shown is always someone
+that specific pair has never crossed paths with before, in any form (never
+swiped, never matched, never
 blocked, never a prior Mystery Match under any category) — that permanence
 is what makes "mystery" mean something rather than being decorative. No
 photo or full name is shown until both people mutually tap "Reveal" in chat.
