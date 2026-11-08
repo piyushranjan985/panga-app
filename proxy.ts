@@ -11,7 +11,13 @@ import { verifySessionToken, COOKIE_NAME, IDLE_TIMEOUT_SECONDS } from '@/lib/ses
 // visitor Google/Meta's review checks the privacy policy as, or a
 // search crawler).
 const PUBLIC_PATHS = ['/', '/login', '/verify', '/privacy', '/robots.txt', '/manifest.webmanifest', '/hero-triptych.jpg'];
-const PUBLIC_PREFIXES = ['/_next', '/icons', '/api/auth', '/preview', '/api/preview'];
+// /api/cron is included here deliberately -- every route under it does its
+// own CRON_SECRET bearer-token check as its real authorization (see
+// app/api/cron/*/route.ts), so gating it on a session cookie here only
+// ever blocked the legitimate, session-less caller (Vercel's own
+// scheduler) and let nothing through that the route's own check wouldn't
+// already reject.
+const PUBLIC_PREFIXES = ['/_next', '/icons', '/api/auth', '/preview', '/api/preview', '/api/cron'];
 
 // Imported from lib/sessionToken.ts (not lib/session.ts) deliberately --
 // that file pulls in next/headers and the database, neither of which
