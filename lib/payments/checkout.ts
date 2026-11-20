@@ -8,17 +8,17 @@
 // back a real webhook handler later, so idempotency/out-of-order handling
 // is only implemented once. See docs/PAYMENTS.md.
 
-import type { Prisma } from '@prisma/client';
-import { db } from '@/lib/db';
-import { getPaymentsAccess } from './flags';
-import { getGatewayAdapter } from './gatewayFactory';
-import { generateIdempotencyKey } from './idempotency';
-import { calculateGst, type GstBreakdown } from './gst';
-import { applyDiscount } from './discount';
+import type { Prisma } from "@prisma/client";
+import { db } from "@/lib/db";
+import { getPaymentsAccess } from "./flags";
+import { getGatewayAdapter } from "./gatewayFactory";
+import { generateIdempotencyKey } from "./idempotency";
+import { calculateGst, type GstBreakdown } from "./gst";
+import { applyDiscount } from "./discount";
 
 export class FreeTierCheckoutBlockedError extends Error {
   constructor() {
-    super('Checkout is not reachable while Free_Tier is on.');
+    super("Checkout is not reachable while Free_Tier is on.");
   }
 }
 export class PlanNotFoundError extends Error {}
@@ -29,7 +29,9 @@ export class TransactionNotFoundError extends Error {}
 // see the findings doc's compliance checklist. Wrong until then, but
 // harmless while PAYMENT_MODE=mock since no real invoice is ever issued
 // off of it; must be set correctly before go-live.
-const GST_SUPPLIER_STATE_CODE = (process.env.GST_SUPPLIER_STATE_CODE || 'DL').trim().toUpperCase();
+const GST_SUPPLIER_STATE_CODE = (process.env.GST_SUPPLIER_STATE_CODE || "DL")
+  .trim()
+  .toUpperCase();
 
 export interface CreateCheckoutInput {
   userId: string;
@@ -50,7 +52,9 @@ export interface CheckoutState {
   status: string;
 }
 
-export async function createCheckout(input: CreateCheckoutInput): Promise<CheckoutState> {
+export async function createCheckout(
+  input: CreateCheckoutInput,
+): Promise<CheckoutState> {
   const access = getPaymentsAccess();
   if (!access.checkoutReachable) throw new FreeTierCheckoutBlockedError();
 
@@ -58,18 +62,23 @@ export async function createCheckout(input: CreateCheckoutInput): Promise<Checko
 
   // Idempotent re-entry: a retried request with the same key returns the
   // existing transaction's current state instead of creating a second one.
-  const existing = await db.transaction.findUnique({ where: { idempotencyKey } });
+  const existing = await db.transaction.findUnique({
+    where: { idempotencyKey },
+  });
   if (existing) return toCheckoutState(existing);
 
   const plan = await db.paymentPlan.findUnique({ where: { id: input.planId } });
-  if (!plan || !plan.isActive) throw new PlanNotFoundError('Plan not found or not active.');
+  if (!plan || !plan.isActive)
+    throw new PlanNotFoundError("Plan not found or not active.");
 
   const promo = await resolvePromoCode(input.promoCode, plan.id);
 
   const amountInPaise = plan.priceInPaise;
   const discountInPaise = applyDiscount(
     amountInPaise,
-    promo ? { discountType: promo.discountType, discountValue: promo.discountValue } : null,
+    promo
+      ? { discountType: promo.discountType, discountValue: promo.discountValue }
+      : null,
   );
   const taxableAmountInPaise = amountInPaise - discountInPaise;
   const gst = calculateGst({
@@ -90,14 +99,17 @@ export async function createCheckout(input: CreateCheckoutInput): Promise<Checko
       planId: plan.id,
       kind: plan.kind,
       gateway: adapter.name,
-      status: 'CREATED',
+      status: "CREATED",
       idempotencyKey,
       amountInPaise,
       discountInPaise,
       gstInPaise: gst.totalGstInPaise,
       totalInPaise,
       promoCodeId: promo?.id,
-      metadata: { placeOfSupplyStateCode: input.placeOfSupplyStateCode ?? null, gstBreakdown: gst } as unknown as Prisma.InputJsonValue,
+      metadata: {
+        placeOfSupplyStateCode: input.placeOfSupplyStateCode ?? null,
+        gstBreakdown: gst,
+      } as unknown as Prisma.InputJsonValue,
     },
   });
 
@@ -110,7 +122,7 @@ export async function createCheckout(input: CreateCheckoutInput): Promise<Checko
 
   const updated = await db.transaction.update({
     where: { id: transaction.id },
-    data: { gatewayOrderId: order.gatewayOrderId, status: 'PENDING' },
+    data: { gatewayOrderId: order.gatewayOrderId, status: "PENDING" },
   });
 
   return toCheckoutState(updated);
@@ -118,23 +130,39 @@ export async function createCheckout(input: CreateCheckoutInput): Promise<Checko
 
 async function resolvePromoCode(rawCode: string | undefined, planId: string) {
   if (!rawCode) return null;
-  const promo = await db.promoCode.findUnique({ where: { code: rawCode.trim().toUpperCase() } });
+  const promo = await db.promoCode.findUnique({
+    where: { code: rawCode.trim().toUpperCase() },
+  });
   const now = new Date();
   const valid =
     !!promo &&
     promo.isActive &&
     promo.validFrom <= now &&
     (!promo.validUntil || promo.validUntil >= now) &&
-    (promo.maxRedemptions === null || promo.redemptionCount < promo.maxRedemptions) &&
-    (promo.applicablePlanIds.length === 0 || promo.applicablePlanIds.includes(planId));
-  if (!valid) throw new InvalidPromoCodeError('This promo code is not valid for this plan right now.');
+    (promo.maxRedemptions === null ||
+      promo.redemptionCount < promo.maxRedemptions) &&
+    (promo.applicablePlanIds.length === 0 ||
+      promo.applicablePlanIds.includes(planId));
+  if (!valid)
+    throw new InvalidPromoCodeError(
+      "This promo code is not valid for this plan right now.",
+    );
   return promo;
 }
 
-function toCheckoutState(t: { id: string; gatewayOrderId: string | null; gateway: string; amountInPaise: number; discountInPaise: number; gstInPaise: number; totalInPaise: number; status: string }): CheckoutState {
+function toCheckoutState(t: {
+  id: string;
+  gatewayOrderId: string | null;
+  gateway: string;
+  amountInPaise: number;
+  discountInPaise: number;
+  gstInPaise: number;
+  totalInPaise: number;
+  status: string;
+}): CheckoutState {
   return {
     transactionId: t.id,
-    gatewayOrderId: t.gatewayOrderId ?? '',
+    gatewayOrderId: t.gatewayOrderId ?? "",
     gateway: t.gateway,
     amountInPaise: t.amountInPaise,
     discountInPaise: t.discountInPaise,
@@ -149,7 +177,7 @@ export interface ConfirmCheckoutInput {
   /** Re-checked against the transaction's own userId -- never trust a client-supplied user id alone to resolve which transaction this is. */
   userId: string;
   /** Mock-mode testing knob only; a real adapter ignores this. */
-  simulate?: 'success' | 'failure' | 'pending';
+  simulate?: "success" | "failure" | "pending";
 }
 
 export interface ConfirmCheckoutResult {
@@ -157,117 +185,214 @@ export interface ConfirmCheckoutResult {
   transactionId: string;
 }
 
-export async function confirmCheckout(input: ConfirmCheckoutInput): Promise<ConfirmCheckoutResult> {
-  const transaction = await db.transaction.findUnique({ where: { id: input.transactionId } });
-  if (!transaction || transaction.userId !== input.userId) throw new TransactionNotFoundError();
+export async function confirmCheckout(
+  input: ConfirmCheckoutInput,
+): Promise<ConfirmCheckoutResult> {
+  const transaction = await db.transaction.findUnique({
+    where: { id: input.transactionId },
+  });
+  if (!transaction || transaction.userId !== input.userId)
+    throw new TransactionNotFoundError();
 
-  if (transaction.status === 'SUCCEEDED' || transaction.status === 'FAILED') {
+  if (transaction.status === "SUCCEEDED" || transaction.status === "FAILED") {
     // Already resolved -- idempotent no-op, not an error.
     return { status: transaction.status, transactionId: transaction.id };
   }
 
   const adapter = getGatewayAdapter();
-  const result = await adapter.confirmPayment({ gatewayOrderId: transaction.gatewayOrderId ?? '', simulate: input.simulate });
+  const result = await adapter.confirmPayment({
+    gatewayOrderId: transaction.gatewayOrderId ?? "",
+    simulate: input.simulate,
+  });
   return applyGatewayEvent(transaction.id, result);
 }
 
 export interface GatewayEvent {
-  status: 'succeeded' | 'failed' | 'pending';
+  status: "succeeded" | "failed" | "pending";
   gatewayPaymentId: string;
   eventType: string;
   externalEventId: string;
   payload: Record<string, unknown>;
 }
 
-const TERMINAL_STATUSES = ['SUCCEEDED', 'FAILED', 'REFUNDED'];
+const TERMINAL_STATUSES = ["SUCCEEDED", "FAILED", "REFUNDED"];
+
+// Internal signal only -- thrown to unwind out of db.$transaction() (which
+// rolls the whole transaction back on any throw) so the "already applied"
+// lookup below can run on a fresh connection instead of the now-aborted
+// one. Postgres refuses every further command on a transaction after one
+// of its statements errors (25P02) until it's rolled back, so querying
+// `tx` again in the same callback after catching P2002 -- which this code
+// used to do -- always threw 25P02 on a genuine duplicate/retried event
+// instead of returning the idempotent no-op this guard exists for. Real
+// gateways retry webhook delivery routinely, so this was a real-world "a
+// retry always 500s" bug, not just a theoretical one.
+class DuplicateGatewayEventError extends Error {}
 
 // Shared by confirmCheckout() above and (eventually) a real webhook
 // handler -- this is the one place that actually mutates Transaction/
 // Subscription/CreditBalance/Invoice state off of a gateway event.
-export async function applyGatewayEvent(transactionId: string, event: GatewayEvent): Promise<ConfirmCheckoutResult> {
-  return db.$transaction(async (tx) => {
-    // The unique (transactionId, eventType, externalEventId) index is the
-    // real idempotency guard -- a retried/duplicate event throws P2002
-    // here, which we treat as "already applied", not an error.
-    try {
-      await tx.transactionEvent.create({
-        data: { transactionId, eventType: event.eventType, externalEventId: event.externalEventId, payload: event.payload as Prisma.InputJsonValue },
-      });
-    } catch (err) {
-      if (isUniqueConstraintError(err)) {
-        const current = await tx.transaction.findUniqueOrThrow({ where: { id: transactionId } });
-        return { status: current.status, transactionId };
+export async function applyGatewayEvent(
+  transactionId: string,
+  event: GatewayEvent,
+): Promise<ConfirmCheckoutResult> {
+  try {
+    return await db.$transaction(async (tx) => {
+      // The unique (transactionId, eventType, externalEventId) index is the
+      // real idempotency guard -- a retried/duplicate event throws P2002
+      // here, which we treat as "already applied", not an error.
+      try {
+        await tx.transactionEvent.create({
+          data: {
+            transactionId,
+            eventType: event.eventType,
+            externalEventId: event.externalEventId,
+            payload: event.payload as Prisma.InputJsonValue,
+          },
+        });
+      } catch (err) {
+        if (isUniqueConstraintError(err)) {
+          throw new DuplicateGatewayEventError();
+        }
+        throw err;
       }
-      throw err;
-    }
 
-    const transaction = await tx.transaction.findUniqueOrThrow({ where: { id: transactionId }, include: { plan: true } });
-
-    // Out-of-order guard: a terminal status is never overwritten by a
-    // late-arriving pending/duplicate event for the same transaction.
-    if (TERMINAL_STATUSES.includes(transaction.status)) {
-      return { status: transaction.status, transactionId };
-    }
-
-    if (event.status === 'pending') {
-      await tx.transaction.update({ where: { id: transactionId }, data: { status: 'PENDING', gatewayPaymentId: event.gatewayPaymentId } });
-      return { status: 'PENDING', transactionId };
-    }
-
-    if (event.status === 'failed') {
-      await tx.transaction.update({ where: { id: transactionId }, data: { status: 'FAILED', gatewayPaymentId: event.gatewayPaymentId } });
-      return { status: 'FAILED', transactionId };
-    }
-
-    // succeeded
-    await tx.transaction.update({ where: { id: transactionId }, data: { status: 'SUCCEEDED', gatewayPaymentId: event.gatewayPaymentId } });
-
-    if (transaction.plan && transaction.kind === 'SUBSCRIPTION') {
-      const periodDays = transaction.plan.billingInterval === 'ANNUAL' ? 365 : transaction.plan.billingInterval === 'QUARTERLY' ? 90 : 30;
-      const now = new Date();
-      const periodEnd = new Date(now.getTime() + periodDays * 24 * 60 * 60 * 1000);
-      const subscription = await tx.subscription.create({
-        data: { userId: transaction.userId, planId: transaction.plan.id, status: 'ACTIVE', currentPeriodStart: now, currentPeriodEnd: periodEnd },
+      const transaction = await tx.transaction.findUniqueOrThrow({
+        where: { id: transactionId },
+        include: { plan: true },
       });
-      await tx.transaction.update({ where: { id: transactionId }, data: { subscriptionId: subscription.id } });
-    } else if (transaction.plan && transaction.kind === 'CREDIT_PACK' && transaction.plan.creditAmount) {
-      await tx.creditBalance.upsert({
-        where: { userId: transaction.userId },
-        create: { userId: transaction.userId, balance: transaction.plan.creditAmount },
-        update: { balance: { increment: transaction.plan.creditAmount } },
-      });
-      await tx.creditLedgerEntry.create({
-        data: { userId: transaction.userId, delta: transaction.plan.creditAmount, reason: 'credit_pack_purchase', transactionId: transaction.id },
-      });
-    }
 
-    if (transaction.promoCodeId) {
-      await tx.promoRedemption.create({ data: { promoCodeId: transaction.promoCodeId, userId: transaction.userId, transactionId: transaction.id } });
-      await tx.promoCode.update({ where: { id: transaction.promoCodeId }, data: { redemptionCount: { increment: 1 } } });
-    }
+      // Out-of-order guard: a terminal status is never overwritten by a
+      // late-arriving pending/duplicate event for the same transaction.
+      if (TERMINAL_STATUSES.includes(transaction.status)) {
+        return { status: transaction.status, transactionId };
+      }
 
-    const paymentsAccess = getPaymentsAccess();
-    const invoiceNumber = `MOCK-${new Date().getFullYear()}-${transaction.id.slice(-8).toUpperCase()}`;
-    const metadata = (transaction.metadata ?? {}) as { placeOfSupplyStateCode?: string | null; gstBreakdown?: GstBreakdown };
-    await tx.invoice.create({
-      data: {
-        transactionId: transaction.id,
-        userId: transaction.userId,
-        invoiceNumber,
-        subtotalInPaise: transaction.amountInPaise - transaction.discountInPaise,
-        discountInPaise: transaction.discountInPaise,
-        gstInPaise: transaction.gstInPaise,
-        totalInPaise: transaction.totalInPaise,
-        placeOfSupply: metadata.placeOfSupplyStateCode ?? null,
-        gstBreakdown: (metadata.gstBreakdown ?? {}) as Prisma.InputJsonValue,
-        isMock: paymentsAccess.paymentMode === 'mock',
-      },
+      if (event.status === "pending") {
+        await tx.transaction.update({
+          where: { id: transactionId },
+          data: { status: "PENDING", gatewayPaymentId: event.gatewayPaymentId },
+        });
+        return { status: "PENDING", transactionId };
+      }
+
+      if (event.status === "failed") {
+        await tx.transaction.update({
+          where: { id: transactionId },
+          data: { status: "FAILED", gatewayPaymentId: event.gatewayPaymentId },
+        });
+        return { status: "FAILED", transactionId };
+      }
+
+      // succeeded
+      await tx.transaction.update({
+        where: { id: transactionId },
+        data: { status: "SUCCEEDED", gatewayPaymentId: event.gatewayPaymentId },
+      });
+
+      if (transaction.plan && transaction.kind === "SUBSCRIPTION") {
+        const periodDays =
+          transaction.plan.billingInterval === "ANNUAL"
+            ? 365
+            : transaction.plan.billingInterval === "QUARTERLY"
+              ? 90
+              : 30;
+        const now = new Date();
+        const periodEnd = new Date(
+          now.getTime() + periodDays * 24 * 60 * 60 * 1000,
+        );
+        const subscription = await tx.subscription.create({
+          data: {
+            userId: transaction.userId,
+            planId: transaction.plan.id,
+            status: "ACTIVE",
+            currentPeriodStart: now,
+            currentPeriodEnd: periodEnd,
+          },
+        });
+        await tx.transaction.update({
+          where: { id: transactionId },
+          data: { subscriptionId: subscription.id },
+        });
+      } else if (
+        transaction.plan &&
+        transaction.kind === "CREDIT_PACK" &&
+        transaction.plan.creditAmount
+      ) {
+        await tx.creditBalance.upsert({
+          where: { userId: transaction.userId },
+          create: {
+            userId: transaction.userId,
+            balance: transaction.plan.creditAmount,
+          },
+          update: { balance: { increment: transaction.plan.creditAmount } },
+        });
+        await tx.creditLedgerEntry.create({
+          data: {
+            userId: transaction.userId,
+            delta: transaction.plan.creditAmount,
+            reason: "credit_pack_purchase",
+            transactionId: transaction.id,
+          },
+        });
+      }
+
+      if (transaction.promoCodeId) {
+        await tx.promoRedemption.create({
+          data: {
+            promoCodeId: transaction.promoCodeId,
+            userId: transaction.userId,
+            transactionId: transaction.id,
+          },
+        });
+        await tx.promoCode.update({
+          where: { id: transaction.promoCodeId },
+          data: { redemptionCount: { increment: 1 } },
+        });
+      }
+
+      const paymentsAccess = getPaymentsAccess();
+      const invoiceNumber = `MOCK-${new Date().getFullYear()}-${transaction.id.slice(-8).toUpperCase()}`;
+      const metadata = (transaction.metadata ?? {}) as {
+        placeOfSupplyStateCode?: string | null;
+        gstBreakdown?: GstBreakdown;
+      };
+      await tx.invoice.create({
+        data: {
+          transactionId: transaction.id,
+          userId: transaction.userId,
+          invoiceNumber,
+          subtotalInPaise:
+            transaction.amountInPaise - transaction.discountInPaise,
+          discountInPaise: transaction.discountInPaise,
+          gstInPaise: transaction.gstInPaise,
+          totalInPaise: transaction.totalInPaise,
+          placeOfSupply: metadata.placeOfSupplyStateCode ?? null,
+          gstBreakdown: (metadata.gstBreakdown ?? {}) as Prisma.InputJsonValue,
+          isMock: paymentsAccess.paymentMode === "mock",
+        },
+      });
+
+      return { status: "SUCCEEDED", transactionId };
     });
-
-    return { status: 'SUCCEEDED', transactionId };
-  });
+  } catch (err) {
+    if (err instanceof DuplicateGatewayEventError) {
+      // Transaction above was rolled back by the throw -- read the
+      // now-settled status on a fresh connection, not the aborted `tx`.
+      const current = await db.transaction.findUniqueOrThrow({
+        where: { id: transactionId },
+      });
+      return { status: current.status, transactionId };
+    }
+    throw err;
+  }
 }
 
 function isUniqueConstraintError(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && 'code' in err && (err as { code?: string }).code === 'P2002';
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: string }).code === "P2002"
+  );
 }
