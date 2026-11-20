@@ -15,8 +15,17 @@ export function middleware(req: NextRequest) {
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
   const isAuthApi = pathname.startsWith('/api/auth/');
   const isAsset = pathname.startsWith('/_next/') || pathname === '/favicon.ico';
+  // Same reasoning as the main app's proxy.ts: Vercel Cron's own caller
+  // (app/api/cron/retention-purge, scheduled by admin/vercel.json) never
+  // carries an admin session cookie, so gating it here only ever blocked
+  // the legitimate scheduler -- never anyone the route's own CRON_SECRET
+  // bearer-token check (that route's real authorization) wouldn't already
+  // reject. Without this, the DPDP-deletion retention-purge job silently
+  // never ran: every invocation 401'd right here, before the route body
+  // -- and its CRON_SECRET check -- ever executed.
+  const isCron = pathname.startsWith('/api/cron/');
 
-  if (isPublic || isAuthApi || isAsset) return NextResponse.next();
+  if (isPublic || isAuthApi || isAsset || isCron) return NextResponse.next();
 
   const hasCookie = req.cookies.has(COOKIE_NAME);
   if (!hasCookie) {
